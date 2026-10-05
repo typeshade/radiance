@@ -14,6 +14,6 @@
     // writes, and the shader sources are not part of this program (TypeShade surface §64).
     "moduleSuffixes": [".typeshade", ""]
   },
-  "include": ["packages/*/src/**/*.ts", "scripts/**/*.ts"],
+  "include": ["packages/*/src/**/*.ts", "scripts/**/*.ts", "site/**/*.ts"],
   "exclude": ["packages/*/src/**/*.shade.ts", "**/node_modules", "**/dist"]
 }

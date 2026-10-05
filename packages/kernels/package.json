@@ -1,0 +1,20 @@
+{
+  "name": "@typeshade/radiance-kernels",
+  "version": "0.0.0",
+  "type": "module",
+  "license": "Apache-2.0",
+  "description": "The path tracer's GPU kernels, written in TypeShade: sampling, intersection, shading, accumulation.",
+  "exports": {
+    "./trace": {
+      "types": "./src/trace.shade.typeshade.ts",
+      "default": "./src/trace.shade.ts"
+    },
+    "./sampler": {
+      "types": "./src/sampler.shade.typeshade.ts",
+      "default": "./src/sampler.shade.ts"
+    }
+  },
+  "peerDependencies": {
+    "typeshade": "*"
+  }
+}

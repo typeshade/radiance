@@ -9,22 +9,29 @@
     "packages/*"
   ],
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json",
+    "sync": "bun vendor/typeshade/src/cli/bin.ts sync packages",
+    "typecheck": "bun run sync && tsc -p tsconfig.json",
+    "check:shaders": "bun vendor/typeshade/src/cli/bin.ts check packages",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check:prose": "node scripts/check-prose.mjs",
     "check:boundary": "node scripts/boundary.mjs",
     "test": "bun test scripts packages",
     "harness": "node scripts/harness.mjs",
-    "check": "bun run format:check && bun run check:prose && bun run check:boundary && bun run typecheck && bun run test"
+    "check": "bun run format:check && bun run check:prose && bun run check:boundary && bun run check:shaders && bun run typecheck && bun run test",
+    "site": "bun scripts/build-site.ts"
   },
   "dependencies": {
     "typeshade": "file:./vendor/typeshade"
   },
   "devDependencies": {
     "@types/bun": "^1.4.2",
+    "@typeshade/radiance-kernels": "workspace:*",
+    "@typeshade/radiance-render": "workspace:*",
+    "@typeshade/radiance-scene": "workspace:*",
     "playwright": "^1.59.1",
     "prettier": "^3.5.3",
-    "typescript": "5.6.3"
+    "typescript": "5.6.3",
+    "wrangler": "^4.142.0"
   }
 }
