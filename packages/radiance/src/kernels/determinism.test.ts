@@ -1,8 +1,9 @@
 // The determinism lint (design record 0005, "The lint", with record 0002, step 3). It compiles
 // every `*.shade.ts` under `src/kernels` and reads `compile().determinism`, the compiler's list of
 // the operations whose result may differ by driver (surface section 38). Each row must be in the
-// allowlist below, or be an `absolute` row whose every function lists that operation as value-only.
-// A row outside both fails the test with its operation, kind, accuracy and functions.
+// allowlist in determinism-lists.ts, or be an `absolute` row whose every function lists that
+// operation as value-only. A row outside both fails the test with its operation, kind, accuracy
+// and functions. The site reads the same lists (site/src/lib/facts.ts).
 //
 // The two lists are edited only with record 0005 amended. A pull request that adds a row cites the
 // rule of the record it keeps.
@@ -13,56 +14,7 @@ import { describe, expect, it } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { compile, type DeterminismEntry } from 'typeshade';
-
-/** Operations the kernels may use anywhere (bounded, inherited, or exact on both targets). */
-const ALLOWED = [
-  '/',
-  'sqrt',
-  'inverseSqrt',
-  'normalize',
-  'length',
-  'dot',
-  'cross',
-  'reflect',
-  'mix',
-  'fma',
-  'exp2',
-  'pow',
-  'mod',
-];
-/** Operations a function may use only to produce a value: the functions named here. */
-const VALUE_ONLY: Record<string, readonly string[]> = {
-  tonemap: ['exp2', 'pow'],
-  fresnel: ['pow'] /* M3 adds the BSDF's */,
-};
-
-/**
- * The rows the two lists do not admit. A row passes when its operation is in `allowed`, or when
- * it is an `absolute` row in at least one function and every function it is in names that
- * operation in `valueOnly`. A function named like an `Object` member (`toString`) is not in
- * `valueOnly` unless the list has it as its own key.
- */
-function outsideLists(
-  rows: readonly DeterminismEntry[],
-  allowed: readonly string[] = ALLOWED,
-  valueOnly: Record<string, readonly string[]> = VALUE_ONLY,
-): DeterminismEntry[] {
-  return rows.filter((row) => {
-    if (allowed.includes(row.op)) return false;
-    const valueOnlyHere =
-      row.kind === 'absolute' &&
-      row.where.length > 0 &&
-      row.where.every(
-        (fn) => Object.hasOwn(valueOnly, fn) && valueOnly[fn]?.includes(row.op) === true,
-      );
-    return !valueOnlyHere;
-  });
-}
-
-/** One failing row as the test reports it: the operation, its kind, its accuracy, its functions. */
-function describeRow(label: string, row: DeterminismEntry): string {
-  return `${label}: ${row.op} (kind ${row.kind}, ${row.accuracy}) in ${row.where.join(', ')}`;
-}
+import { ALLOWED, describeRow, outsideLists } from './determinism-lists.ts';
 
 /**
  * Operations a kernel file is known to hold at the pin. A report that lacks one of them is a
