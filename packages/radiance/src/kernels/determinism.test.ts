@@ -37,7 +37,9 @@ const VALUE_ONLY: Record<string, readonly string[]> = {
 
 /**
  * The rows the two lists do not admit. A row passes when its operation is in `allowed`, or when
- * it is an `absolute` row and every function it is in names that operation in `valueOnly`.
+ * it is an `absolute` row in at least one function and every function it is in names that
+ * operation in `valueOnly`. A function named like an `Object` member (`toString`) is not in
+ * `valueOnly` unless the list has it as its own key.
  */
 function outsideLists(
   rows: readonly DeterminismEntry[],
@@ -47,7 +49,11 @@ function outsideLists(
   return rows.filter((row) => {
     if (allowed.includes(row.op)) return false;
     const valueOnlyHere =
-      row.kind === 'absolute' && row.where.every((fn) => valueOnly[fn]?.includes(row.op) === true);
+      row.kind === 'absolute' &&
+      row.where.length > 0 &&
+      row.where.every(
+        (fn) => Object.hasOwn(valueOnly, fn) && valueOnly[fn]?.includes(row.op) === true,
+      );
     return !valueOnlyHere;
   });
 }
@@ -71,9 +77,18 @@ function missingOps(rows: readonly DeterminismEntry[], known: readonly string[])
   return known.filter((op) => !rows.some((row) => row.op === op));
 }
 
+/**
+ * A kernel file is a `*.shade.ts` file that is not under a `__fixtures__` directory. A fixture is
+ * a program written wrong on purpose, and the lint must not read it as a kernel. The path uses
+ * the separator of the host, so both `/` and `\\` split it.
+ */
+function isKernelFile(path: string): boolean {
+  return path.endsWith('.shade.ts') && !path.split(/[\\/]/).includes('__fixtures__');
+}
+
 const kernelsDir = import.meta.dir;
 const kernelFiles = (readdirSync(kernelsDir, { recursive: true }) as string[])
-  .filter((f) => f.endsWith('.shade.ts'))
+  .filter(isKernelFile)
   .sort();
 
 function readText(file: string): string | undefined {
@@ -194,5 +209,52 @@ describe('the probe: a row that is not absolute, and a row in two functions', ()
   it('passes an absolute row when both of its functions list it', () => {
     const failures = outsideLists(rows, ALLOWED, valueOnly).map((row) => row.op);
     expect(failures).not.toContain('sin');
+  });
+});
+
+// The probe for the two edges of the value-only lookup: a row with no function, and a function
+// named like an `Object` member. Both rows are built by hand, since a report never has a row with
+// no function.
+function absoluteRow(op: string, where: readonly string[]): DeterminismEntry {
+  return { op, elem: 'f32', kind: 'absolute', accuracy: 'absolute error', count: 1, where };
+}
+
+describe('the probe: the edges of the value-only lookup', () => {
+  it('fails an absolute row that is in no function, since every() of nothing is true', () => {
+    const failures = outsideLists([absoluteRow('sin', [])], ALLOWED, { steer: ['sin'] });
+    expect(failures).toHaveLength(1);
+  });
+
+  for (const name of ['toString', 'constructor', 'hasOwnProperty', '__proto__']) {
+    it(`reports an absolute row in a function named ${name}, and does not throw`, () => {
+      const failures = outsideLists([absoluteRow('sin', [name])], ALLOWED, {});
+      expect(failures).toHaveLength(1);
+    });
+  }
+
+  it('passes a function named like an Object member when the list has it as its own key', () => {
+    expect(
+      outsideLists([absoluteRow('sin', ['toString'])], ALLOWED, { toString: ['sin'] }),
+    ).toEqual([]);
+  });
+});
+
+// The probe for the file filter: a fixture is not a kernel, on either separator.
+describe('the probe: which files are kernels', () => {
+  it('reads a `*.shade.ts` file at the top and in a subdirectory', () => {
+    expect(isKernelFile('trace.shade.ts')).toBe(true);
+    expect(isKernelFile('sub/lights.shade.ts')).toBe(true);
+    expect(isKernelFile('sub\\lights.shade.ts')).toBe(true);
+  });
+
+  it('skips a file under __fixtures__, on either separator', () => {
+    expect(isKernelFile('__fixtures__/wrong.shade.ts')).toBe(false);
+    expect(isKernelFile('sub/__fixtures__/wrong.shade.ts')).toBe(false);
+    expect(isKernelFile('__fixtures__\\wrong.shade.ts')).toBe(false);
+  });
+
+  it('skips a file that is not a `*.shade.ts` file', () => {
+    expect(isKernelFile('determinism.test.ts')).toBe(false);
+    expect(isKernelFile('notes.md')).toBe(false);
   });
 });
