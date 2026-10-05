@@ -284,6 +284,7 @@ describe('PlaneGeometry', () => {
     expect(g.index.length / 3).toBe(2);
   });
 
+  // Verifies: Design 0001.7
   it('lists the vertices, normals, uv and triangles in three.js order', () => {
     const g = new PlaneGeometry(2, 4);
     close(g.position, [-1, 2, 0, 1, 2, 0, -1, -2, 0, 1, -2, 0]);
@@ -323,6 +324,7 @@ describe('QuadGeometry', () => {
 });
 
 describe('BoxGeometry', () => {
+  // Verifies: Design 0001.7
   it('has 24 vertices and 12 triangles, as three.js has', () => {
     const g = new BoxGeometry();
     expect(g.type).toBe('BoxGeometry');

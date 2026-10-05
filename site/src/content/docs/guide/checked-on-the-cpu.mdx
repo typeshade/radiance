@@ -8,9 +8,10 @@ sidebar:
 import { Code } from '@astrojs/starlight/components';
 import gates from '../../../../../scripts/gates.mjs?raw';
 
-The path tracer's GPU code is one TypeShade file, `trace.shade.ts`, with its sampler beside
-it. The compiler emits it as WGSL, and the renderer runs it through the compiler's program
-runtime, `typeshade/runtime`. The compiler can also run the same file on the CPU, as an
+The path tracer's GPU code is one TypeShade program: `trace.shade.ts` and the modules it
+imports, the traversal, the shading functions, the buffer layout and the sampler. The compiler
+emits it as WGSL, and the renderer runs it through the compiler's program runtime,
+`typeshade/runtime`. The compiler can also run the same file on the CPU, as an
 oracle. CI does both on every pull request.
 
 ## What CI holds

@@ -16,6 +16,37 @@ editor), **docs**.
 
 ## Log
 
+### 2026-10-05 · runtime · Record 0001 step 3: a NaN bit pattern does not survive the upload either
+
+Pin e923a34. Record 0004 stores "no texture" as the word 0xffffffff, the bits of a NaN. The
+runtime packs a `Float32Array` binding one number at a time through `DataView.setFloat32`
+(`pack` in `src/core/host-entry.ts`). Measured in bun 1.3.14: the word 0xffffffff comes out as
+0x7fc00000. So the GPU reads another texture id than the host wrote, as the oracle does
+(typeshade/typeshade#479). M2 reads no texture id, so no picture moves today. M3's textures will
+read them. An issue on typeshade/typeshade is owed for the runtime's half: a typed array that
+matches the binding's element type could be copied as bytes.
+
+### 2026-10-05 · language · Record 0001 step 3: the compiler and the editor disagree on an unset array
+
+Pin e923a34. The traversal's stack is `let stack: array<u32, 32>;`, as WGSL writes a zeroed
+array. `compile()` accepts it and emits `var stack: array<u32, 32>;`. `tshc check` refuses it
+with TypeScript's `TS2454` ("used before being assigned") at each `stack[i] = ...`. The call form
+`array<u32, 32>()` is refused too (`TS8019`: it expects 32 elements). So each walk writes 32 zeros
+out. Rule 12.7 makes the two halves one vocabulary, and here they disagree. An issue on
+typeshade/typeshade is owed.
+
+### 2026-10-05 · host · Record 0001 step 3: the oracle pays for every aggregate it copies
+
+Pin e923a34. The two-level walk made the Cornell box's oracle render about five times slower
+than M1's. M1 took 35 s for 16 x 16 at 1,024 samples on one process, and the walk took about
+175 s. A profile showed most of the time in `cloneValue` and `Array.prototype.map`. The generated
+code copies every `const` of a struct or a vector, and it runs vector arithmetic through `map`.
+Three changes in the kernel's style brought it to about 120 s, with no change to its arithmetic:
+the slab and triangle tests in scalars, a node's box passed straight to the test, and the
+instance's ray passed as a parameter. The oracle script now splits the frame over four processes.
+That gives about 55 s alone, and 75 s beside the harness's GPU render. A cheaper copy, or none
+for a `const` the function never writes, would help every oracle user.
+
 ### 2026-10-05 · language · Record 0001 step 2: `bitcast` takes a scalar only
 
 Pin e923a34. `layout.shade.ts` reads the four integer words of an instance from one `vec4`.

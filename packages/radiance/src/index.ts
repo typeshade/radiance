@@ -29,6 +29,7 @@ export { DiffuseMaterial } from './materials/DiffuseMaterial.ts';
 export { EmissiveMaterial } from './materials/EmissiveMaterial.ts';
 export { Material, type MaterialParameters } from './materials/Material.ts';
 export { MirrorMaterial } from './materials/MirrorMaterial.ts';
+export { PhysicalMaterial, type PhysicalMaterialParameters } from './materials/PhysicalMaterial.ts';
 
 export { Mesh } from './objects/Mesh.ts';
 export { Scene } from './scenes/Scene.ts';
@@ -40,9 +41,3 @@ export {
   type PathTracerParameters,
 } from './renderers/PathTracer.ts';
 export { Renderer } from './renderers/Renderer.ts';
-export {
-  cameraUniforms,
-  packScene,
-  type CameraUniforms,
-  type PackedScene,
-} from './renderers/pack.ts';

@@ -25,6 +25,10 @@ export interface CornellBox {
  * The Cornell box: two units wide, open at the front (+z), a red wall on the left, a green one
  * on the right, a light just below the ceiling, a mirror sphere and a white one. The camera
  * looks in through the open side.
+ *
+ * Every shape is triangles: the walls and the light are planes of two triangles each, and each
+ * sphere is a `SphereGeometry` of three.js's default 32 by 16 segments, 960 triangles. It is the
+ * scene CI renders on the GPU and on the CPU oracle (design record 0002).
  */
 export function createCornellBox(): CornellBox {
   const scene = new Scene();

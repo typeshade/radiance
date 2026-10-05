@@ -10,6 +10,9 @@
 // to the BLAS's first node, a leaf's first primitive to its `primBase`, and a triangle's vertex
 // indices to its `vertexBase`. The caller adds the instance's bases (`instanceBases`).
 //
+// The trace's uniform block, `TraceParams`, is declared here too: the traversal reads the TLAS's
+// first node and the counts from it, and the host builds it from the same numbers.
+//
 // Record 0005's rules this file leans on: rule 3 (`dot` in the instance transforms).
 
 /** vec4s in one BVH node of `nodes`: `[0] = (min, bits(a))`, `[1] = (max, bits(b))`. */
@@ -41,17 +44,62 @@ export const INSTANCE_BASES: u32 = 6;
 /** The offset in an instance of `(bits(flags), bits(geometryId), 0, 0)`. */
 export const INSTANCE_FLAGS: u32 = 7;
 
+/** The type word of a light that is an emissive triangle. M3 adds the analytic lights' types. */
+export const LIGHT_TRIANGLE: u32 = 0;
+
+/**
+ * The trace's uniform block (record 0001, "The GPU layout"). The host fills it for each
+ * dispatch, so that each tile reads its own `tile`.
+ */
+export class TraceParams {
+  /** The camera's eye, and its right, up and forward axes in the world (w unused). */
+  eye: vec4;
+  right: vec4;
+  up: vec4;
+  forward: vec4;
+  /** tan of half the horizontal and vertical field of view, the aperture radius and the focus
+   *  distance. The last two are M3's thin lens and are 0 until then. */
+  lens: vec4;
+  /** The frame's width and height in pixels, the first sample's index, and how many to take. */
+  frame: vec4u;
+  /** The tile the dispatch covers: its x0, y0, width and height, in frame pixels. */
+  tile: vec4u;
+  /** The TLAS's first node (`tlasBase`), the instance count, the light count, and the seed. */
+  scene: vec4u;
+  /** The bounces a path may take, the bounce Russian roulette starts at, flags (0), unused. */
+  path: vec4u;
+}
+
+/** The trace's uniform block. */
+export declare const params: uniform<TraceParams>;
+
 /** The BVH nodes: every BLAS, then the TLAS at `params.scene.x`. */
 declare const nodes: storage<array<vec4>>;
+/** The triangles of every geometry, each BLAS's from its `primBase`, in its leaves' order. */
+declare const triangles: storage<array<vec4u>>;
 /** The vertices of every geometry, each BLAS's from its `vertexBase`. */
 declare const vertices: storage<array<vec4>>;
 /** The instances: the world matrix, its inverse, the bases and the flags of each. */
 declare const instances: storage<array<vec4>>;
+/** The lights: `(bits(type), bits(instance), bits(triangle), cdf)` each. */
+declare const lights: storage<array<vec4>>;
 
 /** A node's box, from `lo` to `hi`. */
 export class Bounds {
   lo: vec3;
   hi: vec3;
+}
+
+/** A light's words, decoded. */
+export class Light {
+  /** The light's type word: LIGHT_TRIANGLE at M2. (WGSL reserves the name `type`.) */
+  kind: u32;
+  /** The instance the light belongs to: its slot in `instances`. */
+  instance: u32;
+  /** The triangle that emits: its index in `triangles`, the instance's `primBase` added. */
+  triangle: u32;
+  /** The probability of this light and of every light before it, in [0, 1]. */
+  cdf: f32;
 }
 
 /** A node's two integer words, decoded. */
@@ -78,9 +126,28 @@ export function nodeWords(i: u32): NodeWords {
   return { a: a, count: b & NODE_COUNT_MASK, axis: b >> NODE_AXIS_SHIFT };
 }
 
+/** Triangle `i`'s `(i0, i1, i2, flags)`, an absolute index into `triangles`. The vertex indices
+ *  are relative to the geometry's `vertexBase`. */
+export function triangleWords(i: u32): vec4u {
+  return triangles[i * TRIANGLE_STRIDE];
+}
+
 /** The position of vertex `i` of the geometry whose vertices start at `base`, in its own space. */
 export function vertexPosition(base: u32, i: u32): vec3 {
   return vertices[(base + i) * VERTEX_STRIDE].xyz;
+}
+
+/** The shading normal of vertex `i` of the geometry whose vertices start at `base`, in its own
+ *  space. */
+export function vertexNormal(base: u32, i: u32): vec3 {
+  return vertices[(base + i) * VERTEX_STRIDE + 1].xyz;
+}
+
+/** The uv of vertex `i` of the geometry whose vertices start at `base`: u in the first vec4's w,
+ *  v in the second's. */
+export function vertexUv(base: u32, i: u32): vec2 {
+  const at = (base + i) * VERTEX_STRIDE;
+  return vec2(vertices[at].w, vertices[at + 1].w);
 }
 
 /** Instance `i`'s `(nodeBase, primBase, vertexBase, material)`. */
@@ -102,4 +169,29 @@ export function instanceToObject(i: u32, p: vec4): vec3 {
 export function instanceToWorld(i: u32, v: vec4): vec3 {
   const at = i * INSTANCE_STRIDE + INSTANCE_MATRIX;
   return vec3(dot(instances[at], v), dot(instances[at + 1], v), dot(instances[at + 2], v));
+}
+
+/**
+ * The normal `n` from instance `i`'s space into world space, by the inverse transposed: the
+ * columns of the inverse rows. Not normalised.
+ */
+export function instanceNormalToWorld(i: u32, n: vec3): vec3 {
+  const at = i * INSTANCE_STRIDE + INSTANCE_INVERSE;
+  return instances[at].xyz * n.x + instances[at + 1].xyz * n.y + instances[at + 2].xyz * n.z;
+}
+
+/** Light `i`'s words. */
+export function lightWords(i: u32): Light {
+  const w = lights[i * LIGHT_STRIDE];
+  return {
+    kind: bitcast<u32>(w.x),
+    instance: bitcast<u32>(w.y),
+    triangle: bitcast<u32>(w.z),
+    cdf: w.w,
+  };
+}
+
+/** Light `i`'s cumulative probability alone, for the search that picks a light. */
+export function lightCdf(i: u32): f32 {
+  return lights[i * LIGHT_STRIDE].w;
 }
