@@ -1,7 +1,7 @@
 ---
 id: '0006'
 title: What the engine needs from the runtime and the compiler, as proposals with evidence, each with the engine's way around it until it lands
-status: draft
+status: accepted
 milestones: [M2, M2a, M3, M5]
 touches:
   - docs/plan.md
@@ -84,7 +84,7 @@ front matter (`compiler: ['0006-4']`), so an implementer sees the dependency bef
 
 ## Record
 
-**Approval and plan record.** This record does not yet apply.
+**Approval and plan record.** Accepted on 2026-10-05 (UTC). The owner approved the merge of typeshade/radiance#6 in the conversation, which merged this record as `draft` at 9e8b479. The owner then said to implement the records with Opus 5.5 and Sonnet 5.5, and that go-ahead is the acceptance. Every entry of "Decisions for the owner" stands as proposed.
 
 **Configuration and validation record.** This record does not yet apply. Implementation will
 record each proposal's number and status, and the pin at which the engine took it up.
