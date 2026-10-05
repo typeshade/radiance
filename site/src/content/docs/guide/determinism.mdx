@@ -35,7 +35,7 @@ Start each render from zero. Call `reset()`, or set `seed`. Both start the accum
 ## Check it yourself
 
 `readRadiance()` gives every float of a render. Render twice with one seed and count the floats
-that differ. `Object.is` compares the bits of a float, as the gate does.
+that differ. `Object.is` decides, as the gate does: a NaN equals a NaN, and 0 differs from -0.
 
 ```ts
 import { PathTracer } from '@typeshade/radiance';
