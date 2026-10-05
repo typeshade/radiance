@@ -43,7 +43,9 @@ try {
       await page.waitForFunction(
         (n) => Number(document.querySelector('[data-stage-toolbar]')?.dataset.samples) >= n,
         STILL_SAMPLES,
-        { timeout: 20 * 60_000, polling: 500 },
+        // On SwiftShader the triangle kernel (design record 0001) traces about 30,000 paths a
+        // second, so a still of 718 x 450 pixels at 256 samples takes about 45 minutes.
+        { timeout: 120 * 60_000, polling: 500 },
       );
       if (!animated) await pause.click();
     }

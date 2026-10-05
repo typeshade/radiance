@@ -42,6 +42,7 @@ jobs:
       - run: bun run check:ste
       - run: bun run check:boundary
       - run: bun run gate:api
+      - run: bun run gate:site
       - run: bun run check:shaders
       - run: bun run typecheck
       - run: bun run test

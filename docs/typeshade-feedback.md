@@ -16,6 +16,63 @@ editor), **docs**.
 
 ## Log
 
+### 2026-10-05 · runtime · Record 0001 step 3: a NaN bit pattern does not survive the upload either
+
+Pin e923a34. Record 0004 stores "no texture" as the word 0xffffffff, the bits of a NaN. The
+runtime packs a `Float32Array` binding one number at a time through `DataView.setFloat32`
+(`pack` in `src/core/host-entry.ts`). Measured in bun 1.3.14: the word 0xffffffff comes out as
+0x7fc00000. So the GPU reads another texture id than the host wrote, as the oracle does
+(typeshade/typeshade#479). M2 reads no texture id, so no picture moves today. M3's textures will
+read them. No new issue is owed: typeshade/typeshade#479 and the compiler's change 0045 (PR
+#483, implemented on `main` after the pin) cover it. Change 0045 says to keep an integer word
+in a `storage<array<u32>>` binding. Measured in bun 1.3.14 at the pin: the runtime's `pack`
+keeps 0xffffffff on a `u32` lane (`setUint32`) and gives 0x7fc00000 on an `f32` lane. So the
+five texture ids and the type-and-flags word belong in a `u32` binding, uploaded from a
+`Uint32Array`. That is an amendment to record 0004, open for the owner.
+
+### 2026-10-05 · language · Record 0001 step 3: the compiler and the editor disagree on an unset array
+
+Pin e923a34. The traversal's stack is `let stack: array<u32, 32>;`, as WGSL writes a zeroed
+array. `compile()` accepts it and emits `var stack: array<u32, 32>;`. `tshc check` refuses it
+with TypeScript's `TS2454` ("used before being assigned") at each `stack[i] = ...`. The call form
+`array<u32, 32>()` is refused too (`TS8019`: it expects 32 elements). So each walk writes 32 zeros
+out. Rule 12.7 makes the two halves one vocabulary, and here they disagreed at the pin. Change
+0043 (PR #473, merged as 46f6b84 after the pin) closes that: at `main` fd39ba3, both halves
+refuse the first spelling with `TS8075`. The zero-value call stays refused at both commits.
+Filed as typeshade/typeshade#495 (https://github.com/typeshade/typeshade/issues/495).
+
+### 2026-10-05 · host · Record 0001 step 3: the oracle pays for every aggregate it copies
+
+Pin e923a34. The two-level walk made the Cornell box's oracle render about five times slower
+than M1's. M1 took 35 s for 16 x 16 at 1,024 samples on one process, and the walk took about
+175 s. A profile showed most of the time in `cloneValue` and `Array.prototype.map`. The generated
+code copies every `const` of a struct or a vector, and it runs vector arithmetic through `map`.
+Three changes in the kernel's style brought it to about 120 s, with no change to its arithmetic:
+the slab and triangle tests in scalars, a node's box passed straight to the test, and the
+instance's ray passed as a parameter. The oracle script now splits the frame over four processes.
+That gives about 55 s alone, and 75 s beside the harness's GPU render. A cheaper copy, or none
+for a `const` the function never writes, would help every oracle user.
+
+### 2026-10-05 · runtime · Record 0006 step 1: the four proposals the engine needs first are open
+
+Pin e923a34. Record 0006 lists what the engine needs from the runtime, with the evidence at the
+pin. Items 1 to 4 are open on typeshade/typeshade as draft change proposals, one pull request
+each, written in the compiler's own procedure and reviewed against its tree. Their numbers moved
+from 0043 to 0046 to 0047 to 0050, because the compiler's `main` took 0043 to 0045 and its
+pull request #486 took 0046 while the drafts were written.
+
+- Item 1, device limits: proposal 0047, typeshade/typeshade#489
+  (https://github.com/typeshade/typeshade/pull/489).
+- Item 2, a partial buffer write: proposal 0048, typeshade/typeshade#493
+  (https://github.com/typeshade/typeshade/pull/493).
+- Item 3, raw bytes as a storage host value: proposal 0049, typeshade/typeshade#494
+  (https://github.com/typeshade/typeshade/pull/494).
+- Item 4, a texture write: proposal 0050, typeshade/typeshade#490
+  (https://github.com/typeshade/typeshade/pull/490).
+
+Each proposal ends with the decisions the owner makes before acceptance. Items 5, 6 and 9 are
+issues (item 6 is typeshade/typeshade#467). Items 7, 8 and 10 wait for their milestones.
+
 ### 2026-10-05 · language · Record 0001 step 2: `bitcast` takes a scalar only
 
 Pin e923a34. `layout.shade.ts` reads the four integer words of an instance from one `vec4`.

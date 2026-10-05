@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { compile, compileModuleJs, type CpuModule, type CpuValue } from 'typeshade';
 import * as layout from './layout.shade.ts';
+import trace from './trace.shade.ts';
 import { buildBlas } from '../accel/bvh.ts';
 
 const PATH = join(import.meta.dir, 'layout.shade.ts');
@@ -46,6 +47,7 @@ const RECORD = {
   INSTANCE_INVERSE: 3,
   INSTANCE_BASES: 6,
   INSTANCE_FLAGS: 7,
+  LIGHT_TRIANGLE: 0,
 } as const;
 
 describe('layout.shade.ts: the numbers', () => {
@@ -61,10 +63,40 @@ describe('layout.shade.ts: the numbers', () => {
     expect(host).toEqual(RECORD);
   });
 
-  it('declares nodes, vertices and instances as read-only arrays of vec4', () => {
-    for (const name of ['nodes', 'vertices', 'instances']) {
+  it('declares nodes, vertices, instances and lights as read-only arrays of vec4', () => {
+    for (const name of ['nodes', 'vertices', 'instances', 'lights']) {
       expect(compiled.wgsl).toMatch(new RegExp(`var<storage, read> ${name}: array<vec4<f32>>;`));
     }
+    expect(compiled.wgsl).toMatch(/var<storage, read> triangles: array<vec4<u32>>;/);
+  });
+
+  // Verifies: Design 0001.2
+  it("lays the trace's uniform block out as the record's TraceParams: nine vec4, 144 bytes", () => {
+    const manifest = trace as unknown as {
+      bindings: {
+        name: string;
+        space: string;
+        layout: { size: number; fields?: { name: string; offset: number }[] };
+      }[];
+    };
+    const params = manifest.bindings.find((b) => b.name === 'params')!;
+    expect(params.space).toBe('uniform');
+    expect(params.layout.size).toBe(144);
+    expect(params.layout.fields!.map((f) => [f.name, f.offset])).toEqual([
+      ['eye', 0],
+      ['right', 16],
+      ['up', 32],
+      ['forward', 48],
+      ['lens', 64],
+      ['frame', 80],
+      ['tile', 96],
+      ['scene', 112],
+      ['path', 128],
+    ]);
+    const storage = manifest.bindings.filter((b) => b.space === 'storage').map((b) => b.name);
+    expect(storage.sort()).toEqual(
+      ['accum', 'instances', 'lights', 'materials', 'nodes', 'triangles', 'vertices'].sort(),
+    );
   });
 });
 
@@ -146,6 +178,34 @@ describe('layout.shade.ts: the decoders', () => {
     expect(fn('vertexPosition')(2, 0)).toEqual([7, 8, 9]);
   });
 
+  it('triangleWords, vertexNormal and vertexUv read a triangle and its vertices', () => {
+    cpu.setBinding('triangles', [
+      [0, 0, 0, 0],
+      [3, 1, 2, 0],
+    ] as unknown as CpuValue);
+    expect(fn('triangleWords')(1)).toEqual([3, 1, 2, 0]);
+    const vertices = new Float32Array([
+      ...[1, 2, 3, 0.25],
+      ...[0, 0, 1, 0.75],
+      ...[4, 5, 6, 0.5],
+      ...[0, 1, 0, 0.125],
+    ]);
+    cpu.setBinding('vertices', vec4s(vertices));
+    expect(fn('vertexNormal')(0, 1)).toEqual([0, 1, 0]);
+    expect(fn('vertexUv')(0, 0)).toEqual([0.25, 0.75]);
+    expect(fn('vertexUv')(1, 0)).toEqual([0.5, 0.125]);
+  });
+
+  it('lightWords and lightCdf read (bits(type), bits(instance), bits(triangle), cdf)', () => {
+    const lights = new Float32Array(8);
+    new Uint32Array(lights.buffer).set([0, 7, 4_194_303], 4);
+    lights[3] = 0.25;
+    lights[7] = 1;
+    cpu.setBinding('lights', vec4s(lights));
+    expect(fn('lightWords')(1)).toEqual({ kind: 0, instance: 7, triangle: 4_194_303, cdf: 1 });
+    expect(fn('lightCdf')(0)).toBe(0.25);
+  });
+
   describe('the instance decoders', () => {
     // Instance 1: a quarter turn about z, a scale of 2, a move of (1, 2, 3). All exact in f32.
     const matrix = [0, -2, 0, 1, 2, 0, 0, 2, 0, 0, 2, 3];
@@ -172,6 +232,13 @@ describe('layout.shade.ts: the decoders', () => {
       expect(fn('instanceToWorld')(1, [1, 1, 1, 1])).toEqual([-1, 4, 5]);
       expect(fn('instanceToWorld')(1, [1, 1, 1, 0])).toEqual([-2, 2, 2]);
       expect(fn('instanceToWorld')(0, [1, 1, 1, 1])).toEqual([10, 10, 10]);
+    });
+
+    it('instanceNormalToWorld turns a normal by the inverse transposed', () => {
+      cpu.setBinding('instances', vec4s(instances));
+      // A quarter turn and a scale of 2: the normal turns, and shrinks by the scale.
+      expect(fn('instanceNormalToWorld')(1, [1, 0, 0])).toEqual([0, 0.5, 0]);
+      expect(fn('instanceNormalToWorld')(0, [0, 0, 1])).toEqual([0, 0, 1]);
     });
 
     it('instanceToObject undoes instanceToWorld', () => {

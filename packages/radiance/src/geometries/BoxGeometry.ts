@@ -28,9 +28,6 @@ const FACES: readonly Face[] = [
  * triangles on 24 vertices, four for each face. It follows three.js's `BoxGeometry` with one
  * segment each way: the same vertex order and the same uv layout. A face has its own vertices, so
  * its normals are flat.
- *
- * The path tracer cannot draw it yet: the kernel has two analytic shapes until design record 0001,
- * step 3, and a box has no analytic form. `PathTracer.render` rejects for a scene that holds one.
  */
 export class BoxGeometry extends BufferGeometry {
   override readonly type: string = 'BoxGeometry';
