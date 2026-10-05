@@ -69,8 +69,9 @@ of the CPU oracle's render of the same kernel. M2 brings triangle meshes, the BV
 | `scripts/boundary.mjs`       | The check that no package imports past `typeshade/runtime` or calls WebGPU itself.                                                                                                                                         |
 | `scripts/gates/api.mjs`      | The api gate. `bun run bake:api-surface` (`scripts/bake-api-surface.ts`) writes the exports of each package to `packages/*/__api__/surface.md`. The gate fails when a fresh bake differs.                                  |
 | `scripts/gates.mjs`          | The bounds CI holds the engine to. The site prints the same numbers.                                                                                                                                                       |
-| `scripts/harness.mjs`        | The Cornell box in headless Chromium on SwiftShader, held to its gates and their probes, and the site's Cornell box example under the mouse. Writes `.harness/cornell.png` and `.harness/site.png`.                        |
-| `scripts/gates/`             | One module for each gate: `differential.mjs` and `determinism.mjs`. Each exports `run()` and `probe()`. `_browser.mjs` and `_png.mjs` are shared by the gates and the harness.                                             |
+| `scripts/harness.mjs`        | The Cornell box and every example in headless Chromium on SwiftShader, held to their gates and probes. The site's Cornell box example runs under the mouse. Writes `.harness/cornell.png` and `.harness/site.png`.         |
+| `scripts/gates/`             | One module for each gate: `differential.mjs`, `determinism.mjs` and `render.mjs`. Each exports `run()` and `probe()`. `_browser.mjs` and `_png.mjs` are shared by the gates and the harness.                               |
+| `scripts/__goldens__`        | One PNG for each example, 96 x 64 at 64 samples a pixel. The render gate holds the example's picture to it. `UPDATE_GOLDENS=1 bun run gate:render` rewrites them.                                                          |
 | `scripts/scenes.ts`          | The scene table. The harness page and the oracle build each scene from it. The Cornell box is its one entry.                                                                                                               |
 | `scripts/oracle.ts`          | The path tracer's kernel on the compiler's CPU oracle.                                                                                                                                                                     |
 | `scripts/shade-plugin.ts`    | The `*.shade.ts` loader for `bun build` and `bun test`, from the compiler's Vite plugin.                                                                                                                                   |
@@ -95,12 +96,16 @@ bun run bake:api-surface # bake the exports again after an intended change to on
 bun run harness         # the gates and their probes on WebGPU, and the site (needs Chromium: npx playwright install chromium)
 bun run gate:differential  # one gate alone: the Cornell box on WebGPU and on the oracle
 bun run gate:determinism   # one gate alone: two renders of one seed are bit-identical
+bun run gate:render        # one gate alone: each example's picture is within tolerance of its golden
+UPDATE_GOLDENS=1 bun run gate:render  # rewrite the goldens after an intended change to a picture
 doorstop -e -F          # the traceability tree (pip install doorstop==3.2 once; reqs/README.md)
 bun run site            # the site into dist/site; site:dev serves it while you edit
 bun run capture:stills  # the examples' stills, after a change to what an example draws
 ```
 
 A gate shows that it can fail before it is trusted to pass: the harness runs each gate's `probe()`.
+
+The goldens change only on purpose. Run `UPDATE_GOLDENS=1 bun run gate:render`, look at each old and new picture, and commit the PNGs. The pull request shows both pictures of each one.
 
 CI (`.github/workflows/ci.yml`) runs the same steps, and on a pull request also what a move of
 the compiler pin owes this repository (`compiler-bump`). `check:ste` runs the `asd-ste100` skill's

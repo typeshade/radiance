@@ -65,7 +65,8 @@ jobs:
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: ''
       - run: bun run harness
-      # The preview the harness writes, to look at; nothing holds it to a golden.
+      # The preview the harness writes, and each example's render, to look at. Nothing holds the
+      # preview to a golden. The render gate holds each render to one and names the file of a miss.
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -73,6 +74,7 @@ jobs:
           path: |
             .harness/cornell.png
             .harness/site.png
+            .harness/render-*.png
           if-no-files-found: ignore
 
   traceability:
