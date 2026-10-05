@@ -19,8 +19,8 @@
     "test": "bun test scripts packages",
     "harness": "node scripts/harness.mjs",
     "check": "bun run format:check && bun run check:prose && bun run check:boundary && bun run check:shaders && bun run typecheck && bun run test",
-    "site": "cd site && bun --bun astro build",
-    "site:dev": "cd site && bun --bun astro dev",
+    "site": "bun run sync && cd site && bun --bun astro build",
+    "site:dev": "bun run sync && cd site && bun --bun astro dev",
     "capture:stills": "STILLS_REBASELINE=1 bun run site && node scripts/capture-stills.mjs"
   },
   "dependencies": {
