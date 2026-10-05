@@ -1,17 +1,21 @@
-// === The harness: the path tracer on a real WebGPU device, held to the CPU oracle ===
+// === The harness: the path tracer on a real WebGPU device, held to its gates ===
 //
 // The compiler's user journeys run in headless Chromium through Playwright, on SwiftShader, so
-// CI has a WebGPU device without a GPU (`journeys/_harness.mjs`). This file does the same for the
-// renderer: it bundles `@typeshade/radiance` with bun for the browser (its shader modules
-// compiled by scripts/shade-plugin.ts), serves it from 127.0.0.1 (a secure context, which WebGPU
-// needs), renders the Cornell box and holds it to M1's acceptance (docs/plan.md, section 4):
+// CI has a WebGPU device without a GPU (`journeys/_harness.mjs`). This file runs the renderer's
+// gates on the same kind of device: scripts/gates/_browser.mjs bundles `@typeshade/radiance` with
+// bun for the browser and serves it from 127.0.0.1 (a secure context, which WebGPU needs), and
+// the harness holds the Cornell box to M1's acceptance (docs/plan.md, section 4):
 //
-//   1. Determinism: two renders of one seed are bit-identical, and another seed differs.
-//   2. The oracle: the GPU's 1024 spp render is within tolerance of the CPU oracle's render of
-//      the same kernel, seed and samples (scripts/oracle.ts; the tolerance is `ORACLE` in
-//      scripts/gates.mjs, which the site prints).
+//   1. Determinism (scripts/gates/determinism.mjs): two renders of one seed are bit-identical,
+//      and another seed differs.
+//   2. The oracle (scripts/gates/differential.mjs): the GPU's 1024 spp render is within
+//      tolerance of the CPU oracle's render of the same kernel, seed and samples
+//      (scripts/oracle.ts; the tolerance is `ORACLE` in scripts/gates.mjs, which the site
+//      prints).
 //   3. The display: the tone-mapped image is the tone map of the mean radiance.
-//   4. The site (dist/site) runs its Cornell box example, and the camera answers the mouse.
+//   4. The probes: each gate runs once wrong on purpose and must fail. A gate that does not fail
+//      there cannot be trusted to pass.
+//   5. The site (dist/site) runs its Cornell box example, and the camera answers the mouse.
 //
 // It also writes a larger render to .harness/cornell.png, to look at; nothing holds that one.
 //
@@ -19,100 +23,40 @@
 // otherwise); RADIANCE_HEADED=1 shows the window; RADIANCE_PREVIEW=<side>,<samples> sizes the
 // preview (default 128,64).
 
-import { spawn, spawnSync } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { deflateSync } from 'node:zlib';
-import { chromium } from 'playwright';
-import { GATE, HALF, ORACLE } from './gates.mjs';
-import { CHROMIUM, serve } from './serve.mjs';
+import { HALF } from './gates.mjs';
+import { openRenderPage, outDir } from './gates/_browser.mjs';
+import { encodePng } from './gates/_png.mjs';
+import * as determinism from './gates/determinism.mjs';
+import * as differential from './gates/differential.mjs';
 
-const OUT = join(process.cwd(), '.harness');
-mkdirSync(OUT, { recursive: true });
+const OUT = outDir();
 
 /** The render written to look at; RADIANCE_PREVIEW=<side>,<samples> sets its size. */
 const [side, previewSamples] = (process.env.RADIANCE_PREVIEW ?? '128,64').split(',').map(Number);
 const PREVIEW = { size: [side, side], samples: previewSamples, perFrame: 16, seed: 1 };
 
-// ---- 1: the bundle the page runs, and the oracle's render (in the background) ----------------
-for (const args of [
-  ['scripts/bundle.ts', 'scripts/harness-entry.ts', join(OUT, 'render.js')],
-  ['run', 'site'],
-]) {
-  const build = spawnSync('bun', args, { encoding: 'utf8' });
-  if (build.status !== 0) {
-    process.stderr.write(`bundling failed:\n${build.stdout}${build.stderr}`);
-    process.exit(1);
-  }
+// ---- 1: the site the last section runs, built as it is deployed -------------------------------
+const build = spawnSync('bun', ['run', 'site'], { encoding: 'utf8' });
+if (build.status !== 0) {
+  process.stderr.write(`bundling failed:\n${build.stdout}${build.stderr}`);
+  process.exit(1);
 }
-const oracleFile = join(OUT, 'oracle.json');
-const oracle = new Promise((resolve, reject) => {
-  const child = spawn(
-    'bun',
-    [
-      'scripts/oracle.ts',
-      ...GATE.size.map(String),
-      String(GATE.samples),
-      String(GATE.seed),
-      oracleFile,
-    ],
-    { stdio: ['ignore', 'pipe', 'inherit'] },
-  );
-  let log = '';
-  child.stdout.on('data', (d) => (log += d));
-  child.on('exit', (code) =>
-    code === 0 ? resolve(log.trim()) : reject(new Error(`the oracle exited with ${code}`)),
-  );
-});
 
-// ---- 2: the page --------------------------------------------------------------------------------
-const PAGE = `<!doctype html><title>radiance harness</title><link rel="icon" href="data:,"><script type="module">
-import { PathTracer, createCornellBox } from '/__harness/render.js';
-window.run = async ({ size, samples, perFrame, seed }) => {
-  const { scene, camera } = createCornellBox();
-  camera.aspect = size[0] / size[1];
-  const r = await new PathTracer({ seed, samplesPerFrame: perFrame }).init();
-  r.setSize(size[0], size[1]);
-  r.maxSamples = samples;
-  const t0 = performance.now();
-  while (r.samples < samples) await r.render(scene, camera);
-  const ms = performance.now() - t0;
-  const radiance = [...(await r.readRadiance())];
-  const image = [...(await r.readPixels())];
-  r.dispose();
-  return { radiance, image, ms };
-};
-</script>`;
-// The built site at /, as it is deployed; the gate's page and bundle under /__harness/.
-const { server, origin } = await serve(join(process.cwd(), 'dist/site'), (url) => {
-  if (url === '/__harness/render.js')
-    return {
-      type: 'text/javascript; charset=utf-8',
-      body: readFileSync(join(OUT, 'render.js'), 'utf8'),
-    };
-  if (url === '/__harness/') return { type: 'text/html; charset=utf-8', body: PAGE };
-  return undefined;
-});
+// ---- 2: the device: the bundle the page runs, the server and the browser ----------------------
+const session = await openRenderPage();
+const { browser, origin, errors } = session;
 
-// ---- 3: the device ------------------------------------------------------------------------------
-const browser = await chromium.launch(CHROMIUM);
-const page = await browser.newPage();
-const errors = [];
-page.on('pageerror', (e) => errors.push(e.message));
-page.on('console', (m) => {
-  if (m.type() === 'error' || m.type() === 'warning')
-    errors.push(`console.${m.type()}: ${m.text()}`);
-});
-await page.goto(`${origin}/__harness/`);
-await page.waitForFunction(() => typeof window.run === 'function');
-
-// ---- 4: the renders, held to M1's acceptance ---------------------------------------------------
+// ---- 3: the gates, and the display ------------------------------------------------------------
 let failures = 0;
 const fail = (message) => {
   console.error(message);
   failures++;
 };
-const lum = (a, i) => (a[i] + a[i + 1] + a[i + 2]) / 3;
+/** A gate's result: its message to the output when the gate holds, to the failures when not. */
+const report = (result) => (result.ok ? console.log(result.message) : fail(result.message));
 
 /** What `tonemap` in trace.shade.ts computes, written again here as an independent check. */
 const tonemap = (c) => {
@@ -121,117 +65,53 @@ const tonemap = (c) => {
   return m <= 0.0031308 ? m * 12.92 : 1.055 * Math.pow(m, 1 / 2.4) - 0.055;
 };
 
-/** `image` (RGBA floats in [0, 1], top row first) as a PNG. */
-function png(width, height, image) {
-  const raw = Buffer.alloc((width * 4 + 1) * height);
-  for (let y = 0; y < height; y++) {
-    raw[y * (width * 4 + 1)] = 0;
-    for (let x = 0; x < width * 4; x++) {
-      const v = image[y * width * 4 + x];
-      raw[y * (width * 4 + 1) + 1 + x] = Math.round(Math.min(1, Math.max(0, v)) * 255);
-    }
-  }
-  const crcTable = Array.from({ length: 256 }, (_, n) => {
-    let c = n;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    return c >>> 0;
-  });
-  const crc = (buf) => {
-    let c = 0xffffffff;
-    for (const b of buf) c = crcTable[(c ^ b) & 0xff] ^ (c >>> 8);
-    return (c ^ 0xffffffff) >>> 0;
-  };
-  const chunk = (type, data) => {
-    const len = Buffer.alloc(4);
-    len.writeUInt32BE(data.length);
-    const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
-    const sum = Buffer.alloc(4);
-    sum.writeUInt32BE(crc(body));
-    return Buffer.concat([len, body, sum]);
-  };
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(width, 0);
-  ihdr.writeUInt32BE(height, 4);
-  ihdr.set([8, 6, 0, 0, 0], 8);
-  return Buffer.concat([
-    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
-    chunk('IHDR', ihdr),
-    chunk('IDAT', deflateSync(raw)),
-    chunk('IEND', Buffer.alloc(0)),
-  ]);
-}
-
 try {
-  const run = (o) => page.evaluate((x) => window.run(x), o);
-  const first = await run(GATE);
-  const again = await run(GATE);
-  const other = await run({ ...GATE, seed: GATE.seed + 1 });
-  console.log(
-    `gpu: ${GATE.size.join('x')} at ${GATE.samples} spp in ${(first.ms / 1000).toFixed(1)} s`,
-  );
+  const scenes = Object.keys(differential.SCENES);
+  for (const scene of scenes) {
+    // 1 and 2: the oracle (which renders while the GPU does) and determinism.
+    const compared = await differential.run({ scene, session });
+    report(compared);
+    report(await determinism.run({ scene, session }));
 
-  // 1: determinism.
-  const pixels = GATE.size[0] * GATE.size[1];
-  if (first.radiance.length !== pixels * 4)
-    fail(`read ${first.radiance.length} floats, expected ${pixels * 4}`);
-  const unequal = first.radiance.findIndex((v, i) => !Object.is(v, again.radiance[i]));
-  if (unequal >= 0)
-    fail(
-      `two renders of seed ${GATE.seed} differ at float ${unequal}: ${first.radiance[unequal]} and ${again.radiance[unequal]}`,
-    );
-  if (first.radiance.every((v, i) => v === other.radiance[i]))
-    fail(`seeds ${GATE.seed} and ${GATE.seed + 1} render the same image`);
-  for (let p = 0; p < pixels; p++)
-    if (first.radiance[p * 4 + 3] !== GATE.samples) {
-      fail(`pixel ${p} has ${first.radiance[p * 4 + 3]} samples, expected ${GATE.samples}`);
-      break;
+    // 3: the display.
+    const { gate } = differential.gatedScene(scene);
+    const { radiance, image } = compared.render;
+    for (let i = 0; i < gate.size[0] * gate.size[1] * 4; i++) {
+      const want = i % 4 === 3 ? 1 : tonemap(radiance[i]);
+      if (Math.abs(image[i] - want) > HALF) {
+        fail(
+          `displayed texel ${Math.floor(i / 4)} channel ${i % 4}: ${image[i]}, expected ${want}`,
+        );
+        break;
+      }
     }
-
-  // 2: the oracle.
-  console.log(await oracle);
-  const cpu = JSON.parse(readFileSync(oracleFile, 'utf8'));
-  let worst = { p: -1, d: 0 };
-  let relSum = 0;
-  let out = 0;
-  for (let p = 0; p < pixels; p++) {
-    for (let c = 0; c < 3; c++) {
-      const g = first.radiance[p * 4 + c];
-      const w = cpu[p * 4 + c];
-      const d = Math.abs(g - w);
-      if (d > ORACLE.abs && d > ORACLE.rel * Math.abs(w)) out++;
-      if (d > worst.d) worst = { p, c, d, g, w };
-    }
-    relSum +=
-      Math.abs(lum(first.radiance, p * 4) - lum(cpu, p * 4)) / Math.max(lum(cpu, p * 4), 1e-3);
   }
-  const meanRel = relSum / pixels;
-  console.log(
-    `oracle: mean relative difference ${meanRel.toExponential(2)}; largest ${worst.d.toExponential(2)} at pixel ${worst.p} (gpu ${worst.g}, cpu ${worst.w}); ${out} channel(s) out of bounds`,
-  );
-  if (out > 0)
-    fail(`${out} channel(s) differ from the oracle by more than ${JSON.stringify(ORACLE)}`);
-  if (!(meanRel <= ORACLE.mean))
-    fail(`the mean relative difference ${meanRel} is over ${ORACLE.mean}`);
 
-  // 3: the display.
-  for (let i = 0; i < pixels * 4; i++) {
-    const want = i % 4 === 3 ? 1 : tonemap(first.radiance[i]);
-    if (Math.abs(first.image[i] - want) > HALF) {
-      fail(
-        `displayed texel ${Math.floor(i / 4)} channel ${i % 4}: ${first.image[i]}, expected ${want}`,
-      );
-      break;
+  // 4: the probes. A gate runs once wrong on purpose, and a gate that does not fail is blind.
+  for (const [name, gate] of [
+    ['differential', differential],
+    ['determinism', determinism],
+  ]) {
+    for (const scene of scenes) {
+      try {
+        console.log(`probe ${name} (${scene}): ${(await gate.probe({ scene, session })).message}`);
+      } catch (e) {
+        fail(`probe ${name} (${scene}): ${e instanceof Error ? e.message : String(e)}`);
+      }
     }
   }
 
   // The preview, to look at.
-  const preview = await run(PREVIEW);
-  writeFileSync(join(OUT, 'cornell.png'), png(PREVIEW.size[0], PREVIEW.size[1], preview.image));
+  const preview = await session.render(PREVIEW);
+  writeFileSync(
+    join(OUT, 'cornell.png'),
+    encodePng(PREVIEW.size[0], PREVIEW.size[1], preview.image),
+  );
   console.log(
     `preview: ${PREVIEW.size.join('x')} at ${PREVIEW.samples} spp in ${(preview.ms / 1000).toFixed(1)} s, .harness/cornell.png`,
   );
 
-  // 4: the site (radiance.typeshade.dev, built to dist/site) runs the Cornell box example on its
+  // 5: the site (radiance.typeshade.dev, built to dist/site) runs the Cornell box example on its
   // page and counts samples in the stage's toolbar, and its camera answers the mouse: a drag
   // starts a preview and the render again from another view, and a wheel turn dollies without
   // scrolling the page.
@@ -286,10 +166,11 @@ try {
   fail(e instanceof Error ? e.message : String(e));
 }
 for (const e of errors) fail(e);
-await browser.close();
-server.close();
+await session.close();
 if (failures > 0) {
   console.error(`harness: ${failures} failure(s)`);
   process.exit(1);
 }
-console.log('harness: the Cornell box is deterministic, matches the oracle, and displays');
+console.log(
+  'harness: the Cornell box is deterministic, matches the oracle, and displays, and each probe fails its gate',
+);
