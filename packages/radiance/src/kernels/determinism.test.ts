@@ -23,6 +23,7 @@ const ALLOWED = [
   'length',
   'dot',
   'cross',
+  'reflect',
   'mix',
   'fma',
   'exp2',

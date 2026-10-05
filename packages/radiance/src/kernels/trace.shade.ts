@@ -19,8 +19,8 @@ import { hash2, sample2 } from "./sampler.shade.ts";
 //   Rule 2: `turn` makes a direction from sums and products. `exp2` and `pow` make the tone
 //           map's value. Its one comparison reads a value that `exp2` feeds. The comparison
 //           selects between two pieces of one curve. It does not choose a path.
-//   Rule 3: `sqrt`, `/`, `normalize`, `length`, `dot` and `cross` may steer. The differential
-//           gate bounds them.
+//   Rule 3: `sqrt`, `/`, `normalize`, `length`, `dot`, `cross` and `reflect` may steer. The
+//           differential gate bounds them.
 //   Rule 4: no atomics. One pixel is one invocation.
 //   Rule 6: no `f16`, no subgroup operation, no `raw`.
 // The lint in determinism.test.ts reads the compiler's determinism report of this file.
