@@ -22,15 +22,15 @@ Pin e923a34. `layout.shade.ts` reads the four integer words of an instance from 
 WGSL's `bitcast<vec4<u32>>(v)` reads them in one call. TypeShade refuses `bitcast<vec4u>(v)` with
 `TS8003`, which names the two scalar forms it has. So `instanceBases` writes four scalar
 `bitcast<u32>` calls in a `vec4u` constructor. The diagnostic was clear, and the workaround cost
-a minute. Not filed yet as an issue on typeshade/typeshade.
+a minute. Filed as typeshade/typeshade#478 (https://github.com/typeshade/typeshade/issues/478).
 
 ### 2026-10-05 · docs · Record 0001 step 2: the authoring guide shows no storage declaration
 
 Pin e923a34. The task said to declare the storage bindings as `AUTHORING.md` shows. Its "Storage
 buffers" section shows only the builder API, `storageBuffer(name, type, options)`. The
 `"use typeshade"` form, `declare const nodes: storage<array<vec4>>`, is in the surface reference
-(§1) and in `trace.shade.ts`. A reader who starts from the guide finds no example of it. Not
-filed yet.
+(§1) and in `trace.shade.ts`. A reader who starts from the guide finds no example of it. Filed as
+typeshade/typeshade#480 (https://github.com/typeshade/typeshade/issues/480).
 
 ### 2026-10-05 · host · Record 0001 step 2: a NaN bit pattern does not survive the oracle
 
@@ -39,7 +39,8 @@ value is a JavaScript number, and `bitcastU32` writes it through a `DataView`. M
 1.3.14: the words 0x7fc00001, 0x7fffffff and 0xffc00005 come back as 0x7fc00000. A GPU load and
 a `bitcast` keep the bits (an inference from WGSL, not measured here). No word inside record
 0001's limits has a NaN pattern, so the layout is safe today. A flags word with its high bits set
-would read differently on the two sides. Not filed yet.
+would read differently on the two sides. Filed as typeshade/typeshade#479
+(https://github.com/typeshade/typeshade/issues/479).
 
 ### 2026-10-05 · host · Record 0001 step 2: the host imports a constant from a shader module
 
