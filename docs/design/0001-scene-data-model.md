@@ -79,10 +79,9 @@ class BufferGeometry extends Geometry {
   position: Float32Array;
   /** xyz per vertex, unit length. Computed by computeVertexNormals() when absent. */
   normal: Float32Array | undefined;
-  /** uv per vertex, three.js's layout: v = 1 at the top of a plane and at a sphere's north
-   *  pole. The glTF loader (step 4) stores glTF's values as they are, and the texture upload
-   *  (record 0004, M3) sets each image's orientation, as three.js does with flipY. Absent: every
-   *  uv is 0. */
+  /** uv per vertex, three.js's layout: v = 1 at the top of a plane and at a sphere's north pole. */
+  // The glTF loader (step 4) stores glTF's values as they are. The texture upload (record 0004,
+  // M3) sets each image's orientation, as three.js does with flipY. Absent: every uv is 0.
   uv: Float32Array | undefined;
   /** Three vertex indices per triangle, counter-clockwise seen from the front. Required. */
   index: Uint32Array;
