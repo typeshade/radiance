@@ -8,7 +8,8 @@
 // (`journeys/_harness.mjs`, `engineOffence`).
 //
 // Shader sources (`*.shade.ts`) are compiled, not run: they import other shaders by relative
-// path, and the rule does not read them. Tests (`*.test.ts`) are not shipped and are not read.
+// path, and the rule does not read them. Nor does it read their host views
+// (`*.shade.typeshade.ts`), which `tshc sync` writes from the compiler's own output. Tests (`*.test.ts`) are not shipped and are not read.
 //
 // `node scripts/boundary.mjs` exits 1 and names each offence; `bun test` holds the check itself
 // to an offence it must see (scripts/boundary.test.ts).
@@ -39,7 +40,7 @@ export function offence(source) {
   return call ? `calls WebGPU itself: "${call[0].trim()}"` : '';
 }
 
-/** Every host source under `dir`: `.ts` files that are neither shaders nor tests. */
+/** Every host source under `dir`: `.ts` files that are neither shaders, host views nor tests. */
 export function sources(dir) {
   const out = [];
   const walk = (d) => {
@@ -47,7 +48,12 @@ export function sources(dir) {
       const p = join(d, name);
       if (statSync(p).isDirectory()) {
         if (name !== 'node_modules' && name !== 'dist') walk(p);
-      } else if (p.endsWith('.ts') && !p.endsWith('.shade.ts') && !p.endsWith('.test.ts')) {
+      } else if (
+        p.endsWith('.ts') &&
+        !p.endsWith('.shade.ts') &&
+        !p.endsWith('.shade.typeshade.ts') &&
+        !p.endsWith('.test.ts')
+      ) {
         out.push(p);
       }
     }

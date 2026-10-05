@@ -9,5 +9,9 @@
   },
   "peerDependencies": {
     "typeshade": "*"
+  },
+  "dependencies": {
+    "@typeshade/radiance-kernels": "workspace:*",
+    "@typeshade/radiance-scene": "workspace:*"
   }
 }

@@ -2,3 +2,6 @@ vendor/
 node_modules/
 .harness/
 bun.lock
+# Prettier cannot parse a shader module's decorators in that position; tshc check reads them.
+*.shade.ts
+*.shade.typeshade.ts

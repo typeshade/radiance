@@ -39,6 +39,7 @@ jobs:
       - run: bun run format:check
       - run: bun run check:prose
       - run: bun run check:boundary
+      - run: bun run check:shaders
       - run: bun run typecheck
       - run: bun run test
 
@@ -61,6 +62,13 @@ jobs:
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: ''
       - run: bun run harness
+      # The preview the harness writes, to look at; nothing holds it to a golden.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cornell-preview
+          path: .harness/cornell.png
+          if-no-files-found: ignore
 
   compiler-bump:
     # What a compiler bump owes this repository: a package, a document or a test that still
