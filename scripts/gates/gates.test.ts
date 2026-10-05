@@ -1,0 +1,153 @@
+// The pure parts of the gates, held in `bun run check`: the comparison of the differential gate,
+// the bit-identity of the determinism gate, and the PNG encoder. The gates themselves need a GPU
+// and run in the harness (`bun run harness`), with their probes. These tests also show that each
+// check sees a planted fault, before the check is trusted to see none.
+import { describe, expect, test } from 'bun:test';
+import { crc32, inflateSync } from 'node:zlib';
+import { encodePng } from './_png.mjs';
+import { bitwiseDifference, judge } from './determinism.mjs';
+import { compareImages, gatedScene, meanBoundOnly, shiftOnePixel } from './differential.mjs';
+
+/** A 16 x 16 image of RGBA floats: a gradient left to right, 1024 samples in each pixel. */
+const WIDTH = 16;
+const HEIGHT = 16;
+const gradient = () => {
+  const image = new Float32Array(WIDTH * HEIGHT * 4);
+  for (let p = 0; p < WIDTH * HEIGHT; p++) {
+    const v = 0.1 + 0.05 * (p % WIDTH);
+    image.set([v, v * 0.5, v * 0.25, 1024], p * 4);
+  }
+  return image;
+};
+const BOUNDS = { abs: 1e-3, rel: 0.05, mean: 1e-4 };
+
+describe('differential comparison', () => {
+  test('an image equals itself', () => {
+    const result = compareImages(gradient(), gradient(), BOUNDS);
+    expect(result.ok).toBe(true);
+    expect(result.numbers).toEqual({ abs: 0, rel: 0, mean: 0, largest: 0, outOfBounds: 0 });
+  });
+  test('a small rounding error passes', () => {
+    const gpu = gradient();
+    gpu[0]! += 2e-5;
+    const result = compareImages(gpu, gradient(), BOUNDS);
+    expect(result.ok).toBe(true);
+    expect(result.numbers.largest).toBeCloseTo(2e-5, 8);
+  });
+  test('a channel beyond abs and rel fails, and the numbers name it', () => {
+    const gpu = gradient();
+    gpu[0]! *= 1.1;
+    const result = compareImages(gpu, gradient(), BOUNDS);
+    expect(result.ok).toBe(false);
+    expect(result.numbers.outOfBounds).toBe(1);
+    expect(result.numbers.abs).toBeGreaterThan(BOUNDS.abs);
+    expect(result.numbers.rel).toBeGreaterThan(BOUNDS.rel);
+    expect(result.message).toMatch(/1 channel\(s\) differ from the oracle/);
+  });
+  test('a channel beyond abs but within rel passes', () => {
+    const gpu = gradient();
+    gpu[0]! *= 1.02;
+    const result = compareImages(gpu, gradient(), BOUNDS);
+    expect(result.ok).toBe(true);
+    expect(result.numbers.outOfBounds).toBe(0);
+    expect(result.numbers.abs).toBeLessThanOrEqual(BOUNDS.abs);
+    expect(result.numbers.rel).toBeGreaterThan(0.01);
+    expect(result.numbers.rel).toBeLessThanOrEqual(BOUNDS.rel);
+  });
+  test('a NaN fails', () => {
+    const gpu = gradient();
+    gpu[5] = NaN;
+    const result = compareImages(gpu, gradient(), BOUNDS);
+    expect(result.ok).toBe(false);
+    expect(result.numbers.outOfBounds).toBe(1);
+  });
+  test('images of different lengths fail', () => {
+    const result = compareImages(gradient().subarray(4), gradient(), BOUNDS);
+    expect(result.ok).toBe(false);
+    expect(result.message).toMatch(/floats/);
+  });
+  test('a mean over the bound fails when every channel is within abs', () => {
+    const gpu = gradient().map((v, i) => (i % 4 === 3 ? v : v + 5e-4));
+    const result = compareImages(gpu, gradient(), BOUNDS);
+    expect(result.numbers.outOfBounds).toBe(0);
+    expect(result.numbers.mean).toBeGreaterThan(BOUNDS.mean);
+    expect(result.ok).toBe(false);
+    expect(result.message).toMatch(/mean relative difference .* is over/);
+  });
+  test('the image moved one pixel fails the mean bound alone, as the probe needs', () => {
+    const moved = shiftOnePixel(gradient(), WIDTH, HEIGHT);
+    expect(moved[4]).toBe(gradient()[0]);
+    expect(moved[0]).toBe(gradient()[0]);
+    expect(compareImages(gradient(), moved, BOUNDS).ok).toBe(false);
+    const alone = compareImages(gradient(), moved, meanBoundOnly(BOUNDS));
+    expect(alone.numbers.outOfBounds).toBe(0);
+    expect(alone.numbers.mean).toBeGreaterThan(BOUNDS.mean);
+    expect(alone.ok).toBe(false);
+  });
+  test('the Cornell box is the scene the gates hold', () => {
+    expect(gatedScene('cornell').gate.size).toEqual([16, 16]);
+    expect(() => gatedScene('missing')).toThrow(/cornell/);
+    expect(() => gatedScene('toString')).toThrow(/no gated scene/);
+  });
+});
+
+describe('determinism bit-identity', () => {
+  test('a NaN equals a NaN, and 0 differs from -0', () => {
+    expect(bitwiseDifference([1, NaN, 3], [1, NaN, 3])).toEqual({ differing: 0, first: -1 });
+    expect(bitwiseDifference([0], [-0])).toEqual({ differing: 1, first: 0 });
+  });
+  test('floats of one length differ where they differ', () => {
+    expect(bitwiseDifference([1, 2, 3, 4], [1, 9, 3, 8])).toEqual({ differing: 2, first: 1 });
+    expect(bitwiseDifference([1, 2], [1, 2, 3]).differing).toBe(1);
+  });
+  const gate = { size: [WIDTH, HEIGHT], samples: 1024, perFrame: 64, seed: 1 };
+  const seed2 = () => gradient().map((v, i) => (i % 4 === 3 ? v : v * 0.9));
+  test('two renders of one seed and a render of another pass', () => {
+    const result = judge({ first: gradient(), again: gradient(), other: seed2() }, gate);
+    expect(result.ok).toBe(true);
+    expect(result.numbers.differing).toBe(0);
+    expect(result.numbers.otherSeedDiffering).toBeGreaterThan(0);
+  });
+  test('a render of seed 2 as the second render of seed 1 fails, as the probe needs', () => {
+    const result = judge({ first: gradient(), again: seed2(), other: seed2() }, gate);
+    expect(result.ok).toBe(false);
+    expect(result.numbers.differing).toBeGreaterThan(0);
+  });
+  test('a seed that renders the same image fails', () => {
+    const result = judge({ first: gradient(), again: gradient(), other: gradient() }, gate);
+    expect(result.ok).toBe(false);
+    expect(result.message).toMatch(/render the same image/);
+  });
+  test('a pixel with the wrong sample count fails', () => {
+    const first = gradient();
+    first[7] = 1023;
+    const result = judge({ first, again: Float32Array.from(first), other: seed2() }, gate);
+    expect(result.ok).toBe(false);
+    expect(result.message).toMatch(/pixel 1 has 1023 samples/);
+  });
+});
+
+describe('the PNG encoder', () => {
+  test('a picture is written as its 8-bit RGBA rows, with valid chunk checksums', () => {
+    const image = [0, 0.5, 1, 1, 1, 0.25, -1, 1, 0.2, 0.4, 0.6, 2, 0, 0, 0, 0];
+    const png = encodePng(2, 2, image);
+    expect([...png.subarray(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+    const chunks: Record<string, Buffer> = {};
+    for (let at = 8; at < png.length;) {
+      const length = png.readUInt32BE(at);
+      const type = png.toString('ascii', at + 4, at + 8);
+      const data = png.subarray(at + 8, at + 8 + length);
+      expect(png.readUInt32BE(at + 8 + length)).toBe(crc32(png.subarray(at + 4, at + 8 + length)));
+      chunks[type] = Buffer.from(data);
+      at += 12 + length;
+    }
+    expect(Object.keys(chunks)).toEqual(['IHDR', 'IDAT', 'IEND']);
+    expect(chunks.IHDR!.readUInt32BE(0)).toBe(2);
+    expect(chunks.IHDR!.readUInt32BE(4)).toBe(2);
+    expect([...chunks.IHDR!.subarray(8)]).toEqual([8, 6, 0, 0, 0]);
+    const raw = inflateSync(chunks.IDAT!);
+    expect([...raw]).toEqual([
+      0, 0, 128, 255, 255, 255, 64, 0, 255, 0, 51, 102, 153, 255, 0, 0, 0, 0,
+    ]);
+  });
+});

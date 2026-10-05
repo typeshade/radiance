@@ -68,7 +68,9 @@ of the CPU oracle's render of the same kernel. M2 brings triangle meshes, the BV
 | `site/public/stills`         | One still per example, the picture a page shows before its canvas runs, with a `.sha256` the build checks. `bun run capture:stills` captures them.                                                                         |
 | `scripts/boundary.mjs`       | The check that no package imports past `typeshade/runtime` or calls WebGPU itself.                                                                                                                                         |
 | `scripts/gates.mjs`          | The bounds CI holds the engine to. The site prints the same numbers.                                                                                                                                                       |
-| `scripts/harness.mjs`        | The Cornell box in headless Chromium on SwiftShader, held to the oracle, and the site's Cornell box example under the mouse. Writes `.harness/cornell.png` and `.harness/site.png`.                                        |
+| `scripts/harness.mjs`        | The Cornell box in headless Chromium on SwiftShader, held to its gates and their probes, and the site's Cornell box example under the mouse. Writes `.harness/cornell.png` and `.harness/site.png`.                        |
+| `scripts/gates/`             | One module for each gate: `differential.mjs` and `determinism.mjs`. Each exports `run()` and `probe()`. `_browser.mjs` and `_png.mjs` are shared by the gates and the harness.                                             |
+| `scripts/scenes.ts`          | The scene table. The harness page and the oracle build each scene from it. The Cornell box is its one entry.                                                                                                               |
 | `scripts/oracle.ts`          | The path tracer's kernel on the compiler's CPU oracle.                                                                                                                                                                     |
 | `scripts/shade-plugin.ts`    | The `*.shade.ts` loader for `bun build` and `bun test`, from the compiler's Vite plugin.                                                                                                                                   |
 | `DESIGN.md`, `PRODUCT.md`    | The site's design system (Vapor UI's tokens) and its product brief, read by the design skills under `.claude/skills`.                                                                                                      |
@@ -87,11 +89,15 @@ Later milestones add `packages/fit`, `packages/procedural`, `packages/sim` and
 ```sh
 bun install
 bun run check           # format, prose, STE, boundary, shaders, host views and typecheck, tests
-bun run harness         # the Cornell box on WebGPU and on the oracle, and the site (needs Chromium: npx playwright install chromium)
+bun run harness         # the gates and their probes on WebGPU, and the site (needs Chromium: npx playwright install chromium)
+bun run gate:differential  # one gate alone: the Cornell box on WebGPU and on the oracle
+bun run gate:determinism   # one gate alone: two renders of one seed are bit-identical
 doorstop -e -F          # the traceability tree (pip install doorstop==3.2 once; reqs/README.md)
 bun run site            # the site into dist/site; site:dev serves it while you edit
 bun run capture:stills  # the examples' stills, after a change to what an example draws
 ```
+
+A gate shows that it can fail before it is trusted to pass: the harness runs each gate's `probe()`.
 
 CI (`.github/workflows/ci.yml`) runs the same steps, and on a pull request also what a move of
 the compiler pin owes this repository (`compiler-bump`). `check:ste` runs the `asd-ste100` skill's
