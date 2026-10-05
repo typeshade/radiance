@@ -69,6 +69,8 @@ function describeRow(label: string, row: DeterminismEntry): string {
  * broken instrument, not a clean kernel, so the lint fails on it. A new kernel file needs no entry.
  */
 const KNOWN_OPS: Record<string, readonly string[]> = {
+  'intersect.shade.ts': ['/', 'cross', 'dot', 'normalize'],
+  'materials.shade.ts': ['cross', 'dot', 'normalize', 'reflect', 'sqrt'],
   'sampler.shade.ts': ['/'],
   'trace.shade.ts': ['/', 'dot'],
 };
@@ -108,6 +110,8 @@ function determinismOf(source: string, fileName: string): readonly DeterminismEn
 
 describe('the determinism lint over src/kernels', () => {
   it('reads the kernels it is meant to read', () => {
+    for (const file of ['intersect.shade.ts', 'layout.shade.ts', 'materials.shade.ts'])
+      expect(kernelFiles).toContain(file);
     expect(kernelFiles).toContain('sampler.shade.ts');
     expect(kernelFiles).toContain('trace.shade.ts');
   });

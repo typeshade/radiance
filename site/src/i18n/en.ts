@@ -32,7 +32,7 @@ export const en = {
         ['Object3D', 'position, rotation and scale, children, matrixWorld, lookAt'],
         ['Mesh', 'a geometry with a material, placed in the scene'],
         ['PerspectiveCamera', 'a field of view and an aspect ratio'],
-        ['PathTracer', 'render(scene, camera), one dispatch of samples a frame'],
+        ['PathTracer', 'render(scene, camera): samples a frame, in tiles under the watchdog'],
       ],
     },
     oracle: {

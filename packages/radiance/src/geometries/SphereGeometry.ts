@@ -6,8 +6,8 @@ import { BufferGeometry } from './BufferGeometry.ts';
  * share one position. Its normals point outward. `widthSegments` is at least 3 and
  * `heightSegments` at least 2, as in three.js, and both are rounded down.
  *
- * The path tracer draws it as an analytic sphere of `radius` until design record 0001, step 3. It
- * ignores the segments, and a non-uniform scale is not supported: the largest one applies.
+ * The path tracer draws its triangles, shaded with the vertices' normals, so more segments give a
+ * rounder outline.
  */
 export class SphereGeometry extends BufferGeometry {
   override readonly type: string = 'SphereGeometry';

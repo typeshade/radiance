@@ -38,14 +38,20 @@ pivot.rotation.y = Math.PI / 4;
 
 ## Meshes
 
-A `Mesh` joins a geometry, the shape in its own space, and a material. M1 has two shapes:
+A `Mesh` joins a geometry, the shape in its own space, and a material. Every geometry is a
+triangle mesh, a `BufferGeometry`, with three.js's vertex order and uv layout:
 
-| Geometry                      | Shape                                                                 |
-| ----------------------------- | --------------------------------------------------------------------- |
-| `SphereGeometry(radius)`      | a sphere about the origin. A non-uniform scale takes its largest axis |
-| `QuadGeometry(width, height)` | a rectangle in the xy plane, centred on the origin, facing +z         |
+| Geometry                                                | Shape                                                                 |
+| ------------------------------------------------------- | --------------------------------------------------------------------- |
+| `SphereGeometry(radius, widthSegments, heightSegments)` | a sphere about the origin. More segments give a rounder outline       |
+| `PlaneGeometry(width, height)`                          | a rectangle in the xy plane, centred on the origin, facing +z         |
+| `QuadGeometry(width, height)`                           | the same rectangle, by its M1 name                                    |
+| `BoxGeometry(width, height, depth)`                     | a box about the origin                                                |
+| `BufferGeometry`                                        | your own triangles: `position`, `index`, and `normal` and `uv` if any |
 
-Triangle meshes, a BVH and glTF arrive with milestone M2 (the
+The path tracer builds a BVH for each geometry once. Many meshes can share one geometry, and
+each mesh is an instance of it. After you edit a geometry's arrays in place, add 1 to its
+`version`, so the BVH is built again. glTF arrives later in milestone M2 (the
 [plan](https://github.com/typeshade/radiance/blob/main/docs/plan.md)).
 
 ## Materials
@@ -55,10 +61,13 @@ Triangle meshes, a BVH and glTF arrive with milestone M2 (the
 | `DiffuseMaterial({ color })`             | matte: light leaves it in every direction alike                     |
 | `MirrorMaterial({ color })`              | a perfect mirror, tinted by its colour                              |
 | `EmissiveMaterial({ color, intensity })` | a light: it gives off `color` times `intensity` from its front face |
+| `PhysicalMaterial({ color, roughness })` | three.js's physical parameters. At M2 it renders as a diffuse       |
 
 A colour is a `Color` in linear RGB, or a `0xRRGGBB` number in sRGB, which the material
-decodes. A light is any quad with an emissive material: the path tracer samples a point on it
-at every diffuse bounce, so a scene with three lights costs about what a scene with one does.
+decodes. A light is any mesh with an emissive material. At every diffuse bounce the path tracer
+picks one of its triangles, by the share of the light it gives off, and samples a point on it.
+So a scene with three lights costs about what a scene with one does. Set `doubleSided` on the
+material to make a light give off light from both faces.
 
 ## Cameras
 

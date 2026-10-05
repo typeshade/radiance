@@ -183,5 +183,31 @@ optional and `dpdu` from the triangle is exact for a triangle). Texture atlases 
 
 **Approval and plan record.** Accepted on 2026-10-05 (UTC). The owner approved the merge of typeshade/radiance#6 in the conversation, which merged this record as `draft` at 9e8b479. The owner then said to implement the records with Opus 5.5 and Sonnet 5.5, and that go-ahead is the acceptance. Every entry of "Decisions for the owner" stands as proposed.
 
-**Configuration and validation record.** This record does not yet apply. Implementation will
-record each step's commit, the oracle tests' numbers and the differential scenes' thresholds.
+**Deviations of step 1** (2026-10-05, UTC). Step 1 is on the branch `wt/W1` from bc99533 with
+record 0001 step 3, and its pull request is to follow. Each entry gives the difference and its
+disposition.
+
+- **The back face of a light.** "The record" defines the "double sided" bit and does not say
+  what it does. `emission` is zero on the back face unless the bit is set. With the bit, the
+  back face emits the same colour. Open: an amendment states it, with record 0001's "Traversal".
+- **The offset of the hit point.** `Surface.p` is offset along the geometric normal, and the
+  record gives no distance. The distance is `OFFSET` (1e-4) times the largest of 1 and the
+  point's largest absolute coordinate. Open.
+- **The side of the shading normal.** The record says that `ns` is on the same side as `ng`.
+  When the interpolated normal is of length 0, or on the other side of `ng`, `ns` is `ng`. Open.
+- **A direction under the surface.** The path loop ends a path when `sampleBsdf` gives a
+  direction on the other side of `ng`, which a shading normal can give. The record's path loop
+  is silent on it. Open.
+- **The integer words of the record.** The record stores the five texture ids and the
+  type-and-flags word as the bits of an `f32`. The compiler's change 0045 says an integer word
+  belongs in a `storage<array<u32>>` binding. Measured in bun 1.3.14 at the pin e923a34: the
+  runtime's `pack` turns 0xffffffff into 0x7fc00000 on an `f32` lane and keeps it on a `u32`
+  lane. No picture moves until M3 reads a texture id. Open: an amendment moves those words to
+  a `u32` binding (`docs/typeshade-feedback.md`, the step 3 entry on the upload).
+
+**Configuration and validation record.** Step 1 is delivered with record 0001 step 3, on the
+branch `wt/W1` from bc99533, at the compiler pin e923a34. The oracle tests in
+`src/kernels/materials.test.ts` pass. A diffuse sample's weight is its colour, and a mirror
+sample is the reflection. `evalBsdf`'s pdf integrates to 1 within 2 % by 4,096 samples. A
+single-sided light is dark from behind. The Cornell box gate passes on the contract with the
+numbers in record 0001's record. Steps 2 to 5 are not started.

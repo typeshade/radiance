@@ -148,7 +148,7 @@ async function measure(name, session) {
   return { render, cpu: cpu.image, log: cpu.log };
 }
 
-/** The last measurement of each scene. The probe reuses it: the oracle takes half a minute. */
+/** The last measurement of each scene. The probe reuses it: the oracle takes about a minute. */
 const measured = new Map();
 
 /** Renders the scene on the GPU and on the oracle and holds the first to the second. The result

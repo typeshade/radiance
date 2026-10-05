@@ -52,10 +52,12 @@ The packages are not published yet: build them from this repository until the fi
 
 ## Status
 
-Milestone **M1**: a compute megakernel path tracer renders the Cornell box (spheres and quads,
-diffuse and mirror surfaces, an area light) progressively, and CI holds it to M1's acceptance:
-two renders of one seed are bit-identical, and a 1024 spp render on WebGPU is within tolerance
-of the CPU oracle's render of the same kernel. M2 brings triangle meshes, the BVH and glTF.
+Milestone **M1** is done: a compute megakernel path tracer renders the Cornell box
+progressively, and CI holds it to M1's acceptance. Two renders of one seed are bit-identical,
+and a 1024 spp render on WebGPU is within tolerance of the CPU oracle's render of the same
+kernel. Milestone **M2** is in progress. The kernel draws triangle meshes through a two-level
+BVH, behind the material record and the shading contract (design records 0001 and 0004). glTF
+and the benchmark scenes come next.
 
 ## Layout
 
@@ -68,12 +70,13 @@ of the CPU oracle's render of the same kernel. M2 brings triangle meshes, the BV
 | `site/public/stills`         | One still per example, the picture a page shows before its canvas runs, with a `.sha256` the build checks. `bun run capture:stills` captures them.                                                                         |
 | `scripts/boundary.mjs`       | The check that no package imports past `typeshade/runtime` or calls WebGPU itself.                                                                                                                                         |
 | `scripts/gates/api.mjs`      | The api gate. `bun run bake:api-surface` (`scripts/bake-api-surface.ts`) writes the exports of each package to `packages/*/__api__/surface.md`. The gate fails when a fresh bake differs.                                  |
+| `scripts/gates/site.mjs`     | The site gate. `bun run gate:site` builds the site from the tree with `bun run site`, so the build checks the hash of each still. It fails when the build exits with a code other than 0.                                  |
 | `scripts/gates.mjs`          | The bounds CI holds the engine to. The site prints the same numbers.                                                                                                                                                       |
 | `scripts/harness.mjs`        | The Cornell box and every example in headless Chromium on SwiftShader, held to their gates and probes. The site's Cornell box example runs under the mouse. Writes `.harness/cornell.png` and `.harness/site.png`.         |
 | `scripts/gates/`             | One module for each gate: `differential.mjs`, `determinism.mjs` and `render.mjs`. Each exports `run()` and `probe()`. `_browser.mjs` and `_png.mjs` are shared by the gates and the harness.                               |
 | `scripts/__goldens__`        | One PNG for each example, 96 x 64 at 64 samples a pixel. The render gate holds the example's picture to it. `UPDATE_GOLDENS=1 bun run gate:render` rewrites them.                                                          |
 | `scripts/scenes.ts`          | The scene table. The harness page and the oracle build each scene from it. The Cornell box is its one entry.                                                                                                               |
-| `scripts/oracle.ts`          | The path tracer's kernel on the compiler's CPU oracle.                                                                                                                                                                     |
+| `scripts/oracle.ts`          | The path tracer's kernel on the compiler's CPU oracle, over the same scene pack the renderer uploads. It splits the frame over up to four processes (`RADIANCE_ORACLE_JOBS`).                                              |
 | `scripts/shade-plugin.ts`    | The `*.shade.ts` loader for `bun build` and `bun test`, from the compiler's Vite plugin.                                                                                                                                   |
 | `DESIGN.md`, `PRODUCT.md`    | The site's design system (Vapor UI's tokens) and its product brief, read by the design skills under `.claude/skills`.                                                                                                      |
 | `docs/plan.md`               | The plan and the milestones.                                                                                                                                                                                               |
@@ -90,8 +93,9 @@ Later milestones add `packages/fit`, `packages/procedural`, `packages/sim` and
 
 ```sh
 bun install
-bun run check           # format, prose, STE, boundary, API surface, shaders, host views and typecheck, tests
+bun run check           # format, prose, STE, boundary, API surface, site build, shaders, host views and typecheck, tests
 bun run gate:api        # the exports of each package equal packages/*/__api__/surface.md
+bun run gate:site       # the site builds from the tree into dist/site, with the hash of each still checked
 bun run bake:api-surface # bake the exports again after an intended change to one of them
 bun run harness         # the gates and their probes on WebGPU, and the site (needs Chromium: npx playwright install chromium)
 bun run gate:differential  # one gate alone: the Cornell box on WebGPU and on the oracle
@@ -104,6 +108,7 @@ bun run capture:stills  # the examples' stills, after a change to what an exampl
 ```
 
 A gate shows that it can fail before it is trusted to pass: the harness runs each gate's `probe()`.
+The probes of `gate:api` and `gate:site` need no browser, so `bun run test` runs them.
 
 The goldens change only on purpose. Run `UPDATE_GOLDENS=1 bun run gate:render`, look at each old and new picture, and commit the PNGs. The pull request shows both pictures of each one.
 

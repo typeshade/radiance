@@ -59,7 +59,7 @@ behind it, are what Radiance tests.
 - Repository `typeshade/radiance`, public since 2026-10-05, Apache-2.0. Packages
   `@typeshade/radiance` (the engine: math, core, cameras, geometries, materials, objects,
   scenes, renderers, kernels) and `@typeshade/radiance-addons` (OrbitControls, ready-made
-  scenes). The compiler is pinned as a git submodule, `vendor/typeshade`, at commit e923a34;
+  scenes). The compiler is pinned as a git submodule, `vendor/typeshade`, at commit fd39ba3;
   moving the pin is its own pull request with its own checks (`CLAUDE.md`).
 - The kernels are `*.shade.ts` files compiled by the compiler and run through the runtime. What
   the runtime cannot do yet becomes a proposal in the compiler's `changes/`.
