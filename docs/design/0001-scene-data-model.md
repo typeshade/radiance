@@ -79,7 +79,9 @@ class BufferGeometry extends Geometry {
   position: Float32Array;
   /** xyz per vertex, unit length. Computed by computeVertexNormals() when absent. */
   normal: Float32Array | undefined;
-  /** uv per vertex, glTF's convention: v = 0 at the top of the image. Absent: every uv is 0. */
+  /** uv per vertex, three.js's layout: v = 1 at the top of a plane and at a sphere's north pole. */
+  // The glTF loader (step 4) stores glTF's values as they are. The texture upload (record 0004,
+  // M3) sets each image's orientation, as three.js does with flipY. Absent: every uv is 0.
   uv: Float32Array | undefined;
   /** Three vertex indices per triangle, counter-clockwise seen from the front. Required. */
   index: Uint32Array;
@@ -145,7 +147,9 @@ kernel adds the instance's bases. A BLAS is then position-independent: when the 
 the runtime a partial buffer write (record 0006, item 2), a BLAS moves without a rewrite.
 
 The TLAS lives in `nodes` too, after every BLAS, at `params.scene.x` (`tlasBase`). Its leaves
-hold instances: `a` is the first instance's index, `count` how many, 1 in the common case. Its
+hold instances: `a` is the first instance's slot in the TLAS's leaf order, `count` how many, up
+to the leaf size of 4. The packer writes `instances` in that order, so a slot is the index into
+`instances`, and `Hit.instance` and the light table's `bits(instance)` name the same index. Its
 boxes are the instances' object-space boxes transformed to world space.
 
 The two uniform blocks, which replace M1's `TraceParams`:
@@ -182,8 +186,8 @@ size, not the scene the owner has in mind.
   `array<u32, 32>`. At an instance leaf it transforms the ray into the instance's space with
   rows `[3..5]` (the direction is not normalised, so `t` stays a world-space parameter), walks
   that BLAS with a second `array<u32, 32>`, and continues the TLAS. The nearer child is walked
-  first: the child on the side of `axis` the ray's direction points away from is pushed first.
-  A leaf's primitives are tested in order.
+  first: the farther child, on the side of `axis` the ray's direction points toward, is pushed
+  first, so the stack pops the nearer one first. A leaf's primitives are tested in order.
 - **Occlusion**: `occluded(origin, dir, limit)` is the same walk and returns at the first hit.
   It is a second function, not a flag.
 - **Depth**: the builder makes a leaf at depth 30, whatever the surface area heuristic says, so
@@ -201,11 +205,14 @@ size, not the scene the owner has in mind.
 - Binned surface area heuristic: 16 bins on the longest axis of the centroid box, the split
   with the least cost, a leaf when no split beats the leaf cost or the leaf holds at most 4
   primitives, and a forced leaf at depth 30.
-- Nodes in depth-first order: an inner node's left child follows it, so the walk reads forward.
+- Nodes in depth-first order: each child pair is written after its parent, the left child at
+  `a` and the right at `a + 1`, so every child's index is larger than its parent's and the walk
+  reads forward.
 - Output: `{ nodes: Float32Array, order: Uint32Array, box: Box3 }`, with `order` the
   primitives' indices in leaf order. The packer writes `triangles` in that order, so a leaf's
   primitives are contiguous and the triangle buffer is permuted once.
-- The TLAS uses the same builder over instance boxes, one primitive per instance.
+- The TLAS uses the same builder over instance boxes, one primitive per instance, with the
+  same leaf size, so a TLAS of 4 or fewer instances is one leaf.
 - `bvh.test.ts` holds it: every primitive in exactly one leaf. Every box contains its
   primitives' boxes. The root box is the geometry's. A node's children lie in it. The depth
   stays under 31. And, on 1,000 random rays against a random mesh, the traversal on the oracle
@@ -389,6 +396,13 @@ record is implemented at step 5.
    (record 0003 decides names, this record depends on it).
 
 ## Record
+
+**Amendment 1** (2026-10-05, UTC). Steps 1 and 2 (pull requests to follow) found four places
+where the record contradicted itself or left a step-3 contract unstated, and the branches follow
+the byte contract. The `uv` comment follows three.js's layout, as the tessellators do. The node
+order says that each child pair follows its parent. The traversal says that the farther child is
+pushed first. A TLAS leaf holds up to 4 instances, and `a` is a slot in the TLAS's leaf order
+that the packer makes the index into `instances`.
 
 **Approval and plan record.** Accepted on 2026-10-05 (UTC). The owner approved the merge of typeshade/radiance#6 in the conversation, which merged this record as `draft` at 9e8b479. The owner then said to implement the records with Opus 5.5 and Sonnet 5.5, and that go-ahead is the acceptance. Every entry of "Decisions for the owner" stands as proposed.
 
