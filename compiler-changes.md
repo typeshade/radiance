@@ -1,6 +1,6 @@
 # Compiler changes this repository has handled
 
-A change to the compiler that alters what these packages or the docs describe is agreed first as
+A change to the compiler that changes what these packages or the docs describe is agreed first as
 a proposal in the compiler's `changes/` directory (the compiler's `changes/README.md` explains
 the process). Each proposal lists, under `downstream`, the work it will owe this repository.
 

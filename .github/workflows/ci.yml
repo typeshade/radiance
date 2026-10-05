@@ -1,8 +1,9 @@
 name: ci
 
 # The gate for this repository: the same steps `bun run check` runs locally, then the harness
-# on a real WebGPU device (headless Chromium on SwiftShader, as the compiler's journeys run), and,
-# on a pull request, what a move of the compiler pin owes this repository. Each job's `name:` is
+# on a real WebGPU device (headless Chromium on SwiftShader, as the compiler's journeys run), the
+# traceability tree under Doorstop, and, on a pull request, what a move of the compiler pin owes
+# this repository. Each job's `name:` is
 # a required check of the `main` ruleset (CLAUDE.md, Merging): renaming one changes the ruleset
 # in the same step.
 
@@ -38,6 +39,7 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run format:check
       - run: bun run check:prose
+      - run: bun run check:ste
       - run: bun run check:boundary
       - run: bun run check:shaders
       - run: bun run typecheck
@@ -71,6 +73,30 @@ jobs:
             .harness/cornell.png
             .harness/site.png
           if-no-files-found: ignore
+
+  traceability:
+    # Doorstop over reqs/ (reqs/README.md): fails on a design record changed without review, a
+    # decision left suspect by its record, or a verifying file that no longer carries its tag.
+    # Nothing is installed with bun, so no node_modules copy of the compiler is in the tree.
+    name: traceability (Doorstop)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install doorstop==3.2
+      # -e: every warning is an error, so an unreviewed item or a suspect link fails.
+      # -F: validate without reformatting.
+      - run: doorstop -e -F
+      - run: doorstop publish all traceability
+        if: always()
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: traceability
+          path: traceability
 
   compiler-bump:
     # What a compiler bump owes this repository: a package, a document or a test that still

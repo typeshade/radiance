@@ -10,9 +10,9 @@ import { join, relative } from 'node:path';
 
 /** The character, spelled by code point so that this file can name the rule without breaking it. */
 const EM_DASH = String.fromCharCode(0x2014);
-// DESIGN.md is the Vapor UI design document as the owner provided it, and .claude, .impeccable
-// and skills-lock.json are the skills and agents installed from their own repositories: all
-// are kept as they arrive, so the rule does not read them.
+// DESIGN.md is the Vapor UI design document as the owner provided it, and .agents, .claude,
+// .impeccable and skills-lock.json are the skills and agents installed from their own
+// repositories: all are kept as they arrive, so the rule does not read them.
 const SKIP = new Set([
   'node_modules',
   'vendor',
@@ -21,6 +21,7 @@ const SKIP = new Set([
   'dist',
   'LICENSE',
   'DESIGN.md',
+  '.agents',
   '.claude',
   '.impeccable',
   '.astro',

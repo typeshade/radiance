@@ -32,7 +32,7 @@ renderer.setAnimationLoop(async () => {
 | Wheel, or a trackpad pinch                 | dolly toward or away from the target    |
 | Two fingers                                | dolly and pan together                  |
 | Double-click, R or Home                    | back to the saved view                  |
-| Arrow keys, with Shift to pan; + and -     | a step of each move                     |
+| Arrow keys, with Shift to pan. + and -     | a step of each move                     |
 
 A turn let go with speed keeps turning and slows down, as a turntable does, while
 `enableDamping` is on.
@@ -54,4 +54,4 @@ polar limits, so a drag never puts the eye behind a wall.
 - `update(dt)` advances a coasting turn, places the camera, and answers whether it moved.
 - `moving` is true while a pointer is down, the turn coasts, or a wheel just turned.
 - `start`, `change` and `end` fire through `addEventListener`.
-- `saveState()` remembers the view; `reset()` returns to it. `dispose()` removes the listeners.
+- `saveState()` remembers the view. `reset()` returns to it. `dispose()` removes the listeners.

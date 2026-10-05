@@ -15,7 +15,7 @@ adds samples to every pixel, so the picture starts noisy and sharpens while the 
 ## Requirements
 
 - A browser with WebGPU. Chrome and Edge have it from version 113.
-- A bundler that compiles TypeShade modules. The engine's kernels are `*.shade.ts` files; the
+- A bundler that compiles TypeShade modules. The engine's kernels are `*.shade.ts` files. The
   compiler's Vite plugin, `typeshade/vite`, compiles them when your application imports the
   engine.
 
@@ -74,12 +74,12 @@ What each part does:
 
 - `Scene` is the root of the graph. `Mesh` joins a geometry and a material and is placed with
   `position`, `rotation` and `scale`, as in three.js.
-- `PerspectiveCamera` looks down its own -z axis; `lookAt` turns it toward a point.
+- `PerspectiveCamera` looks down its own -z axis. `lookAt` turns it toward a point.
 - `PathTracer` needs `await init()` before its first frame, because it requests a WebGPU
   device. `render(scene, camera)` adds samples and draws them.
-- `setAnimationLoop` calls the callback once a display frame and waits for the frame before.
+- `setAnimationLoop` calls the callback once for each frame the browser draws, and waits for the frame before.
 - `renderer.preview = 4` while the camera moves traces one pixel for each 4 by 4 block, so a
-  drag stays smooth; at rest the full frame accumulates again.
+  drag stays smooth. At rest the full frame accumulates again.
 
 Next: [The scene graph](/guide/scene-graph/) explains the objects, and
 [The path tracer](/guide/path-tracer/) the renderer's options.
