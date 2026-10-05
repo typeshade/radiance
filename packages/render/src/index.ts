@@ -32,6 +32,11 @@ export interface RendererOptions {
   readonly rouletteFrom?: number;
   /** The exposure of the displayed image, in stops. Default 0. */
   readonly exposure?: number;
+  /**
+   * A canvas to show the image on: its `webgpu` context is configured on the renderer's device,
+   * and `show()` draws to it.
+   */
+  readonly canvas?: { getContext(id: 'webgpu'): unknown };
 }
 
 export interface Renderer {
@@ -45,11 +50,18 @@ export interface Renderer {
   readRadiance(): Promise<Float32Array>;
   /** The displayed image: the mean tone-mapped, RGBA, top row first. */
   read(): Promise<Float32Array>;
+  /** Draw the displayed image on `options.canvas`. Throws when the renderer has none. */
+  show(): Promise<void>;
+  /** Set the exposure of the displayed image, in stops. */
+  setExposure(stops: number): void;
   destroy(): void;
 }
 
 /** The displayed image's format: half floats, so a read gives numbers rather than bytes. */
 export const TARGET_FORMAT = 'rgba16float';
+
+/** The canvas's format: one every WebGPU implementation can show. */
+export const CANVAS_FORMAT = 'rgba8unorm';
 
 /** The path tracer's workgroup size (`@compute([64])` in trace.shade.ts). */
 const WORKGROUP = 64;
@@ -69,6 +81,21 @@ export async function createRenderer(options: RendererOptions): Promise<Renderer
     targets: [TARGET_FORMAT],
   });
   const target = rt.texture({ size: options.size, format: TARGET_FORMAT });
+  let context: object | undefined;
+  let showOnCanvas: Awaited<ReturnType<typeof program.render>> | undefined;
+  if (options.canvas !== undefined) {
+    const ctx = options.canvas.getContext('webgpu') as {
+      configure(c: { device: object; format: string; alphaMode: string }): void;
+    } | null;
+    if (ctx === null) throw new Error('the canvas has no webgpu context');
+    ctx.configure({ device: rt.device, format: CANVAS_FORMAT, alphaMode: 'opaque' });
+    context = ctx;
+    showOnCanvas = await program.render({
+      vertex: 'presentVs',
+      fragment: 'show',
+      targets: [CANVAS_FORMAT],
+    });
+  }
 
   const packed = packScene(options.scene);
   const scene = {
@@ -119,6 +146,18 @@ export async function createRenderer(options: RendererOptions): Promise<Renderer
       );
       await f.submit();
       return target.readFloats();
+    },
+    async show() {
+      if (context === undefined || showOnCanvas === undefined)
+        throw new Error('show(): the renderer was made without a canvas');
+      const f = rt.frame();
+      f.pass({ color: [{ target: context, clear: [0, 0, 0, 1] }] }, (pass) =>
+        pass.draw(showOnCanvas!, { present, accum }, { count: 3 }),
+      );
+      await f.submit();
+    },
+    setExposure(stops) {
+      present.view[0] = stops;
     },
     destroy() {
       for (const r of [...Object.values(scene), accum]) r.destroy();

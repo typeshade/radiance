@@ -18,7 +18,8 @@
     "check:boundary": "node scripts/boundary.mjs",
     "test": "bun test scripts packages",
     "harness": "node scripts/harness.mjs",
-    "check": "bun run format:check && bun run check:prose && bun run check:boundary && bun run check:shaders && bun run typecheck && bun run test"
+    "check": "bun run format:check && bun run check:prose && bun run check:boundary && bun run check:shaders && bun run typecheck && bun run test",
+    "site": "bun scripts/build-site.ts"
   },
   "dependencies": {
     "typeshade": "file:./vendor/typeshade"
@@ -30,6 +31,7 @@
     "@typeshade/radiance-scene": "workspace:*",
     "playwright": "^1.59.1",
     "prettier": "^3.5.3",
-    "typescript": "5.6.3"
+    "typescript": "5.6.3",
+    "wrangler": "^4.142.0"
   }
 }

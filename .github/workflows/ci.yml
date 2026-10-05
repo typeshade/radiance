@@ -67,7 +67,9 @@ jobs:
         if: always()
         with:
           name: cornell-preview
-          path: .harness/cornell.png
+          path: |
+            .harness/cornell.png
+            .harness/site.png
           if-no-files-found: ignore
 
   compiler-bump:

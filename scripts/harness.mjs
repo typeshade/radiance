@@ -10,6 +10,7 @@
 //   2. The oracle: the GPU's 1024 spp render is within tolerance of the CPU oracle's render of
 //      the same kernel, seed and samples (scripts/oracle.ts; the tolerance is `ORACLE`, below).
 //   3. The display: the tone-mapped image is the tone map of the mean radiance.
+//   4. The demo page (site/) renders on its canvas without an error.
 //
 // It also writes a larger render to .harness/cornell.png, to look at; nothing holds that one.
 //
@@ -34,14 +35,15 @@ const [side, previewSamples] = (process.env.RADIANCE_PREVIEW ?? '128,64').split(
 const PREVIEW = { size: [side, side], samples: previewSamples, perFrame: 16, seed: 1 };
 
 // ---- 1: the bundle the page runs, and the oracle's render (in the background) ----------------
-const build = spawnSync(
-  'bun',
+for (const args of [
   ['scripts/bundle.ts', 'scripts/harness-entry.ts', join(OUT, 'render.js')],
-  { encoding: 'utf8' },
-);
-if (build.status !== 0) {
-  process.stderr.write(`bundling failed:\n${build.stdout}${build.stderr}`);
-  process.exit(1);
+  ['scripts/build-site.ts'],
+]) {
+  const build = spawnSync('bun', args, { encoding: 'utf8' });
+  if (build.status !== 0) {
+    process.stderr.write(`bundling failed:\n${build.stdout}${build.stderr}`);
+    process.exit(1);
+  }
 }
 const oracleFile = join(OUT, 'oracle.json');
 const oracle = new Promise((resolve, reject) => {
@@ -77,7 +79,20 @@ window.run = async ({ size, samples, perFrame, seed }) => {
   return { radiance, image, ms };
 };
 </script>`;
+const SITE = join(process.cwd(), 'dist/site');
 const server = createServer((req, res) => {
+  if (req.url?.startsWith('/site/')) {
+    const file = req.url === '/site/' ? 'index.html' : req.url.slice('/site/'.length);
+    try {
+      const type = file.endsWith('.js') ? 'text/javascript' : 'text/html';
+      res.setHeader('content-type', `${type}; charset=utf-8`);
+      res.end(readFileSync(join(SITE, file)));
+    } catch {
+      res.statusCode = 404;
+      res.end();
+    }
+    return;
+  }
   if (req.url === '/render.js') {
     res.setHeader('content-type', 'text/javascript; charset=utf-8');
     res.end(readFileSync(join(OUT, 'render.js'), 'utf8'));
@@ -249,6 +264,22 @@ try {
   console.log(
     `preview: ${PREVIEW.size.join('x')} at ${PREVIEW.samples} spp in ${(preview.ms / 1000).toFixed(1)} s, .harness/cornell.png`,
   );
+
+  // 4: the demo page (site/, deployed to radiance.typeshade.dev) renders on its canvas and counts samples.
+  const site = await browser.newPage();
+  site.on('pageerror', (e) => errors.push(`site: ${e.message}`));
+  site.on('console', (m) => {
+    if (m.type() === 'error' || m.type() === 'warning')
+      errors.push(`site: console.${m.type()}: ${m.text()}`);
+  });
+  await site.goto(`http://127.0.0.1:${server.address().port}/site/`);
+  await site.waitForFunction(() => Number(document.getElementById('spp')?.textContent) >= 2, null, {
+    timeout: 60_000,
+  });
+  if (!(await site.locator('#notice').isHidden()))
+    fail(`site: the notice shows: ${await site.textContent('#notice')}`);
+  await site.screenshot({ path: join(OUT, 'site.png') });
+  console.log(`site: the demo page shows ${await site.textContent('#spp')} spp, .harness/site.png`);
 } catch (e) {
   fail(e instanceof Error ? e.message : String(e));
 }

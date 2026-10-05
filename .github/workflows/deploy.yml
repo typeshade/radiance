@@ -1,0 +1,43 @@
+name: deploy
+
+# radiance.typeshade.dev: the demo page (site/), built and deployed to Cloudflare Workers on
+# every push to `main` (wrangler.jsonc). This workflow is not a required check; ci.yml's
+# harness job already holds the page to rendering without an error before a merge. Without the
+# CLOUDFLARE_API_TOKEN secret the job says so and passes.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  cloudflare:
+    name: cloudflare
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: cloudflare
+      url: https://radiance.typeshade.dev/
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun run site
+      - name: Deploy dist/site
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::notice::No CLOUDFLARE_API_TOKEN secret; the demo is not deployed."
+            exit 0
+          fi
+          bunx wrangler deploy

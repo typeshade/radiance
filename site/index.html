@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TypeShade Radiance: Cornell box</title>
+    <link rel="icon" href="data:," />
+    <meta
+      name="description"
+      content="A path tracer written in TypeShade, rendering the Cornell box progressively on WebGPU."
+    />
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f6f6f4;
+        --fg: #1b1b1a;
+        --muted: #66655f;
+        --line: #d9d8d2;
+        --accent: #b4532a;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #141413;
+          --fg: #ecebe6;
+          --muted: #9b9a93;
+          --line: #2e2d2a;
+          --accent: #e0805a;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font:
+          15px/1.5 system-ui,
+          -apple-system,
+          'Segoe UI',
+          sans-serif;
+      }
+      main {
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 32px 16px 48px;
+      }
+      h1 {
+        font-size: 22px;
+        margin: 0 0 4px;
+      }
+      p {
+        margin: 0 0 16px;
+        color: var(--muted);
+      }
+      a {
+        color: var(--accent);
+      }
+      .stage {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 280px;
+        gap: 24px;
+        align-items: start;
+      }
+      @media (max-width: 760px) {
+        .stage {
+          grid-template-columns: 1fr;
+        }
+      }
+      canvas {
+        display: block;
+        width: 100%;
+        aspect-ratio: 1;
+        background: #000;
+        border-radius: 6px;
+        cursor: grab;
+        touch-action: none;
+      }
+      canvas:active {
+        cursor: grabbing;
+      }
+      .panel {
+        display: grid;
+        gap: 14px;
+      }
+      .stats {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 4px 12px;
+        font-variant-numeric: tabular-nums;
+        padding-bottom: 14px;
+        border-bottom: 1px solid var(--line);
+      }
+      .stats dt {
+        color: var(--muted);
+      }
+      .stats dd {
+        margin: 0;
+        text-align: right;
+      }
+      label {
+        display: grid;
+        gap: 4px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      input,
+      select,
+      button {
+        font: inherit;
+        color: var(--fg);
+      }
+      input[type='number'],
+      select {
+        background: transparent;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 4px 6px;
+      }
+      button {
+        background: transparent;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 6px 10px;
+        cursor: pointer;
+      }
+      button:hover {
+        border-color: var(--accent);
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+      }
+      .notice {
+        border: 1px solid var(--accent);
+        border-radius: 6px;
+        padding: 12px 14px;
+        color: var(--fg);
+      }
+      [hidden] {
+        display: none !important;
+      }
+      footer {
+        margin-top: 32px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>TypeShade Radiance: the Cornell box</h1>
+      <p>
+        A path tracer written in <a href="https://typeshade.dev">TypeShade</a>, running on your GPU
+        through WebGPU. Samples add up frame by frame; drag the image to orbit the camera, and the
+        render starts again.
+      </p>
+      <div class="notice" id="notice" hidden></div>
+      <div class="stage">
+        <canvas id="view" width="512" height="512" aria-label="The rendered Cornell box"></canvas>
+        <div class="panel">
+          <dl class="stats">
+            <dt>Samples per pixel</dt>
+            <dd id="spp">0</dd>
+            <dt>Samples per frame</dt>
+            <dd id="spf">1</dd>
+            <dt>Frame time</dt>
+            <dd id="ms">-</dd>
+            <dt>Paths per second</dt>
+            <dd id="pps">-</dd>
+          </dl>
+          <label
+            ><span>Exposure, in stops: <span id="exposure-value">0.0</span></span>
+            <input id="exposure" type="range" min="-3" max="3" step="0.1" value="0" />
+          </label>
+          <label
+            >Resolution
+            <select id="size">
+              <option value="256">256 x 256</option>
+              <option value="512" selected>512 x 512</option>
+              <option value="768">768 x 768</option>
+            </select>
+          </label>
+          <label
+            >Seed
+            <input id="seed" type="number" min="0" step="1" value="1" />
+          </label>
+          <label
+            >Stop at, samples per pixel
+            <input id="limit" type="number" min="1" step="1" value="4096" />
+          </label>
+          <div class="row">
+            <button id="pause" type="button">Pause</button>
+            <button id="restart" type="button">Restart</button>
+            <button id="save" type="button">Save PNG</button>
+          </div>
+        </div>
+      </div>
+      <footer>
+        Source and plan:
+        <a href="https://github.com/typeshade/radiance">github.com/typeshade/radiance</a>. The same
+        kernel runs on the CPU oracle in CI, and the two images agree to within 1e-4.
+      </footer>
+    </main>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
