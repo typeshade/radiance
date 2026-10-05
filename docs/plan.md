@@ -72,21 +72,24 @@ WebGL2 (no compute, so no path tracer).
 
 ## 3. Architecture: one repository, each layer on the public API of the layer below
 
-This repository, `typeshade/radiance`, a monorepo with the npm scope `@typeshade/radiance-*`. The
-compiler is a git submodule (`vendor/typeshade`), as `vscode-typeshade` and `typeshade.github.io`
-pin it, and `downstream-impact.ts` checks every move of the pin.
+This repository, `typeshade/radiance`, a monorepo with the npm scope `@typeshade/radiance*`. The
+engine is one package of classes, `@typeshade/radiance`, as three.js is one: TypeShade is to it
+what TSL is to three.js, the language its GPU code is written in. The compiler is a git
+submodule (`vendor/typeshade`), as `vscode-typeshade` and `typeshade.github.io` pin it, and
+`downstream-impact.ts` checks every move of the pin.
 
-| Layer | Package                                  | Contents                                                                                                                                                                                                           | Language       |
-| ----- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------- |
-| L0    | `typeshade`, `typeshade/runtime`         | The dependency: compile, runtime, `grad`                                                                                                                                                                           | (pinned)       |
-| L1    | `@typeshade/radiance-kernels`            | `.shade.ts` kernels: ray generation, BVH traversal and triangle intersection, the principled BSDF, light sampling and MIS, accumulation, tone mapping, denoising. Published as npm shader packages (X6)            | TypeShade      |
-| L2    | `@typeshade/radiance-scene`              | The host data layer: Mesh, Material, Light, Camera, Environment (HDRI), the BVH builder (CPU SAH first), packing into `resident` and storage buffers, the glTF loader                                              | TS             |
-| L3    | `@typeshade/radiance-render`             | The progressive renderer: the frame loop, sample accumulation, restart conditions, `readFloats()` readback, a reference mode (the same kernels on the CPU oracle)                                                  | TS             |
-| L4    | `@typeshade/radiance-fit`                | Differentiable rendering: `fit({ scene, params, target, loss })`; `grad(m, fn, param)` over the kernels, path replay, loss and gradient descent on the host                                                        | TS             |
-| L5    | `@typeshade/radiance-procedural`         | SDF, displacement, particle steps, noise: the wrangle kernels, shipped as L1 is                                                                                                                                    | TypeShade      |
-| L5    | `@typeshade/radiance-sim`                | Physics solvers, in the order the owner set: Pyro (smoke, fire, explosions; Eulerian), FLIP liquid, ocean (FFT), XPBD cloth, MPM, rigid bodies. One npm shader package per solver                                  | TypeShade + TS |
-| L6    | `@typeshade/radiance-realtime`           | The real-time tier, in Lumen's direction: deferred PBR raster, mesh and global SDF, DDGI. Measured against the path tracer (L3) as the ground truth. Shares L1's BSDF, materials and denoiser and L5's SDF kernels | TypeShade + TS |
-| host  | `@typeshade/radiance-web`, later `-node` | The canvas host; the Node plus Dawn host. The core does not know its host                                                                                                                                          | TS             |
+| Layer | Package                               | Contents                                                                                                                                                                                                                                                     | Language       |
+| ----- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------- |
+| L0    | `typeshade`, `typeshade/runtime`      | The dependency: compile, runtime, `grad`                                                                                                                                                                                                                     | (pinned)       |
+| L1    | `@typeshade/radiance` (`src/kernels`) | `.shade.ts` kernels: ray generation, BVH traversal and triangle intersection, the principled BSDF, light sampling and MIS, accumulation, tone mapping, denoising. Shipped inside the engine package; later also as npm shader packages (X6)                  | TypeShade      |
+| L2    | `@typeshade/radiance`                 | The engine's classes, shaped as three.js's are: the math, `Object3D` and the scene graph, cameras, geometries, materials, `Mesh`, `Scene`; packing into `resident` and storage buffers; later Light, Environment (HDRI), the BVH builder and the glTF loader | TS             |
+| L3    | `@typeshade/radiance`                 | The renderers: `PathTracer`, progressive (the frame loop, sample accumulation, restart when the scene or the camera changes, `readFloats()` readback); a reference mode (the same kernels on the CPU oracle)                                                 | TS             |
+| L3    | `@typeshade/radiance-addons`          | What sits beside the engine, as three.js's addons do: `OrbitControls`, the Cornell box scene, later the loaders                                                                                                                                              | TS             |
+| L4    | `@typeshade/radiance-fit`             | Differentiable rendering: `fit({ scene, params, target, loss })`; `grad(m, fn, param)` over the kernels, path replay, loss and gradient descent on the host                                                                                                  | TS             |
+| L5    | `@typeshade/radiance-procedural`      | SDF, displacement, particle steps, noise: the wrangle kernels, shipped as L1 is                                                                                                                                                                              | TypeShade      |
+| L5    | `@typeshade/radiance-sim`             | Physics solvers, in the order the owner set: Pyro (smoke, fire, explosions; Eulerian), FLIP liquid, ocean (FFT), XPBD cloth, MPM, rigid bodies. One npm shader package per solver                                                                            | TypeShade + TS |
+| L6    | `@typeshade/radiance-realtime`        | The real-time tier, in Lumen's direction: deferred PBR raster, mesh and global SDF, DDGI. Measured against the path tracer (L3) as the ground truth. Shares L1's BSDF, materials and denoiser and L5's SDF kernels                                           | TypeShade + TS |
+| host  | (the renderer), later `-node`         | A renderer takes the canvas it draws on, as three.js's do; the Node plus Dawn host comes later. The core does not know its host                                                                                                                              | TS             |
 
 The discipline of `journeys/engine/journey.mjs` holds: everything above L0 imports only
 `typeshade/runtime`'s public exports and touches no WebGPU object. `scripts/boundary.mjs` checks
@@ -410,3 +413,10 @@ This engine stands on a pre-1.0 runtime, so these are likely to become proposals
    is generalised in M1 and M2.
 3. Open: whether M3's reference is Blender Cycles alone or Mitsuba 3 as well (the differentiable
    comparison is closer to Mitsuba).
+4. The engine is class-based, in three.js's shape: `Scene`, `Mesh`, `PerspectiveCamera` and a
+   renderer with `render(scene, camera)`, on `typeshade/runtime`. The kernels, the scene and the
+   renderer are one package (`@typeshade/radiance`); controls and sample scenes are
+   `@typeshade/radiance-addons`. Path tracing comes first; games are a later goal (L6).
+5. The site, radiance.typeshade.dev, is a library site: Starlight for the guide, the search and
+   the API reference (generated from the engine's JSDoc), a front page, and an example per page
+   that runs the code it shows.

@@ -1,9 +1,10 @@
 name: deploy
 
-# radiance.typeshade.dev: the demo page (site/), built and deployed to Cloudflare Workers on
-# every push to `main` (wrangler.jsonc). This workflow is not a required check; ci.yml's
-# harness job already holds the page to rendering without an error before a merge. Without the
-# CLOUDFLARE_API_TOKEN secret the job says so and passes.
+# radiance.typeshade.dev: the library's site (site/: the front page, the guide, the examples
+# and the API reference), built to dist/site and deployed to Cloudflare Workers on every push to
+# `main` (wrangler.jsonc). This workflow is not a required check; ci.yml's harness job already
+# builds the site and runs an example on it before a merge. Without the CLOUDFLARE_API_TOKEN
+# secret the job says so and passes.
 
 on:
   push:
@@ -37,7 +38,7 @@ jobs:
       - name: Deploy dist/site
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
-            echo "::notice::No CLOUDFLARE_API_TOKEN secret; the demo is not deployed."
+            echo "::notice::No CLOUDFLARE_API_TOKEN secret; the site is not deployed."
             exit 0
           fi
           bunx wrangler deploy

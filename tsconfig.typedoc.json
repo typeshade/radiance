@@ -1,0 +1,6 @@
+{
+  // The API reference reads the two packages alone (site/astro.config.mjs, starlight-typedoc).
+  "extends": "./tsconfig.json",
+  "include": ["packages/*/src/**/*.ts"],
+  "exclude": ["packages/*/src/**/*.shade.ts", "packages/*/src/**/*.test.ts", "**/node_modules"]
+}

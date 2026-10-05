@@ -1,0 +1,68 @@
+---
+// Starlight's site title with the library's sections beside it: the name, then Guide, Examples
+// and API, as a library site's header has them. The section a reader is in is marked. Under
+// 50rem the sections move into the menu, where Starlight's sidebar lists them.
+import Default from '@astrojs/starlight/components/SiteTitle.astro';
+import { copyFor, localePath } from '../i18n/index.ts';
+import { API_INDEX } from '../lib/facts.ts';
+
+const t = copyFor('en');
+const path = Astro.url.pathname;
+const sections = [
+  { href: localePath('en', '/guide/getting-started/'), label: t.nav.guide, match: '/guide/' },
+  { href: localePath('en', '/examples/'), label: t.nav.examples, match: '/examples/' },
+  { href: localePath('en', API_INDEX), label: t.nav.api, match: '/api/' },
+];
+---
+
+<div class="rd-title">
+  <Default />
+  <nav class="rd-sections" aria-label="Sections">
+    {
+      sections.map((s) => (
+        <a href={s.href} aria-current={path.startsWith(s.match) ? 'page' : undefined} class="rd-press">
+          {s.label}
+        </a>
+      ))
+    }
+  </nav>
+</div>
+
+<style>
+  .rd-title {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    min-width: 0;
+  }
+  .rd-title :global(.site-title) {
+    color: var(--rd-fg);
+    font-size: 1.125rem;
+    font-weight: 700;
+    letter-spacing: -0.1px;
+  }
+  .rd-title :global(.site-title img) {
+    height: 1.75rem;
+  }
+  .rd-sections {
+    display: none;
+    gap: 0.25rem;
+  }
+  .rd-sections a {
+    border-radius: 8px;
+    padding: 0.25rem 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1.375rem;
+    font-weight: 500;
+    color: var(--rd-fg-2);
+    text-decoration: none;
+  }
+  .rd-sections a[aria-current='page'] {
+    color: var(--rd-primary-fg);
+  }
+  @media (min-width: 50rem) {
+    .rd-sections {
+      display: flex;
+    }
+  }
+</style>

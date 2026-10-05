@@ -16,6 +16,16 @@ editor), **docs**.
 
 ## Log
 
+### 2026-10-05 · host · The library site: the Vite plugin inside Astro and Starlight
+
+Pin e923a34. The site (Astro 7, Starlight, React islands) imports the engine, whose kernels are
+`*.shade.ts` modules, and `typeshade/vite` compiled them inside Astro's Vite with no change:
+the examples run the same kernels the harness gates. Two notes. Bun prints `moduleSuffixes is
+not supported yet` for every tsconfig that sets the host views' suffix, on every `bun run`; it
+is harmless but looks like an error in a build log. And the engine became classes in three.js's
+shape on `typeshade/runtime` (`PathTracer` owns the runtime, the program and the textures), and
+the public runtime was enough for all of it: nothing reaches past it (`scripts/boundary.mjs`).
+
 ### 2026-10-05 · language · M1: what went well
 
 Pin e923a34. The path tracer is about 300 lines of TypeShade: classes for the uniform blocks and

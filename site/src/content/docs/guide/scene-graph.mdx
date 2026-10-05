@@ -1,0 +1,70 @@
+---
+title: The scene graph
+description: 'Objects, transforms and children, meshes with geometries and materials, and the camera: how a Radiance scene is assembled, in the shape three.js uses.'
+sidebar:
+  order: 2
+---
+
+A scene is a tree of `Object3D`. Every object has a `position`, a `rotation` and a `scale`
+relative to its parent, and `children` placed relative to it. The renderer reads where each one
+ends up, `matrixWorld`, which `updateMatrixWorld()` computes; `render` calls it on the scene
+and the camera before every frame.
+
+```ts
+import { DiffuseMaterial, Mesh, Object3D, Scene, SphereGeometry } from '@typeshade/radiance';
+
+const scene = new Scene();
+const pivot = new Object3D();
+pivot.position.set(0, 1, 0);
+
+const ball = new Mesh(new SphereGeometry(0.3), new DiffuseMaterial({ color: 0xf0ad4e }));
+ball.position.set(0.8, 0, 0);
+
+pivot.add(ball);
+scene.add(pivot);
+
+// Turning the pivot carries the ball round it.
+pivot.rotation.y = Math.PI / 4;
+```
+
+## Transforms
+
+- `position` is a `Vector3`. `rotation` is an `Euler` in radians, applied X, then Y, then Z.
+  `scale` is a `Vector3`.
+- `add` and `remove` change the tree; adding an object that has a parent moves it.
+- `traverse` visits an object and every descendant. `visible = false` leaves an object and
+  its children out of the render.
+- `lookAt(target)` turns the object so that its -z axis points at the target, with no roll.
+
+## Meshes
+
+A `Mesh` joins a geometry, the shape in its own space, and a material. M1 has two shapes:
+
+| Geometry                      | Shape                                                                 |
+| ----------------------------- | --------------------------------------------------------------------- |
+| `SphereGeometry(radius)`      | a sphere about the origin; a non-uniform scale takes its largest axis |
+| `QuadGeometry(width, height)` | a rectangle in the xy plane, centred on the origin, facing +z         |
+
+Triangle meshes, a BVH and glTF arrive with milestone M2 (the
+[plan](https://github.com/typeshade/radiance/blob/main/docs/plan.md)).
+
+## Materials
+
+| Material                                 | Surface                                                             |
+| ---------------------------------------- | ------------------------------------------------------------------- |
+| `DiffuseMaterial({ color })`             | matte: light leaves it in every direction alike                     |
+| `MirrorMaterial({ color })`              | a perfect mirror, tinted by its colour                              |
+| `EmissiveMaterial({ color, intensity })` | a light: it gives off `color` times `intensity` from its front face |
+
+A colour is a `Color` in linear RGB, or a `0xRRGGBB` number in sRGB, which the material
+decodes. A light is any quad with an emissive material: the path tracer samples a point on it
+at every diffuse bounce, so a scene with three lights costs about what a scene with one does.
+
+## Cameras
+
+`PerspectiveCamera(fov, aspect)` takes the vertical field of view in degrees. Keep its
+`aspect` equal to the frame's width over its height: the examples set both from the canvas's
+size in a `ResizeObserver`.
+
+The scene graph does not know which renderer draws it. The path tracer draws it today; the
+real-time tier in the plan draws the same scene later.

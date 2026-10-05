@@ -1,0 +1,36 @@
+---
+// One example's page: the example running on its stage, then the file that made it, in full,
+// with a link to it on GitHub, the way three.js puts "view source" under a running example.
+// The sidebar lists every example, so the next one is one click away.
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+import { Code } from '@astrojs/starlight/components';
+import Stage from '../../components/Stage.astro';
+import { copyFor } from '../../i18n/index.ts';
+import { EXAMPLES, type ExampleEntry } from '../../../examples/index.ts';
+import { exampleSource, sourceUrl } from '../../lib/facts.ts';
+import { exampleSidebar } from '../../lib/sidebar.ts';
+
+export function getStaticPaths() {
+  return EXAMPLES.map((e) => ({ params: { id: e.id }, props: { entry: e } }));
+}
+
+const { entry } = Astro.props as { entry: ExampleEntry };
+const t = copyFor('en').examples;
+const file = `site/examples/${entry.id}.ts`;
+---
+
+<StarlightPage
+  frontmatter={{ title: entry.title, description: `${entry.description} An example of TypeShade Radiance, running in the browser on WebGPU.`, tableOfContents: false, editUrl: false }}
+  sidebar={exampleSidebar()}
+  headings={[{ depth: 2, slug: 'source', text: t.source }]}
+>
+  <p class="text-[16px] leading-[24px] text-fg-2">{entry.description}</p>
+  <div class="not-content mt-6"><Stage id={entry.id} /></div>
+  <h2 id="source">{t.source}</h2>
+  <p><a href={sourceUrl(file)}>{t.onGithub}</a></p>
+  <Code code={exampleSource(entry.id)} lang="ts" title={`examples/${entry.id}.ts`} />
+</StarlightPage>
+
+<script is:inline>
+  document.documentElement.dataset.rdWide = '';
+</script>

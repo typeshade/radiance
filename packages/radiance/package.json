@@ -1,0 +1,13 @@
+{
+  "name": "@typeshade/radiance",
+  "version": "0.0.0",
+  "type": "module",
+  "license": "Apache-2.0",
+  "description": "TypeShade Radiance: a scene graph, cameras, materials and a progressive path tracer for WebGPU, on typeshade/runtime.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "peerDependencies": {
+    "typeshade": "*"
+  }
+}

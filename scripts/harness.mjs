@@ -2,15 +2,16 @@
 //
 // The compiler's user journeys run in headless Chromium through Playwright, on SwiftShader, so
 // CI has a WebGPU device without a GPU (`journeys/_harness.mjs`). This file does the same for the
-// renderer: it bundles `@typeshade/radiance-render` with bun for the browser (its shader modules
+// renderer: it bundles `@typeshade/radiance` with bun for the browser (its shader modules
 // compiled by scripts/shade-plugin.ts), serves it from 127.0.0.1 (a secure context, which WebGPU
 // needs), renders the Cornell box and holds it to M1's acceptance (docs/plan.md, section 4):
 //
 //   1. Determinism: two renders of one seed are bit-identical, and another seed differs.
 //   2. The oracle: the GPU's 1024 spp render is within tolerance of the CPU oracle's render of
-//      the same kernel, seed and samples (scripts/oracle.ts; the tolerance is `ORACLE`, below).
+//      the same kernel, seed and samples (scripts/oracle.ts; the tolerance is `ORACLE` in
+//      scripts/gates.mjs, which the site prints).
 //   3. The display: the tone-mapped image is the tone map of the mean radiance.
-//   4. The demo page (site/) renders on its canvas without an error.
+//   4. The site (dist/site) runs its Cornell box example, and the camera answers the mouse.
 //
 // It also writes a larger render to .harness/cornell.png, to look at; nothing holds that one.
 //
@@ -20,16 +21,15 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
 import { chromium } from 'playwright';
+import { GATE, HALF, ORACLE } from './gates.mjs';
+import { CHROMIUM, serve } from './serve.mjs';
 
 const OUT = join(process.cwd(), '.harness');
 mkdirSync(OUT, { recursive: true });
 
-/** The gated render: small, so SwiftShader and the oracle finish in CI's time. */
-const GATE = { size: [16, 16], samples: 1024, perFrame: 64, seed: 1 };
 /** The render written to look at; RADIANCE_PREVIEW=<side>,<samples> sets its size. */
 const [side, previewSamples] = (process.env.RADIANCE_PREVIEW ?? '128,64').split(',').map(Number);
 const PREVIEW = { size: [side, side], samples: previewSamples, perFrame: 16, seed: 1 };
@@ -37,7 +37,7 @@ const PREVIEW = { size: [side, side], samples: previewSamples, perFrame: 16, see
 // ---- 1: the bundle the page runs, and the oracle's render (in the background) ----------------
 for (const args of [
   ['scripts/bundle.ts', 'scripts/harness-entry.ts', join(OUT, 'render.js')],
-  ['scripts/build-site.ts'],
+  ['run', 'site'],
 ]) {
   const build = spawnSync('bun', args, { encoding: 'utf8' });
   if (build.status !== 0) {
@@ -66,55 +66,36 @@ const oracle = new Promise((resolve, reject) => {
 });
 
 // ---- 2: the page --------------------------------------------------------------------------------
-const PAGE = `<!doctype html><title>radiance harness</title><script type="module">
-import { createRenderer, cornellBox } from '/render.js';
+const PAGE = `<!doctype html><title>radiance harness</title><link rel="icon" href="data:,"><script type="module">
+import { PathTracer, createCornellBox } from '/__harness/render.js';
 window.run = async ({ size, samples, perFrame, seed }) => {
-  const r = await createRenderer({ size, scene: cornellBox(), seed, samplesPerFrame: perFrame });
+  const { scene, camera } = createCornellBox();
+  camera.aspect = size[0] / size[1];
+  const r = await new PathTracer({ seed, samplesPerFrame: perFrame }).init();
+  r.setSize(size[0], size[1]);
+  r.maxSamples = samples;
   const t0 = performance.now();
-  while (r.samples < samples) await r.frame();
+  while (r.samples < samples) await r.render(scene, camera);
   const ms = performance.now() - t0;
   const radiance = [...(await r.readRadiance())];
-  const image = [...(await r.read())];
-  r.destroy();
+  const image = [...(await r.readPixels())];
+  r.dispose();
   return { radiance, image, ms };
 };
 </script>`;
-const SITE = join(process.cwd(), 'dist/site');
-const server = createServer((req, res) => {
-  if (req.url?.startsWith('/site/')) {
-    const file = req.url === '/site/' ? 'index.html' : req.url.slice('/site/'.length);
-    try {
-      const type = file.endsWith('.js') ? 'text/javascript' : 'text/html';
-      res.setHeader('content-type', `${type}; charset=utf-8`);
-      res.end(readFileSync(join(SITE, file)));
-    } catch {
-      res.statusCode = 404;
-      res.end();
-    }
-    return;
-  }
-  if (req.url === '/render.js') {
-    res.setHeader('content-type', 'text/javascript; charset=utf-8');
-    res.end(readFileSync(join(OUT, 'render.js'), 'utf8'));
-    return;
-  }
-  res.setHeader('content-type', 'text/html; charset=utf-8');
-  res.end(PAGE);
+// The built site at /, as it is deployed; the gate's page and bundle under /__harness/.
+const { server, origin } = await serve(join(process.cwd(), 'dist/site'), (url) => {
+  if (url === '/__harness/render.js')
+    return {
+      type: 'text/javascript; charset=utf-8',
+      body: readFileSync(join(OUT, 'render.js'), 'utf8'),
+    };
+  if (url === '/__harness/') return { type: 'text/html; charset=utf-8', body: PAGE };
+  return undefined;
 });
-await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
 
 // ---- 3: the device ------------------------------------------------------------------------------
-const browser = await chromium.launch({
-  executablePath: process.env.RADIANCE_CHROMIUM || undefined,
-  headless: process.env.RADIANCE_HEADED !== '1',
-  args: [
-    '--enable-unsafe-webgpu',
-    '--enable-unsafe-swiftshader',
-    '--use-angle=swiftshader',
-    '--use-vulkan=swiftshader',
-    '--enable-features=Vulkan',
-  ],
-});
+const browser = await chromium.launch(CHROMIUM);
 const page = await browser.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
@@ -122,25 +103,10 @@ page.on('console', (m) => {
   if (m.type() === 'error' || m.type() === 'warning')
     errors.push(`console.${m.type()}: ${m.text()}`);
 });
-await page.goto(`http://127.0.0.1:${server.address().port}/`);
+await page.goto(`${origin}/__harness/`);
 await page.waitForFunction(() => typeof window.run === 'function');
 
 // ---- 4: the renders, held to M1's acceptance ---------------------------------------------------
-/**
- * How close the GPU's mean radiance must be to the oracle's, per channel: within `abs`, or within
- * `rel` of the oracle's value; and `mean`, the mean relative difference of a pixel's luminance
- * over the frame. The two run the same kernel on the same samples, and the kernel steers no
- * path by a transcendental WGSL lets a GPU round loosely (`turn` in trace.shade.ts), so
- * their paths agree and only f32 rounding is left: on SwiftShader the largest difference was
- * 2.4e-5 and the mean 1.4e-6. A path that still goes another way on another GPU moves its
- * pixel by one sample's share of 1024, which `rel` admits; many of them move `mean`, which a
- * systematic error (a lost term, a wrong sign) breaks too: a 1% change in one albedo put `mean`
- * at 1.2e-2 when the gate was proved.
- */
-const ORACLE = { abs: 1e-3, rel: 0.05, mean: 1e-4 };
-/** Half floats carry 11 bits of mantissa. */
-const HALF = 2e-3;
-
 let failures = 0;
 const fail = (message) => {
   console.error(message);
@@ -265,21 +231,57 @@ try {
     `preview: ${PREVIEW.size.join('x')} at ${PREVIEW.samples} spp in ${(preview.ms / 1000).toFixed(1)} s, .harness/cornell.png`,
   );
 
-  // 4: the demo page (site/, deployed to radiance.typeshade.dev) renders on its canvas and counts samples.
-  const site = await browser.newPage();
+  // 4: the site (radiance.typeshade.dev, built to dist/site) runs the Cornell box example on its
+  // page and counts samples in the stage's toolbar, and its camera answers the mouse: a drag
+  // starts a preview and the render again from another view, and a wheel turn dollies without
+  // scrolling the page.
+  const site = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   site.on('pageerror', (e) => errors.push(`site: ${e.message}`));
   site.on('console', (m) => {
     if (m.type() === 'error' || m.type() === 'warning')
       errors.push(`site: console.${m.type()}: ${m.text()}`);
   });
-  await site.goto(`http://127.0.0.1:${server.address().port}/site/`);
-  await site.waitForFunction(() => Number(document.getElementById('spp')?.textContent) >= 2, null, {
-    timeout: 60_000,
-  });
-  if (!(await site.locator('#notice').isHidden()))
-    fail(`site: the notice shows: ${await site.textContent('#notice')}`);
-  await site.screenshot({ path: join(OUT, 'site.png') });
-  console.log(`site: the demo page shows ${await site.textContent('#spp')} spp, .harness/site.png`);
+  await site.goto(`${origin}/examples/cornell-box/`);
+  const TOOLBAR = '[data-stage-toolbar]';
+  const status = () => site.evaluate((q) => document.querySelector(q)?.dataset.status, TOOLBAR);
+  const waitFor = (test, arg, timeout = 60_000) =>
+    site.waitForFunction(test, [TOOLBAR, arg], { timeout });
+  const waitSamples = (n) =>
+    waitFor(([q, k]) => Number(document.querySelector(q)?.dataset.samples) >= k, n);
+  await waitSamples(2);
+  // The canvas fades in over the still on its first frame; let the fade finish.
+  await site.waitForSelector('[data-stage] [data-drawn]');
+  await site.waitForTimeout(300);
+  if ((await site.locator('[data-stage] [role=status]').count()) > 0)
+    fail(`site: the stage shows: ${await site.textContent('[data-stage] [role=status]')}`);
+  const canvas = site.locator('[data-stage] [data-running] canvas');
+  const before = await canvas.screenshot();
+  const box = await canvas.boundingBox();
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  await site.mouse.move(cx, cy);
+  await site.mouse.down();
+  for (let i = 1; i <= 10; i++) await site.mouse.move(cx + i * 15, cy + i * 3);
+  await waitFor(([q]) => document.querySelector(q)?.dataset.status === 'Preview', null, 10_000);
+  const during = await status();
+  await site.mouse.up();
+  await waitFor(([q]) => document.querySelector(q)?.dataset.status !== 'Preview', null, 10_000);
+  await waitSamples(2);
+  const after = await canvas.screenshot();
+  if (before.equals(after)) fail('site: the view is the same after a drag');
+  // A wheel turn over the canvas dollies: the samples start again from fewer than they were.
+  await waitSamples(4);
+  await site.mouse.move(cx, cy);
+  const scrolled = await site.evaluate(() => window.scrollY);
+  await site.mouse.wheel(0, -400);
+  await waitFor(([q]) => Number(document.querySelector(q)?.dataset.samples) < 4, null, 10_000);
+  if ((await site.evaluate(() => window.scrollY)) !== scrolled)
+    fail('site: a wheel turn over the canvas scrolled the page');
+  await waitSamples(2);
+  await site.screenshot({ path: join(OUT, 'site.png'), fullPage: true });
+  console.log(
+    `site: the Cornell box example renders, ${during} while dragged, a new view after it, and a wheel turn dollies; .harness/site.png`,
+  );
 } catch (e) {
   fail(e instanceof Error ? e.message : String(e));
 }

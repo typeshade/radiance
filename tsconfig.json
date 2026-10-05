@@ -1,19 +1,20 @@
 {
   "compilerOptions": {
     "target": "es2022",
-    "lib": ["es2022", "dom"],
+    "lib": ["es2022", "dom", "dom.iterable"],
     "module": "esnext",
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "types": ["bun"],
+    "types": ["bun", "vite/client"],
+    "jsx": "react-jsx",
     "allowJs": true,
     // An import of `./x.shade.ts` reads the host view `x.shade.typeshade.ts` that `tshc sync`
     // writes, and the shader sources are not part of this program (TypeShade surface §64).
     "moduleSuffixes": [".typeshade", ""]
   },
-  "include": ["packages/*/src/**/*.ts", "scripts/**/*.ts", "site/**/*.ts"],
+  "include": ["packages/*/src/**/*.ts", "scripts/**/*.ts", "site/examples/**/*.ts"],
   "exclude": ["packages/*/src/**/*.shade.ts", "**/node_modules", "**/dist"]
 }

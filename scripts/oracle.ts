@@ -9,10 +9,11 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { compile, compileModuleJs, type CpuValue } from 'typeshade';
-import { cameraParams, packScene, type Scene } from '@typeshade/radiance-scene';
+import { cameraUniforms, packScene, type Camera, type Scene } from '@typeshade/radiance';
 
 export interface OracleOptions {
   readonly scene: Scene;
+  readonly camera: Camera;
   readonly size: readonly [number, number];
   readonly samples: number;
   readonly seed?: number;
@@ -20,7 +21,7 @@ export interface OracleOptions {
   readonly rouletteFrom?: number;
 }
 
-const TRACE = join(import.meta.dir, '../packages/kernels/src/trace.shade.ts');
+const TRACE = join(import.meta.dir, '../packages/radiance/src/kernels/trace.shade.ts');
 
 /** `a`, four floats at a time, as the oracle takes an `array<vec4>`. `CpuValue`'s type has no
  *  array of vectors, though the oracle takes one (docs/typeshade-feedback.md), hence the cast. */
@@ -44,6 +45,8 @@ export function renderOnCpu(o: OracleOptions): Float32Array {
     throw new Error(`trace.shade.ts does not compile: ${JSON.stringify(errors)}`);
   const cpu = compileModuleJs(compiled.module, { precision: 'f32' });
   const [width, height] = o.size;
+  o.scene.updateMatrixWorld();
+  o.camera.updateMatrixWorld();
   const packed = packScene(o.scene);
   cpu.setBinding('spheres', vec4s(packed.spheres));
   cpu.setBinding('quads', vec4s(packed.quads));
@@ -51,7 +54,7 @@ export function renderOnCpu(o: OracleOptions): Float32Array {
   cpu.setBinding('lights', Array.from(packed.lights));
   const accum = Array.from({ length: width * height }, () => [0, 0, 0, 0]);
   cpu.setBinding('accum', accum as unknown as CpuValue);
-  const camera = cameraParams(o.scene.camera, width, height);
+  const camera = cameraUniforms(o.camera);
   cpu.setBinding('params', {
     eye: [...camera.eye],
     right: [...camera.right],
@@ -81,10 +84,12 @@ if (import.meta.main) {
     console.error('usage: bun scripts/oracle.ts <width> <height> <samples> <seed> <outfile>');
     process.exit(2);
   }
-  const { cornellBox } = await import('@typeshade/radiance-scene');
+  const { createCornellBox } = await import('@typeshade/radiance-addons');
+  const box = createCornellBox();
   const t0 = performance.now();
   const image = renderOnCpu({
-    scene: cornellBox(),
+    scene: box.scene,
+    camera: box.camera,
     size: [Number(w), Number(h)],
     samples: Number(n),
     seed: Number(seed),

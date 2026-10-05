@@ -1,0 +1,10 @@
+# The `*.shade.ts` loader for scripts and tests (scripts/preload.ts).
+preload = ["./scripts/preload.ts"]
+
+[test]
+preload = ["./scripts/preload.ts"]
+
+# Hoisted node_modules: Astro bundles Starlight's markdown parser (satteri) into the prerender
+# chunks, and its native binding must then resolve from the repository's node_modules.
+[install]
+linker = "hoisted"

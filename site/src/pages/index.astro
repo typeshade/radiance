@@ -1,0 +1,148 @@
+---
+// The front page: the headline, one sentence and two actions on the left; on the right the
+// first example's file beside the picture it draws, running. Then how a scene reads, the one
+// claim only this engine makes with the numbers CI holds it to, the examples as tiles, and
+// the install command.
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+import { Code } from '@astrojs/starlight/components';
+import Stage from '../components/Stage.astro';
+import { copyFor, localePath } from '../i18n/index.ts';
+import { EXAMPLES } from '../../examples/index.ts';
+import { apiPath, exampleSource, facts, sourceUrl } from '../lib/facts.ts';
+
+const t = copyFor('en');
+const f = t.front;
+const first = exampleSource('first-scene');
+// The scene itself, from the first line that builds it to the line that adds it to the scene:
+// the part a reader reads. The page links the whole file.
+const lines = first.split('\n');
+const from = lines.findIndex((l) => l.includes('const scene = new Scene()'));
+const to = lines.findIndex((l, i) => i > from && l.includes('scene.add('));
+const excerpt = lines
+  .slice(from, to + 1)
+  .map((l) => l.replace(/^ {2}/, ''))
+  .join('\n');
+const heading = 'm-0 text-[24px] leading-[36px] font-bold tracking-[-0.3px] text-fg';
+const lead = 'mt-2 mb-0 max-w-[62ch] text-[16px] leading-[24px] text-fg-2';
+---
+
+<StarlightPage
+  frontmatter={{ title: f.title, description: t.meta.description, template: 'splash', hero: { title: f.title }, tableOfContents: false, editUrl: false, prev: false, next: false }}
+  hasSidebar={false}
+>
+  <div class="not-content rd-front">
+    <section class="grid grid-cols-1 items-center gap-12 pt-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+      <div>
+        <h1 class="m-0 text-[38px] leading-[56px] font-extrabold tracking-[-0.4px] text-balance text-fg lg:text-[48px] lg:leading-[62px]">{f.title}</h1>
+        <p class="mt-4 mb-0 max-w-[52ch] text-[16px] leading-[24px] text-fg-2 text-pretty">{f.lede}</p>
+        <p class="mt-8 mb-0 flex flex-wrap gap-3">
+          <a class="rd-press inline-flex h-10 items-center rounded-[8px] bg-primary px-4 text-[14px] leading-[22px] font-medium text-white no-underline" href={localePath('en', '/guide/getting-started/')}>{f.getStarted}</a>
+          <a class="rd-press inline-flex h-10 items-center rounded-[8px] bg-canvas px-4 text-[14px] leading-[22px] font-medium text-fg no-underline shadow-[inset_0_0_0_1px_var(--rd-ring)]" href={localePath('en', '/examples/')}>{f.examples}</a>
+        </p>
+      </div>
+      <figure class="m-0 overflow-hidden rounded-[8px] border border-hairline bg-overlay">
+        <div class="flex h-12 items-end gap-4 border-b border-hairline px-4">
+          <a class="rd-num -mb-px border-b-2 border-primary pb-3 font-mono text-[12px] leading-[18px] text-fg no-underline" href={sourceUrl('site/examples/first-scene.ts')}>{f.showcase.file}</a>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-[minmax(0,6fr)_minmax(0,5fr)]">
+          <div class="order-2 max-h-[22rem] min-w-0 overflow-auto border-t border-hairline md:order-1 md:border-t-0 md:border-r rd-excerpt">
+            <Code code={excerpt} lang="ts" />
+          </div>
+          <div class="order-1 md:order-2">
+            <Stage id="first-scene" compact aspect="4 / 3" />
+          </div>
+        </div>
+        <figcaption class="border-t border-hairline px-4 py-3 text-[12px] leading-[18px] text-hint">
+          {f.showcase.caption}{' '}
+          <a class="text-primary-fg" href={localePath('en', '/examples/first-scene/')}>{f.showcase.open}</a>
+        </figcaption>
+      </figure>
+    </section>
+
+    <section class="mt-20">
+      <h2 class={heading}>{f.graph.h}</h2>
+      <p class={lead}>{f.graph.p}</p>
+      <dl class="mt-6 mb-0 grid gap-0 overflow-hidden rounded-[8px] border border-hairline bg-overlay">
+        {f.graph.rows.map(([name, what]) => (
+          <div class="grid gap-1 border-b border-hairline px-6 py-3 last:border-b-0 md:grid-cols-[14rem_minmax(0,1fr)] md:gap-6">
+            <dt><a class="font-mono text-[14px] leading-[22px] text-primary-fg no-underline" href={localePath('en', `/api/${apiPath(name)}/`)}>{name}</a></dt>
+            <dd class="m-0 text-[14px] leading-[22px] text-fg-2">{what}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+
+    <section class="mt-20 grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+      <div>
+        <h2 class={heading}>{f.oracle.h}</h2>
+        <p class={lead}>{f.oracle.p}</p>
+        <p class="mt-4 mb-0 text-[14px] leading-[22px]"><a class="text-primary-fg no-underline" href={sourceUrl('scripts/gates.mjs')}>{f.oracle.source}</a></p>
+      </div>
+      <table class="m-0 w-full self-start overflow-hidden rounded-[8px] border-separate border-spacing-0 border border-hairline bg-overlay text-[14px] leading-[22px]">
+        <tbody>
+          {f.oracle.rows.map(([what, bound]) => (
+            <tr>
+              <th scope="row" class="block px-4 pt-3 text-left font-normal text-fg-2 md:table-cell md:border-b md:border-hairline md:px-6 md:pb-3">{what}</th>
+              <td class="rd-num block border-b border-hairline px-4 pt-1 pb-3 text-left font-medium text-fg md:table-cell md:px-6 md:pt-3 md:text-right md:whitespace-nowrap">{bound}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="mt-20">
+      <div class="flex items-baseline justify-between gap-6">
+        <h2 class={heading}>{f.gallery.h}</h2>
+        <a class="text-[14px] leading-[22px] font-medium whitespace-nowrap text-primary-fg no-underline" href={localePath('en', '/examples/')}>{f.gallery.all}</a>
+      </div>
+      <p class={lead}>{f.gallery.p}</p>
+      <ul class="mt-6 mb-0 grid list-none grid-cols-2 gap-4 p-0 md:grid-cols-3 lg:grid-cols-5">
+        {EXAMPLES.map((e) => (
+          <li class="m-0 min-w-0">
+            <a class="rd-tile block overflow-hidden rounded-[8px] border border-hairline bg-overlay no-underline" href={localePath('en', `/examples/${e.id}/`)}>
+              <img class="block aspect-[16/10] w-full bg-black object-cover" src={`/stills/${e.id}.webp`} alt="" loading="lazy" decoding="async" />
+              <span class="block border-t border-hairline px-4 py-3 text-[14px] leading-[22px] font-medium text-fg">{e.title}</span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </section>
+
+    <section class="mt-20 mb-8">
+      <h2 class={heading}>{f.install.h}</h2>
+      <p class={lead}>{f.install.p}</p>
+      <div class="mt-6 max-w-[40rem]"><Code code={f.install.command} lang="sh" frame="none" /></div>
+      <p class="mt-4 mb-0 max-w-[62ch] rounded-[8px] border border-hairline bg-page px-4 py-3 text-[14px] leading-[22px] text-fg-2">{f.install.note}</p>
+      <p class="mt-8 mb-0 flex flex-wrap gap-3">
+        <a class="rd-press inline-flex h-10 items-center rounded-[8px] bg-primary px-4 text-[14px] leading-[22px] font-medium text-white no-underline" href={localePath('en', '/guide/getting-started/')}>{f.getStarted}</a>
+        <a class="rd-press inline-flex h-10 items-center rounded-[8px] bg-canvas px-4 text-[14px] leading-[22px] font-medium text-fg no-underline shadow-[inset_0_0_0_1px_var(--rd-ring)]" href={facts.repoUrl}>GitHub</a>
+      </p>
+    </section>
+  </div>
+</StarlightPage>
+
+<script is:inline>
+  document.documentElement.dataset.rdWide = '';
+</script>
+
+<style>
+  .rd-tile {
+    transition: box-shadow 150ms ease, border-color 150ms ease;
+  }
+  .rd-tile:hover {
+    border-color: transparent;
+    box-shadow: 0 4px 10px rgb(0 0 0 / 0.2);
+  }
+  .rd-excerpt :global(.expressive-code .frame) {
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .rd-excerpt :global(.expressive-code pre) {
+    border: 0;
+  }
+  /* The table's own border closes it: no rule under the last row. */
+  tr:last-child > * {
+    border-bottom: 0;
+  }
+</style>

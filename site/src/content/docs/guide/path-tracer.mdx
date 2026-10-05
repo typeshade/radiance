@@ -1,0 +1,64 @@
+---
+title: The path tracer
+description: 'How PathTracer renders progressively on WebGPU, its options for samples, previews, exposure and seeds, and how to read the image back.'
+sidebar:
+  order: 3
+---
+
+`PathTracer` draws a scene by tracing paths of light from the camera. Every `render` call is
+one dispatch of the kernel: it adds `samplesPerFrame` samples to every pixel, waits for the
+GPU, and draws the mean on the canvas. When the scene or the camera changed since the last
+call, the samples start again from zero first. The application never says so: the renderer
+compares what it would upload with what it uploaded.
+
+```ts
+import { PathTracer } from '@typeshade/radiance';
+
+const renderer = await new PathTracer({ canvas, seed: 1, targetFrameTime: 30 }).init();
+renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+renderer.setAnimationLoop(() => renderer.render(scene, camera));
+```
+
+## Options
+
+| Option               | Default | What it does                                                                   |
+| -------------------- | ------- | ------------------------------------------------------------------------------ |
+| `canvas`             | none    | the canvas to draw on; without one, `readPixels` and `readRadiance` still work |
+| `seed`               | 0       | one seed gives one image; another seed gives other noise                       |
+| `samplesPerFrame`    | 1       | the samples each frame adds, in one dispatch                                   |
+| `targetFrameTime`    | none    | milliseconds a frame should take; the renderer adapts `samplesPerFrame` to it  |
+| `maxSamplesPerFrame` | 64      | the most samples a frame may take when it adapts                               |
+| `bounces`            | 8       | the bounces a path may take after the camera ray                               |
+| `rouletteFrom`       | 3       | the bounce from which Russian roulette may end a path                          |
+| `exposure`           | 0       | the displayed image's exposure, in stops                                       |
+
+A dispatch has to finish well inside the GPU's watchdog, about two seconds on Windows, so
+keep a frame short and let the frames add up. `targetFrameTime` does that for you.
+
+## While the camera moves
+
+Set `preview` above 1 to trace one pixel for each `preview` by `preview` block. A preview frame
+costs about one over `preview` squared of a full one, so a drag stays smooth. Set it back to 1
+when the camera rests and the full frame accumulates again. With the orbit controls:
+
+```ts
+renderer.preview = controls.moving ? 4 : 1;
+```
+
+## Stopping and pausing
+
+`maxSamples` stops the accumulation at that many samples a pixel. `paused` stops it until it is
+set back; the canvas keeps the last picture.
+
+## Reading the image
+
+- `readRadiance()` resolves to every pixel's mean radiance and its sample count, as floats.
+- `readPixels()` resolves to the displayed image, tone-mapped, as RGBA floats in 0 to 1.
+- `info` holds the last frame's time in milliseconds and the paths it traced per second.
+
+## Determinism
+
+Two renders of one seed on one device are bit-identical: every random number comes from the
+sampler, keyed by the pixel, the seed, the sample and the dimension, and no two invocations
+write the same pixel. [Checked on the CPU](/guide/checked-on-the-cpu/) explains how CI holds
+the GPU's image to the compiler's CPU oracle.
