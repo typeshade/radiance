@@ -18,7 +18,10 @@ export { Object3D } from './core/Object3D.ts';
 export { Camera } from './cameras/Camera.ts';
 export { PerspectiveCamera } from './cameras/PerspectiveCamera.ts';
 
+export { BoxGeometry } from './geometries/BoxGeometry.ts';
+export { BufferGeometry } from './geometries/BufferGeometry.ts';
 export { Geometry } from './geometries/Geometry.ts';
+export { PlaneGeometry } from './geometries/PlaneGeometry.ts';
 export { QuadGeometry } from './geometries/QuadGeometry.ts';
 export { SphereGeometry } from './geometries/SphereGeometry.ts';
 
