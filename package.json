@@ -26,6 +26,7 @@
     "harness": "node scripts/harness.mjs",
     "gate:differential": "node scripts/gates/differential.mjs",
     "gate:determinism": "node scripts/gates/determinism.mjs",
+    "gate:render": "node scripts/gates/render.mjs",
     "check": "bun run format:check && bun run check:prose && bun run check:ste && bun run check:boundary && bun run gate:api && bun run gate:site && bun run check:shaders && bun run typecheck && bun run test",
     "site": "bun run sync && cd site && bun --bun astro build",
     "site:dev": "bun run sync && cd site && bun --bun astro dev",

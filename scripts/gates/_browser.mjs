@@ -8,8 +8,8 @@
 //      deployed site is served: a directory answers with its index.html.
 //   2. `launchBrowser`: Chromium with a WebGPU device on SwiftShader.
 //   3. `openRenderPage`: the engine bundled for the browser (its shader modules compiled by
-//      scripts/shade-plugin.ts), a page that renders a named scene with it, and the browser that
-//      runs the page.
+//      scripts/shade-plugin.ts), a page that renders a named scene or a named site example with
+//      it, and the browser that runs the page.
 //
 // Env: RADIANCE_CHROMIUM names a Chromium executable (the browsers Playwright installs are used
 // otherwise); RADIANCE_HEADED=1 shows the window.
@@ -95,9 +95,11 @@ export function bundleRenderer() {
 }
 
 /** The page that renders. `window.run` renders the named scene (`cornell` when none is named)
- *  at the given size and samples, and answers the mean radiance and the displayed image. */
+ *  at the given size and samples, and answers the mean radiance and the displayed image.
+ *  `window.runExample` runs the named site example on a canvas of the given size, as the site's
+ *  stage runs it (site/examples/types.ts), and answers the displayed image. */
 const PAGE = `<!doctype html><title>radiance harness</title><link rel="icon" href="data:,"><script type="module">
-import { PathTracer, scenes } from '/__harness/render.js';
+import { EXAMPLES, PathTracer, scenes } from '/__harness/render.js';
 window.run = async ({ scene: name = 'cornell', size, samples, perFrame, seed }) => {
   const make = scenes[name];
   if (make === undefined) throw new Error('no scene is named ' + name);
@@ -114,12 +116,50 @@ window.run = async ({ scene: name = 'cornell', size, samples, perFrame, seed }) 
   r.dispose();
   return { radiance, image, ms };
 };
+// An example sets itself up on a canvas and starts its loop (site/examples/types.ts), and it takes
+// its size from the canvas, so the page gives it one of size[0] x size[1] CSS pixels. The loop's
+// first frame comes after the microtask that resumes this function, so nothing is drawn yet when
+// the page sets the run up: it stops the example's motion, drops the time budget that varies the
+// samples of a frame, sets the samples of a frame and the samples to stop at, and sets the seed.
+// Then it waits for the loop to reach the samples, and reads the displayed image.
+window.runExample = async ({ id, size, samples, perFrame, seed, timeout = 600000 }) => {
+  const entry = EXAMPLES.find((e) => e.id === id);
+  if (entry === undefined) throw new Error('no example is named ' + id);
+  const canvas = document.createElement('canvas');
+  canvas.style.cssText = 'display:block;width:' + size[0] + 'px;height:' + size[1] + 'px';
+  document.body.replaceChildren(canvas);
+  const t0 = performance.now();
+  const run = await (await entry.load()).default(canvas);
+  const r = run.renderer;
+  r.paused = true;
+  if (run.playing !== undefined) run.playing = false;
+  r.targetFrameTime = undefined;
+  r.samplesPerFrame = perFrame;
+  r.maxSamples = samples;
+  r.seed = seed;
+  r.paused = false;
+  const t1 = performance.now();
+  while (r.samples < samples) {
+    if (performance.now() - t1 > timeout)
+      throw new Error(id + ' reached ' + r.samples + ' of ' + samples + ' samples');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  r.setAnimationLoop(null);
+  const reached = { samples: r.samples, size: [r.width, r.height], seed: r.seed, frames: r.info.frames };
+  const image = [...(await r.readPixels())];
+  const ms = performance.now() - t0;
+  run.dispose();
+  canvas.remove();
+  return { ...reached, image, ms, renderMs: performance.now() - t1 };
+};
 </script>`;
 
 /**
  * Opens the render page in a new browser. Resolves to:
  *
  * - `render(options)`: renders `{ scene, size, samples, perFrame, seed }` on the page's device.
+ * - `renderExample(options)`: runs the site example `options.id` on a canvas of `options.size`
+ *   until it has `options.samples` samples a pixel, and answers its displayed image.
  * - `browser` and `origin`: for a caller that opens more pages. The server answers `root` (the
  *   built site, `dist/site` by default) at `/` and the render page under `/__harness/`.
  * - `errors`: the page errors and console errors and warnings, so far. A caller that opens a
@@ -152,6 +192,7 @@ export async function openRenderPage({ root = join(process.cwd(), 'dist/site') }
       origin,
       errors,
       render: (options) => page.evaluate((o) => window.run(o), options),
+      renderExample: (options) => page.evaluate((o) => window.runExample(o), options),
       close: async () => {
         await browser.close();
         server.close();
