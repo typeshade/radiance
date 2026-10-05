@@ -2,7 +2,9 @@
 // on it, and a toolbar of Ant Design controls under it (the status, the samples a pixel, the
 // frame time; pause, reset the view, save a PNG, full screen). The still is drawn by the page
 // (Stage.astro) under this island, so a browser with no WebGPU or no script still shows the
-// picture. `compact` is the front page's form: the status floats over the canvas, no toolbar.
+// picture. An example that has more to show than its canvas hands the island a panel
+// (`ExampleRun.panel`), which the island puts between the canvas and the toolbar. `compact` is
+// the front page's form: the status floats over the canvas, no toolbar, no panel.
 
 import { useEffect, useRef, useState } from 'react';
 import { Button, ConfigProvider, Tag, Tooltip, theme as antd } from 'antd';
@@ -26,12 +28,16 @@ export interface StageCopy {
   exitFullscreen: string;
   noWebgpu: string;
   canvasLabel: string;
+  /** The canvas's label for an example with no camera controls. */
+  canvasLabelFixed: string;
 }
 
 interface Stats {
   samples: number;
   frameTime: number | undefined;
   preview: boolean;
+  /** The example's panel says its work is finished (`data-done`). */
+  done: boolean;
 }
 
 const ICON = { size: 16, strokeWidth: 1.5 } as const;
@@ -103,14 +109,21 @@ export default function ExampleStage(props: { id: string; copy: StageCopy; compa
   const { id, copy, compact = false } = props;
   const dark = useDark();
   const holder = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
   const run = useRef<ExampleRun | undefined>(undefined);
-  const [stats, setStats] = useState<Stats>({ samples: 0, frameTime: undefined, preview: false });
+  const [stats, setStats] = useState<Stats>({
+    samples: 0,
+    frameTime: undefined,
+    preview: false,
+    done: false,
+  });
   const [error, setError] = useState<string | undefined>(undefined);
   const [paused, setPaused] = useState(false);
   const [full, setFull] = useState(false);
   const [running, setRunning] = useState(false);
   const [animated, setAnimated] = useState(false);
   const [drawn, setDrawn] = useState(false);
+  const [hasPanel, setHasPanel] = useState(false);
 
   useEffect(() => {
     let stopped = false;
@@ -138,6 +151,11 @@ export default function ExampleStage(props: { id: string; copy: StageCopy; compa
           return;
         }
         run.current = r;
+        if (r.controls === undefined) canvas.setAttribute('aria-label', copy.canvasLabelFixed);
+        if (r.panel !== undefined && panel.current !== null) {
+          panel.current.replaceChildren(r.panel);
+          setHasPanel(true);
+        }
         setRunning(true);
         setAnimated(r.playing !== undefined);
         timer = window.setInterval(() => {
@@ -147,6 +165,7 @@ export default function ExampleStage(props: { id: string; copy: StageCopy; compa
             samples: t.samples,
             frameTime: t.info.frames > 0 ? t.info.frameTime : undefined,
             preview: t.scale !== 1,
+            done: r.panel?.hasAttribute('data-done') ?? false,
           });
         }, 200);
       })
@@ -158,6 +177,7 @@ export default function ExampleStage(props: { id: string; copy: StageCopy; compa
       clearInterval(timer);
       run.current?.dispose();
       run.current = undefined;
+      panel.current?.replaceChildren();
     };
   }, [id]);
 
@@ -182,11 +202,13 @@ export default function ExampleStage(props: { id: string; copy: StageCopy; compa
 
   const status = error
     ? copy.error
-    : stats.preview
-      ? copy.preview
-      : paused
-        ? copy.paused
-        : copy.rendering;
+    : stats.done
+      ? copy.done
+      : stats.preview
+        ? copy.preview
+        : paused
+          ? copy.paused
+          : copy.rendering;
   const colour = error ? 'error' : status === copy.rendering ? 'processing' : 'default';
   const count = (
     <span className="rd-num text-[12px] leading-[18px] whitespace-nowrap">
@@ -201,7 +223,8 @@ export default function ExampleStage(props: { id: string; copy: StageCopy; compa
   );
 
   // The island's elements join the stage's grid (Stage.astro): the canvas over the still in the
-  // first row, the toolbar over its placeholder in the second. astro-island is display: contents.
+  // first row, the example's panel in the second (no row while it is empty), the toolbar over its
+  // placeholder in the third. astro-island is display: contents.
   return (
     <ConfigProvider theme={themeFor(dark)}>
       <div className="relative col-start-1 row-start-1 min-h-0">
@@ -236,7 +259,15 @@ export default function ExampleStage(props: { id: string; copy: StageCopy; compa
       </div>
       {!compact && (
         <div
-          className="col-start-1 row-start-2 flex min-h-12 flex-wrap items-center gap-2 border-t border-hairline bg-overlay px-3 py-1 text-fg"
+          ref={panel}
+          className="col-start-1 row-start-2 min-w-0 border-t border-hairline bg-overlay text-fg empty:hidden"
+          data-stage-panel
+          data-filled={hasPanel ? '' : undefined}
+        />
+      )}
+      {!compact && (
+        <div
+          className="col-start-1 row-start-3 flex min-h-12 flex-wrap items-center gap-2 border-t border-hairline bg-overlay px-3 py-1 text-fg"
           data-stage-toolbar
           data-animated={animated ? '' : undefined}
           data-samples={stats.samples}

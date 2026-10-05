@@ -178,6 +178,81 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The panel of an example that has more to show than its canvas (ExampleRun.panel): a row of
+   pictures with captions, a list of counts, and a line of status. The example builds the
+   elements and names these classes, so its source stays free of styles. */
+.rd-panel {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+}
+.rd-panel-pictures {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.rd-panel figure {
+  margin: 0;
+  min-width: 0;
+}
+.rd-panel canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--rd-hairline);
+  border-radius: 8px;
+  background: #000;
+}
+.rd-panel figcaption {
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  color: var(--rd-fg);
+}
+.rd-panel figcaption small {
+  display: block;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 400;
+  color: var(--rd-hint);
+}
+.rd-panel-counts {
+  margin: 0;
+  border: 1px solid var(--rd-hairline);
+  border-radius: 8px;
+}
+.rd-panel-counts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 16px;
+  font-size: 14px;
+  line-height: 22px;
+}
+.rd-panel-counts > div + div {
+  border-top: 1px solid var(--rd-hairline);
+}
+.rd-panel-counts dt {
+  color: var(--rd-fg-2);
+}
+.rd-panel-counts dd {
+  margin: 0;
+  font-weight: 500;
+  color: var(--rd-fg);
+}
+.rd-panel-status {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--rd-fg-2);
+}
+@media (max-width: 640px) {
+  .rd-panel-pictures {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* A hover or a press is a gray-900 overlay, 8% and 16%, never another fill (DESIGN.md). */
 .rd-press {
   position: relative;
