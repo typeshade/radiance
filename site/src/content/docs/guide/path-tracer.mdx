@@ -5,11 +5,11 @@ sidebar:
   order: 3
 ---
 
-`PathTracer` draws a scene by tracing paths of light from the camera. Every `render` call is
-one dispatch of the kernel: it adds `samplesPerFrame` samples to every pixel, waits for the
-GPU, and draws the mean on the canvas. When the scene or the camera changed since the last
-call, the samples start again from zero first. The application never says so: the renderer
-compares what it would upload with what it uploaded.
+`PathTracer` draws a scene by tracing paths of light from the camera. Every `render` call adds
+`samplesPerFrame` samples to every pixel, waits for the GPU, and draws the mean on the canvas.
+When the scene or the camera changed since the last call, the samples start again from zero
+first. The application never says so: the renderer compares what it would upload with what it
+uploaded.
 
 ```ts
 import { PathTracer } from '@typeshade/radiance';
@@ -25,15 +25,18 @@ renderer.setAnimationLoop(() => renderer.render(scene, camera));
 | -------------------- | ------- | ------------------------------------------------------------------------------ |
 | `canvas`             | none    | the canvas to draw on. Without one, `readPixels` and `readRadiance` still work |
 | `seed`               | 0       | one seed gives one image. Another seed gives other noise                       |
-| `samplesPerFrame`    | 1       | the samples each frame adds, in one dispatch                                   |
+| `samplesPerFrame`    | 1       | the samples each frame adds. The first frame takes one                         |
 | `targetFrameTime`    | none    | milliseconds a frame should take. The renderer adapts `samplesPerFrame` to it  |
 | `maxSamplesPerFrame` | 64      | the most samples a frame may take when it adapts                               |
 | `bounces`            | 8       | the bounces a path may take after the camera ray                               |
 | `rouletteFrom`       | 3       | the bounce from which Russian roulette may end a path                          |
 | `exposure`           | 0       | the displayed image's exposure, in stops                                       |
+| `watchdogBudget`     | 50      | milliseconds one dispatch may take. The frame is traced in tiles under it      |
 
-A dispatch has to finish well inside the GPU's watchdog, about two seconds on Windows, so
-keep a frame short and let the frames add up. `targetFrameTime` does that for you.
+A dispatch has to finish well inside the GPU's watchdog, about two seconds on Windows. So the
+renderer traces a frame in tiles, one dispatch each, and sizes each tile by the last frame's
+speed to stay under `watchdogBudget`. `info.dispatches` tells how many tiles the last frame
+took. Keep a frame short and let the frames add up. `targetFrameTime` does that for you.
 
 ## While the camera moves
 
@@ -54,7 +57,8 @@ set back. The canvas keeps the last picture.
 
 - `readRadiance()` resolves to every pixel's mean radiance and its sample count, as floats.
 - `readPixels()` resolves to the displayed image, tone-mapped, as RGBA floats in 0 to 1.
-- `info` holds the last frame's time in milliseconds and the paths it traced per second.
+- `info` holds the last frame's time in milliseconds, the paths it traced per second and the
+  dispatches it took.
 
 ## Determinism
 

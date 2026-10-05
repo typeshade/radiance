@@ -1,10 +1,15 @@
-// === PathTracer: the progressive path tracer (docs/plan.md, M1) ===
+// === PathTracer: the progressive path tracer (docs/plan.md, M1 and M2) ===
 //
-// Every call of `render(scene, camera)` adds `samplesPerFrame` samples to every pixel, in one
-// dispatch of the TypeShade kernel (kernels/trace.shade.ts), waits for the GPU (one frame in
-// flight), and draws the mean on the canvas. When the scene or the camera changed since the
-// last call, the accumulation starts again first. Set `preview` above 1 while the camera moves
-// to trace one pixel for each preview-by-preview block instead.
+// Every call of `render(scene, camera)` adds `samplesPerFrame` samples to every pixel and draws
+// the mean on the canvas. The frame is traced in tiles (design record 0001, "Tiles and the
+// watchdog"): each tile is one dispatch of the TypeShade kernel (kernels/trace.shade.ts), sized
+// so that it stays under `watchdogBudget` milliseconds by the last frame's speed, and the frame's
+// dispatches go to the GPU in one submit. When the scene or the camera changed since the last
+// call, the accumulation starts again first. Set `preview` above 1 while the camera moves to
+// trace one pixel for each preview-by-preview block instead.
+//
+// The scene reaches the kernel through a `ScenePack` (scene-pack.ts): seven storage buffers in
+// all, each rewritten only when what it holds changed.
 //
 // Everything goes through `typeshade/runtime`: the renderer makes no WebGPU call of its own
 // (scripts/boundary.mjs).
@@ -13,15 +18,10 @@ import { createRuntime, resident, type Resident, type Runtime } from 'typeshade/
 import trace from '../kernels/trace.shade.ts';
 import type { Camera } from '../cameras/Camera.ts';
 import type { Scene } from '../scenes/Scene.ts';
+import { checkStorageBinding } from './limits.ts';
 import { Renderer } from './Renderer.ts';
-import {
-  cameraUniforms,
-  packScene,
-  sameCamera,
-  sameScene,
-  type CameraUniforms,
-  type PackedScene,
-} from './pack.ts';
+import { cameraFrame, sameCameraFrame, ScenePack, type CameraFrame } from './scene-pack.ts';
+import { DEFAULT_WATCHDOG_BUDGET, tileFrame, WORKGROUP } from './tiles.ts';
 
 export interface PathTracerParameters {
   /** The canvas to draw on. Without one, `readPixels()` and `readRadiance()` still work. */
@@ -30,7 +30,8 @@ export interface PathTracerParameters {
   device?: object;
   /** One seed, one image. Default 0. */
   seed?: number;
-  /** Samples each `render` adds, in one dispatch: the GPU watchdog budget. Default 1. */
+  /** Samples each `render` adds to every pixel. Default 1. The first frame takes one, to measure
+   *  the speed the tiles are sized by. */
   samplesPerFrame?: number;
   /** The bounces a path may take after the camera ray. Default 8. */
   bounces?: number;
@@ -45,14 +46,18 @@ export interface PathTracerParameters {
   targetFrameTime?: number;
   /** The most samples a frame may take when `targetFrameTime` adapts it. Default 64. */
   maxSamplesPerFrame?: number;
+  /**
+   * The milliseconds one dispatch may take: the frame is traced in tiles that stay under it, by
+   * the last frame's speed, so the GPU's watchdog (about two seconds on Windows) never stops
+   * one. Default 50.
+   */
+  watchdogBudget?: number;
 }
 
 /** The displayed image's format for `readPixels()`: half floats, read back as numbers. */
 export const TARGET_FORMAT = 'rgba16float';
 /** The canvas's format: one every WebGPU implementation can show. */
 export const CANVAS_FORMAT = 'rgba8unorm';
-/** The kernel's workgroup size (`@compute([64])` in trace.shade.ts). */
-const WORKGROUP = 64;
 
 type Pipelines = {
   rt: Runtime;
@@ -75,8 +80,22 @@ export class PathTracer extends Renderer {
   readonly rouletteFrom: number;
   targetFrameTime: number | undefined;
   maxSamplesPerFrame: number;
-  /** What the last frame cost: its time in milliseconds and the paths it traced per second. */
-  readonly info = { frameTime: 0, pathsPerSecond: 0, frames: 0 };
+  /** The milliseconds one dispatch may take. The tiles are sized to stay under it. */
+  watchdogBudget: number;
+  /**
+   * What the last frame cost: its time in milliseconds, the paths it traced per second, the
+   * dispatches (tiles) it took, the pixels of its largest tile, and the mean time of one dispatch
+   * in milliseconds. The frame's dispatches go to the GPU in one submit, so a dispatch's own time
+   * is not measured: `dispatchTime` is the frame's time over its dispatches.
+   */
+  readonly info = {
+    frameTime: 0,
+    pathsPerSecond: 0,
+    frames: 0,
+    dispatches: 0,
+    tilePixels: 0,
+    dispatchTime: 0,
+  };
 
   #device: object | undefined;
   #seed: number;
@@ -84,11 +103,12 @@ export class PathTracer extends Renderer {
   #width = 1;
   #height = 1;
   #p: Pipelines | undefined;
-  #buffers: { [K in 'spheres' | 'quads' | 'materials' | 'lights']: Resident<unknown> } | undefined;
+  #pack: ScenePack | undefined;
   #accum: Resident<Float32Array> | undefined;
   #target: ReturnType<Runtime['texture']> | undefined;
-  #scene: PackedScene | undefined;
-  #camera: CameraUniforms | undefined;
+  #camera: CameraFrame | undefined;
+  /** The last frame's nanoseconds per path, or undefined before the first frame. */
+  #nsPerPath: number | undefined;
   #samples = 0;
   #scale = 1;
   #dirty = true;
@@ -104,6 +124,7 @@ export class PathTracer extends Renderer {
     this.rouletteFrom = parameters.rouletteFrom ?? 3;
     this.targetFrameTime = parameters.targetFrameTime;
     this.maxSamplesPerFrame = parameters.maxSamplesPerFrame ?? 64;
+    this.watchdogBudget = parameters.watchdogBudget ?? DEFAULT_WATCHDOG_BUDGET;
     if (parameters.canvas !== undefined)
       [this.#width, this.#height] = [parameters.canvas.width, parameters.canvas.height];
   }
@@ -164,6 +185,7 @@ export class PathTracer extends Renderer {
       });
     }
     this.#p = { rt, tracer, show, showOnCanvas, context };
+    this.#pack = new ScenePack();
     this.#allocate();
     return this;
   }
@@ -196,15 +218,12 @@ export class PathTracer extends Renderer {
 
   async render(scene: Scene, camera: Camera): Promise<void> {
     const p = this.#need();
+    const pack = this.#pack!;
     scene.updateMatrixWorld();
     camera.updateMatrixWorld();
-    const packed = packScene(scene);
-    const view = cameraUniforms(camera);
-    if (this.#scene === undefined || !sameScene(packed, this.#scene)) {
-      this.#upload(packed);
-      this.#dirty = true;
-    }
-    if (this.#camera === undefined || !sameCamera(view, this.#camera)) {
+    if (pack.update(scene).size > 0) this.#dirty = true;
+    const view = cameraFrame(camera);
+    if (this.#camera === undefined || !sameCameraFrame(view, this.#camera)) {
       this.#camera = view;
       this.#dirty = true;
     }
@@ -219,30 +238,46 @@ export class PathTracer extends Renderer {
     const working = !this.paused && (this.#scale !== 1 || this.#samples < this.maxSamples);
     if (working) {
       const [w, h] = this.#traced();
-      const n = this.#scale === 1 ? Math.max(1, Math.floor(this.samplesPerFrame)) : 1;
+      // The first frame takes one sample, to measure the speed the tiles are sized by.
+      let n = 1;
+      if (this.#scale === 1 && this.#nsPerPath !== undefined)
+        n = Math.max(1, Math.floor(this.samplesPerFrame));
+      if (this.#scale === 1 && Number.isFinite(this.maxSamples))
+        n = Math.max(1, Math.min(n, this.maxSamples - this.#samples));
+      const tiles = tileFrame(w, h, n, this.#nsPerPath, this.watchdogBudget);
       const t0 = performance.now();
       const f = p.rt.frame();
-      f.dispatch(
-        p.tracer,
-        {
-          params: {
-            ...this.#camera!,
-            frame: [w, h, this.#samples, n],
-            counts: [...this.#scene!.counts, this.#seed],
-            path: [this.bounces, this.rouletteFrom, 0, 0],
+      for (const tile of tiles)
+        f.dispatch(
+          p.tracer,
+          {
+            params: pack.params({
+              camera: this.#camera!,
+              frame: [w, h, this.#samples, n],
+              tile,
+              seed: this.#seed,
+              bounces: this.bounces,
+              rouletteFrom: this.rouletteFrom,
+            }),
+            ...pack.residents(),
+            accum: this.#accum!,
           },
-          ...this.#buffers!,
-          accum: this.#accum!,
-        },
-        Math.ceil((w * h) / WORKGROUP),
-      );
+          Math.ceil((tile[2] * tile[3]) / WORKGROUP),
+        );
       await f.submit();
       this.#samples += n;
       this.#drawn = false;
       const ms = performance.now() - t0;
+      if (ms > 0) this.#nsPerPath = (ms * 1e6) / (w * h * n);
       this.info.frameTime = ms;
       this.info.pathsPerSecond = ms > 0 ? (w * h * n) / (ms / 1000) : 0;
       this.info.frames++;
+      this.info.dispatches = tiles.length;
+      // A loop, not a spread: a frame may have more tiles than an engine takes arguments.
+      let largest = 0;
+      for (const t of tiles) largest = Math.max(largest, t[2] * t[3]);
+      this.info.tilePixels = largest;
+      this.info.dispatchTime = ms / tiles.length;
       if (this.targetFrameTime !== undefined && this.#scale === 1 && ms > 0)
         this.samplesPerFrame = Math.max(
           1,
@@ -303,18 +338,9 @@ export class PathTracer extends Renderer {
     return { view: [this.#exposure, this.#traced()[0], this.#scale, 0] };
   }
 
-  #upload(packed: PackedScene): void {
-    for (const b of Object.values(this.#buffers ?? {})) b.destroy();
-    this.#buffers = {
-      spheres: resident(packed.spheres),
-      quads: resident(packed.quads),
-      materials: resident(packed.materials),
-      lights: resident(packed.lights),
-    };
-    this.#scene = packed;
-  }
-
   #allocate(): void {
+    // The accumulation is the seventh storage buffer: it is held to the binding limit too.
+    checkStorageBinding('accum', this.#width * this.#height * 16);
     this.#accum?.destroy();
     this.#target?.destroy();
     this.#accum = resident(new Float32Array(this.#width * this.#height * 4));
@@ -326,10 +352,10 @@ export class PathTracer extends Renderer {
   }
 
   #free(): void {
-    for (const b of Object.values(this.#buffers ?? {})) b.destroy();
+    this.#pack?.dispose();
     this.#accum?.destroy();
     this.#target?.destroy();
-    this.#buffers = undefined;
-    this.#scene = undefined;
+    this.#pack = undefined;
+    this.#camera = undefined;
   }
 }

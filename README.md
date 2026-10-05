@@ -52,10 +52,12 @@ The packages are not published yet: build them from this repository until the fi
 
 ## Status
 
-Milestone **M1**: a compute megakernel path tracer renders the Cornell box (spheres and quads,
-diffuse and mirror surfaces, an area light) progressively, and CI holds it to M1's acceptance:
-two renders of one seed are bit-identical, and a 1024 spp render on WebGPU is within tolerance
-of the CPU oracle's render of the same kernel. M2 brings triangle meshes, the BVH and glTF.
+Milestone **M1** is done: a compute megakernel path tracer renders the Cornell box
+progressively, and CI holds it to M1's acceptance. Two renders of one seed are bit-identical,
+and a 1024 spp render on WebGPU is within tolerance of the CPU oracle's render of the same
+kernel. Milestone **M2** is in progress. The kernel draws triangle meshes through a two-level
+BVH, behind the material record and the shading contract (design records 0001 and 0004). glTF
+and the benchmark scenes come next.
 
 ## Layout
 
@@ -73,7 +75,7 @@ of the CPU oracle's render of the same kernel. M2 brings triangle meshes, the BV
 | `scripts/harness.mjs`        | The Cornell box in headless Chromium on SwiftShader, held to its gates and their probes, and the site's Cornell box example under the mouse. Writes `.harness/cornell.png` and `.harness/site.png`.                        |
 | `scripts/gates/`             | One module for each gate: `differential.mjs` and `determinism.mjs`. Each exports `run()` and `probe()`. `_browser.mjs` and `_png.mjs` are shared by the gates and the harness.                                             |
 | `scripts/scenes.ts`          | The scene table. The harness page and the oracle build each scene from it. The Cornell box is its one entry.                                                                                                               |
-| `scripts/oracle.ts`          | The path tracer's kernel on the compiler's CPU oracle.                                                                                                                                                                     |
+| `scripts/oracle.ts`          | The path tracer's kernel on the compiler's CPU oracle, over the same scene pack the renderer uploads. It splits the frame over up to four processes (`RADIANCE_ORACLE_JOBS`).                                              |
 | `scripts/shade-plugin.ts`    | The `*.shade.ts` loader for `bun build` and `bun test`, from the compiler's Vite plugin.                                                                                                                                   |
 | `DESIGN.md`, `PRODUCT.md`    | The site's design system (Vapor UI's tokens) and its product brief, read by the design skills under `.claude/skills`.                                                                                                      |
 | `docs/plan.md`               | The plan and the milestones.                                                                                                                                                                                               |

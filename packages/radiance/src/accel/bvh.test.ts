@@ -1,7 +1,8 @@
 // The BVH builder (design record 0001, "The build"), held to what the kernel's walk relies on:
 // every primitive in exactly one leaf, every box around what it holds, children after their
-// parent, the depth and the node count inside the record's limits, and a walk of the tree that
-// finds the same nearest triangle as a test of every triangle, on 1,000 seeded random rays.
+// parent, the depth and the node count inside the record's limits, a TLAS leaf of at most 4
+// instances (Amendment 1), and a walk of the tree that finds the same nearest triangle as a test
+// of every triangle, on 1,000 seeded random rays.
 //
 // The walk here is TypeScript over the packed words, as the kernel will read them (record 0001,
 // "Traversal"). The kernel's own walk on the oracle is step 3's (intersect.shade.ts).
@@ -79,6 +80,37 @@ function randomMesh(count: number, seed: number): TriangleSource {
   }
   return { position, index: Uint32Array.from({ length: count * 3 }, (_, i) => i) };
 }
+
+/** `count` boxes of side 2^-k / 2 at 2^-k, for k from 0: each nested near the origin. */
+function nestedBoxes(count: number): Float64Array {
+  const boxes = new Float64Array(count * 6);
+  for (let k = 0; k < count; k++) {
+    const s = 2 ** -k;
+    boxes.set([s, s, s, 1.5 * s, 1.5 * s, 1.5 * s], k * 6);
+  }
+  return boxes;
+}
+
+/** `count` boxes from -1 to 1, each moved 0.01 more along x: no split is cheaper than a leaf. */
+function overlappingBoxes(count: number): Float64Array {
+  const boxes = new Float64Array(count * 6);
+  for (let k = 0; k < count; k++) boxes.set([-1 + 0.01 * k, -1, -1, 1 + 0.01 * k, 1, 1], k * 6);
+  return boxes;
+}
+
+/** One triangle per box, with exactly that box: (lo), (hi.x, hi.y, lo.z), (lo.x, hi.y, hi.z). */
+function boxTriangles(boxes: Float64Array): TriangleSource {
+  const count = boxes.length / 6;
+  const position = new Float32Array(count * 9);
+  for (let t = 0; t < count; t++) {
+    const [lx, ly, lz, hx, hy, hz] = boxes.subarray(t * 6, t * 6 + 6);
+    position.set([lx!, ly!, lz!, hx!, hy!, lz!, lx!, hy!, hz!], t * 9);
+  }
+  return { position, index: Uint32Array.from({ length: count * 3 }, (_, i) => i) };
+}
+
+const nestedTriangles = (count: number): TriangleSource => boxTriangles(nestedBoxes(count));
+const overlapping = (count: number): TriangleSource => boxTriangles(overlappingBoxes(count));
 
 /** Each triangle's box, six numbers: min xyz, max xyz. */
 function triangleBoxes(m: TriangleSource): Float64Array {
@@ -396,16 +428,17 @@ describe('buildBlas', () => {
   });
 
   it('makes a leaf at depth 30 whatever the heuristic says', () => {
-    // Cubes of side 2^-k / 2 at 2^-k: each split peels the largest few off, so the tree goes deep.
-    const boxes = new Float64Array(400 * 6);
-    for (let k = 0; k < 400; k++) {
-      const s = 2 ** -k;
-      boxes.set([s, s, s, 1.5 * s, 1.5 * s, 1.5 * s], k * 6);
-    }
-    const bvh = buildTlas(boxes);
-    const stats = checkTree(bvh, boxes);
+    // Triangles in the box of side 2^-k / 2 at 2^-k: each split peels the largest few off, so
+    // the tree goes deep. 100 of them stay inside f32's range.
+    const mesh = nestedTriangles(100);
+    const stats = checkTree(buildBlas(mesh), triangleBoxes(mesh));
     expect(stats.depth).toBe(BVH_MAX_DEPTH);
     expect(stats.largestLeaf).toBeGreaterThan(BVH_LEAF_SIZE);
+  });
+
+  it('makes one leaf of a node that no split makes cheaper, however many it holds', () => {
+    const mesh = overlapping(8);
+    expect(node(buildBlas(mesh).nodes, 0)).toMatchObject({ a: 0, count: 8 });
   });
 
   it('refuses an empty list and an index past the last vertex', () => {
@@ -643,6 +676,38 @@ describe('buildTlas', () => {
   it('over three instances: the TLAS is one leaf of three', () => {
     const scene = packScene(big, three);
     expect(node(scene.tlas.nodes, 0)).toMatchObject({ a: 0, count: 3 });
+  });
+
+  // Record 0001, Amendment 1: a TLAS leaf holds up to 4 instances.
+  it('splits a node of more than four instances that no split makes cheaper', () => {
+    const boxes = overlappingBoxes(8);
+    const bvh = buildTlas(boxes);
+    const stats = checkTree(bvh, boxes);
+    expect(node(bvh.nodes, 0).count).toBe(0);
+    expect(stats.largestLeaf).toBeLessThanOrEqual(BVH_LEAF_SIZE);
+  });
+
+  it('splits instances whose centres are one point at the median, into leaves of four', () => {
+    const boxes = new Float64Array(37 * 6);
+    for (let k = 0; k < 37; k++) boxes.set([0, 0, 0, 1, 1, 1], k * 6);
+    const stats = checkTree(buildTlas(boxes), boxes);
+    expect(stats.largestLeaf).toBe(BVH_LEAF_SIZE);
+    // 37, 19, 10, 5, 3: four halvings.
+    expect(stats.depth).toBe(4);
+  });
+
+  it('keeps leaves of at most four instances and the depth at 30 where the heuristic goes deep', () => {
+    // The boxes that take the BLAS to a leaf of more than 4 at depth 30 (above).
+    const boxes = nestedBoxes(400);
+    const stats = checkTree(buildTlas(boxes), boxes);
+    expect(stats.depth).toBeLessThanOrEqual(BVH_MAX_DEPTH);
+    expect(stats.largestLeaf).toBeLessThanOrEqual(BVH_LEAF_SIZE);
+  });
+
+  it('over 40 instances: no TLAS leaf holds more than four', () => {
+    const scene = packScene(small, many);
+    const stats = checkTree(scene.tlas, Float64Array.from(scene.boxes));
+    expect(stats.largestLeaf).toBeLessThanOrEqual(BVH_LEAF_SIZE);
   });
 });
 

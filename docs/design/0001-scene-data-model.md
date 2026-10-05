@@ -406,6 +406,60 @@ that the packer makes the index into `instances`.
 
 **Approval and plan record.** Accepted on 2026-10-05 (UTC). The owner approved the merge of typeshade/radiance#6 in the conversation, which merged this record as `draft` at 9e8b479. The owner then said to implement the records with Opus 5.5 and Sonnet 5.5, and that go-ahead is the acceptance. Every entry of "Decisions for the owner" stands as proposed.
 
-**Configuration and validation record.** This record does not yet apply. Implementation will
-record the commits of steps 1 to 5, the pin they were built on, the gate numbers of record 0002
-at step 3 and the benchmark rows at step 5.
+**Deviations of step 3** (2026-10-05, UTC). Step 3 is on the branch `wt/W1` from bc99533, and
+its pull request is to follow. Each entry gives the difference and its disposition.
+
+- **TLAS leaves.** The builder made one TLAS leaf of any size when no split beat the leaf's
+  cost. The Cornell box's TLAS was one leaf of 8 instances, against Amendment 1. Closed at
+  0c3c0aa: `buildTlas` splits every node of more than 4 instances. The record does not say how.
+  The builder takes the least-cost split while the larger side can reach leaves of 4 by depth
+  30, else the median of the centroids. Open: the owner accepts this rule, or an amendment
+  states another.
+- **An emptied geometry.** A geometry whose index was set to an empty array kept its old BLAS,
+  and its mesh still drew the old triangles. Closed at 7b4494f: the geometry leaves the pack, as
+  `release()` makes it, and the update writes the buffers again.
+- **The triangle index of a hit and of a light.** `Hit.triangle` is the index into `triangles`,
+  with the instance's `primBase` added. The light table's `bits(triangle)` is the same index.
+  The record names both fields and does not say relative or absolute. Decision 0001.2 makes a
+  layout change an amendment. Open: an amendment states the absolute index.
+- **A light's chance.** The record says that `cdf` is the cumulative probability of a light, and
+  not what the probability follows. A light's chance is its share of the emitted power: its
+  world-space area times the mean of its emitted colour. The table is in slot order, then in
+  triangle order, and holds no triangle of area 0. Open: the owner accepts it, or an amendment
+  states another rule.
+- **The geometric normal in world space.** The record gives `normalize(cross(e1, e2))` and does
+  not say in which space. The kernel moves the cross product to world space by the inverse
+  transposed, as it moves the shading normal. A mirrored instance then keeps its outside. Open.
+- **Double-sided emission.** "Traversal" says that emission leaves the front face only, as M1's
+  quads do. `emission` also lets a material emit from its back face when the "double sided" bit
+  of record 0004 is set. Open: an amendment to "Traversal" names the bit.
+- **The surface of a point on a light.** `intersect.shade.ts` exports
+  `surfaceAt(instance, triangle, b1, b2, dir)`. `surface(hit, dir)` calls it, and next-event
+  estimation calls it for the point it samples on a light. The record names `surface` alone.
+  Open.
+- **The slab test's edge cases.** A component of the direction whose absolute value is below
+  1e-20 is taken as 1e-20, so no infinity enters the test. The far distance is multiplied by 1.0000004, so the rounding of a
+  box culls no hit on its face. The record says neither. Open.
+- **The first frame.** The first frame traces one sample over one tile of the whole frame, as
+  "Tiles and the watchdog" says. No speed is known before it, so the budget does not size that
+  tile. Inference: on a slow device, that first dispatch can pass the watchdog. Open: the owner
+  decides on a smaller first tile.
+- **The time of a dispatch.** The record says that the renderer records the time of every
+  dispatch in `info`. The runtime submits the dispatches of a frame together and gives no time
+  for one. `info.dispatchTime` is the frame's time over its dispatches, a mean. Open: a time for
+  each dispatch needs a timer in the runtime.
+- **The count of tiles.** No limit holds the count of tiles. Tiles of 64 pixels make 129,600
+  tiles on a 4K frame, each one dispatch. Inference: a slow device at many samples a frame issues
+  that many dispatches a frame. Open: the owner decides on a smallest tile or fewer samples in a
+  dispatch.
+- **The file of the intersection tests.** "What it touches" names `kernels.test.ts` for the
+  intersection tests on the oracle. They are in `src/kernels/intersect.test.ts`, next to the
+  module they test. Open.
+
+**Configuration and validation record.** Steps 1 to 3 are delivered, at the compiler pin
+e923a34. Step 1 is d9b4d2f (typeshade/radiance#9) and step 2 is a1ea798 (typeshade/radiance#10),
+both on `main`. Step 3 is on the branch `wt/W1` from bc99533, and its pull request is to follow.
+At step 3, the Cornell box gate of record 0002 runs on spheres of 960 triangles. On SwiftShader,
+at 16 by 16 pixels and 1,024 samples, the mean relative difference to the oracle is 3.27e-7.
+The largest is 2.86e-6. `ORACLE.mean` is 3.3e-6, ten times the mean, rounded up, and `abs` and
+`rel` stay 1e-3 and 5 %. Steps 4 and 5 are not started.

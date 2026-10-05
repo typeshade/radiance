@@ -5,10 +5,11 @@ import { Geometry } from './Geometry.ts';
 /**
  * A triangle mesh as typed arrays, in the mesh's own space. It is what `Geometry` becomes at M2
  * (design record 0001, "The host model"). The setter of each attribute adds 1 to `version`.
- * After an edit in place, add 1 to `version` by hand.
+ * After an edit in place, add 1 to `version` by hand: the path tracer builds the geometry's BVH
+ * again only when `version` moved.
  *
- * The path tracer draws a `BufferGeometry` only through the subclasses it knows (design record
- * 0001, step 1). Triangles reach the kernel at step 3.
+ * Any number of meshes may share one geometry. The path tracer builds its BVH once and draws each
+ * mesh as an instance of it.
  */
 export class BufferGeometry extends Geometry {
   readonly type: string = 'BufferGeometry';
@@ -40,9 +41,8 @@ export class BufferGeometry extends Geometry {
   }
 
   /**
-   * uv per vertex. Absent: every uv is 0. The sign of v is open. Record 0001 says glTF's
-   * convention, v = 0 at the top of the image. The tessellators of this package write three.js's
-   * values, v = 1 at the top of a plane.
+   * uv per vertex, three.js's layout: v = 1 at the top of a plane and at a sphere's north pole
+   * (design record 0001, Amendment 1). Absent: every uv is 0.
    */
   get uv(): Float32Array | undefined {
     return this.#uv;

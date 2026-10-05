@@ -6,6 +6,11 @@
 // when the node holds at most 4 primitives or no split beats the leaf's cost, and a leaf at
 // depth 30 whatever the heuristic says, so a stack of 32 entries holds any walk of the tree.
 //
+// A TLAS leaf holds at most 4 instances (record 0001, Amendment 1). So the TLAS splits every node
+// of more than 4 instances. It takes the split with the least cost when there is one and the
+// larger side can still reach leaves of 4 by depth 30. Otherwise it splits at the median of the
+// centroids on the longest axis. A median split halves the count, so the depth stays under 31.
+//
 // The output is in the kernel's layout (record 0001, "The GPU layout"), whose numbers come from
 // `kernels/layout.shade.ts` alone. A node is NODE_STRIDE vec4s: `[0] = (min, bits(a))` and
 // `[1] = (max, bits(b))`, with `b = count | axis << 30`. An inner node has a count of 0, its left
@@ -95,11 +100,21 @@ export function buildTlas(boxes: ArrayLike<number>): Bvh {
   if (boxes.length % 6 !== 0) {
     throw new RangeError(`the box array holds ${boxes.length} numbers, not six per instance`);
   }
-  return build(Float64Array.from(boxes));
+  return build(Float64Array.from(boxes), true);
 }
 
-/** The tree over `boxes`, six numbers per primitive. */
-function build(boxes: Float64Array): Bvh {
+/** The halvings that take `n` primitives to leaves of at most BVH_LEAF_SIZE. */
+function halvings(n: number): number {
+  let h = 0;
+  for (let m = n; m > BVH_LEAF_SIZE; m = Math.ceil(m / 2)) h++;
+  return h;
+}
+
+/**
+ * The tree over `boxes`, six numbers per primitive. With `capped`, no leaf holds more than
+ * BVH_LEAF_SIZE primitives: the TLAS's rule.
+ */
+function build(boxes: Float64Array, capped = false): Bvh {
   const count = boxes.length / 6;
   if (count === 0) throw new RangeError('a BVH needs at least one primitive');
   if (count > NODE_COUNT_MASK) {
@@ -173,7 +188,24 @@ function build(boxes: Float64Array): Bvh {
     const axis = e0 >= e1 && e0 >= e2 ? 0 : e1 >= e2 ? 1 : 2;
     const lo = axis === 0 ? cl0 : axis === 1 ? cl1 : cl2;
     const extent = axis === 0 ? e0 : axis === 1 ? e1 : e2;
-    if (!(extent > 0)) return leaf();
+
+    // The TLAS's other split: the first half of the primitives in centroid order on `axis`, with
+    // ties in primitive order, to the left. Each side holds at most ceil(n / 2) primitives.
+    const median = (): void => {
+      order
+        .subarray(start, end)
+        .sort((p, q) => centroids[p * 3 + axis]! - centroids[q * 3 + axis]! || p - q);
+      children(start + (n >> 1));
+    };
+    const children = (mid: number): void => {
+      const left = used;
+      used += 2;
+      write(node, left, (axis << NODE_AXIS_SHIFT) >>> 0);
+      split(left, start, mid, depth + 1);
+      split(left + 1, mid, end, depth + 1);
+    };
+
+    if (!(extent > 0)) return capped ? median() : leaf();
     const scale = BVH_BINS / extent;
     const binOf = (p: number): number =>
       Math.min(BVH_BINS - 1, Math.floor((centroids[p * 3 + axis]! - lo) * scale));
@@ -216,7 +248,12 @@ function build(boxes: Float64Array): Bvh {
         best = k - 1;
       }
     }
-    if (best < 0 || !(bestCost < n)) return leaf();
+    if (capped) {
+      // The TLAS takes the least-cost split whatever the leaf's cost, while its larger side can
+      // still reach leaves of BVH_LEAF_SIZE by depth BVH_MAX_DEPTH.
+      const larger = best < 0 ? n : Math.max(leftCount[best]!, n - leftCount[best]!);
+      if (best < 0 || depth + 1 + halvings(larger) > BVH_MAX_DEPTH) return median();
+    } else if (best < 0 || !(bestCost < n)) return leaf();
 
     // Partition in place: the bins up to `best` to the left, the others to the right.
     let i = start;
@@ -230,11 +267,7 @@ function build(boxes: Float64Array): Bvh {
         j--;
       }
     }
-    const left = used;
-    used += 2;
-    write(node, left, (axis << NODE_AXIS_SHIFT) >>> 0);
-    split(left, start, i, depth + 1);
-    split(left + 1, i, end, depth + 1);
+    children(i);
   };
 
   split(0, 0, count, 0);

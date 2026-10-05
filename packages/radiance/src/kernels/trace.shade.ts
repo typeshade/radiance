@@ -1,52 +1,48 @@
 "use typeshade";
 import { hash2, sample2 } from "./sampler.shade.ts";
+import {
+  instanceBases,
+  instanceToWorld,
+  lightCdf,
+  lightWords,
+  params,
+  triangleWords,
+  vertexPosition,
+} from "./layout.shade.ts";
+import { NONE, nearest, occluded, surface, surfaceAt } from "./intersect.shade.ts";
+import { emission, evalBsdf, sampleBsdf, Surface } from "./materials.shade.ts";
 
-// The path tracer (plan 3.2, M1): a compute megakernel. Every invocation traces the samples of
-// one pixel: a ray from the camera through the pixel, jittered within it, into a scene of
-// spheres and quads, bouncing until it leaves the scene, is absorbed or is stopped by Russian
-// roulette. A diffuse surface takes the light of the emissive quads by next-event estimation
-// (a point sampled on a light, and a shadow ray to it) and bounces on in a cosine-distributed
-// direction; a mirror reflects. The samples of a pixel add up in `accum`, and `present` draws
-// their mean, tone-mapped.
+// The path tracer (plan 3.2): a compute megakernel. Every invocation traces the samples of one
+// pixel of the dispatch's tile: a ray from the camera through the pixel, jittered within it, into
+// a scene of triangles (design record 0001), bouncing until it leaves the scene, is absorbed or is
+// stopped by Russian roulette. The samples of a pixel add up in `accum`, and `present` draws their
+// mean, tone-mapped.
+//
+// The path loop (`radiance`, record 0004, "The path loop") reads no material word: it finds the
+// nearest hit, makes its `Surface`, adds `emission` when the last bounce was specular or this is
+// the camera ray, adds a light from the light table by next-event estimation through `evalBsdf`,
+// takes the next direction from `sampleBsdf`, and applies Russian roulette. The BSDF sample is
+// drawn before the light is, so that a delta lobe skips next-event estimation; the two draw from
+// their own sampler dimensions, so the order changes no number.
 //
 // Every random number comes from the sampler (sampler.shade.ts), keyed by the pixel, the seed,
 // the sample's index and the dimension pair, so one seed gives one image. No two invocations
 // write the same element of `accum`, and each adds its samples in one order, so two renders of
-// one seed on one device are bit-identical.
+// one seed on one device are bit-identical, whatever the tiles.
 //
 // Determinism (design record 0005, "The six rules"). This file leans on these rules:
 //   Rule 1: no `random`. The sampler draws every random number.
-//   Rule 2: `turn` makes a direction from sums and products. `exp2` and `pow` make the tone
-//           map's value. Its one comparison reads a value that `exp2` feeds. The comparison
-//           selects between two pieces of one curve. It does not choose a path.
+//   Rule 2: `exp2` and `pow` make the tone map's value. Its one comparison reads a value that
+//           `exp2` feeds. The comparison selects between two pieces of one curve. It does not
+//           choose a path. Directions come from `turn` (materials.shade.ts): sums and products.
 //   Rule 3: `sqrt`, `/`, `normalize`, `length`, `dot`, `cross` and `reflect` may steer. The
 //           differential gate bounds them.
-//   Rule 4: no atomics. One pixel is one invocation.
+//   Rule 4: no atomics. One pixel is one invocation in one dispatch.
 //   Rule 6: no `f16`, no subgroup operation, no `raw`.
 // The lint in determinism.test.ts reads the compiler's determinism report of this file.
 //
-// The scene layout is `packScene`'s (src/renderers/pack.ts):
-//   spheres:   two vec4 per sphere: centre and radius; material index in x.
-//   quads:     three vec4 per quad: corner and material index (w); edge u; edge v.
-//              The front face is the side cross(u, v) points to; a light emits only there.
-//   materials: two vec4 per material: albedo and kind (w: 0 diffuse, 1 mirror); emission.
-//   lights:    the index of every quad that emits.
-
-class TraceParams {
-  /** The camera's eye, and its right, up and forward axes in the world (w unused). */
-  eye: vec4;
-  right: vec4;
-  up: vec4;
-  forward: vec4;
-  /** tan of half the horizontal and vertical field of view (z, w unused). */
-  lens: vec4;
-  /** The frame's width and height in pixels, the first sample's index, and how many to take. */
-  frame: vec4u;
-  /** How many spheres, quads and lights, and the seed. */
-  counts: vec4u;
-  /** The bounces a path may take, the bounce Russian roulette starts at (z, w unused). */
-  path: vec4u;
-}
+// The scene's buffers and the uniform block are laid out in layout.shade.ts. The material record
+// and the shading functions are in materials.shade.ts. The traversal is in intersect.shade.ts.
 
 class PresentParams {
   /**
@@ -57,14 +53,6 @@ class PresentParams {
   view: vec4;
 }
 
-class Hit {
-  /** How far along the ray, or NO_HIT. */
-  t: f32;
-  /** The geometric normal, unit length, on the side cross(u, v) or the outward side points. */
-  normal: vec3;
-  material: u32;
-}
-
 class FullScreen {
   @builtin("position") pos: vec4;
 }
@@ -73,147 +61,85 @@ class Shown {
   @location(0) color: vec4;
 }
 
-declare const params: uniform<TraceParams>;
 declare const present: uniform<PresentParams>;
-declare const spheres: storage<array<vec4>>;
-declare const quads: storage<array<vec4>>;
-declare const materials: storage<array<vec4>>;
-declare const lights: storage<array<u32>>;
 /** Each pixel's samples added up: rgb, and how many in w. */
 declare const accum: storage<array<vec4>, "read_write">;
 
-/** What `nearest` returns for a ray that meets nothing. */
+/** The limit of a camera ray and of a bounce: nothing is this far. */
 const NO_HIT = 1e30;
-/** How far a new ray starts off the surface it leaves, against self-intersection. */
-const EPSILON = 0.0001;
-const INV_PI = 0.3183098861837907;
+/** A shadow ray stops this fraction short of the light, so it does not meet the light itself. */
+const SHADOW_SHORT = 0.0001;
+/** The sampler's dimension pairs one bounce takes: the light's point, the BSDF's direction, the
+ *  light and lobe choices, and Russian roulette. Pair 0 is the pixel's jitter. */
+const PAIRS_PER_BOUNCE: u32 = 4;
 
-/** How far along the ray the sphere is met from outside or inside, or NO_HIT. */
-export function hitSphere(origin: vec3, dir: vec3, centre: vec3, radius: f32): f32 {
-  const oc = origin - centre;
-  const b = dot(oc, dir);
-  const c = dot(oc, oc) - radius * radius;
-  const disc = b * b - c;
-  if (disc < 0.) {
-    return NO_HIT;
-  }
-  const s = sqrt(disc);
-  const near = -b - s;
-  if (near > EPSILON) {
-    return near;
-  }
-  const far = -b + s;
-  return select(NO_HIT, far, far > EPSILON);
-}
-
-/** How far along the ray the parallelogram `corner + a u + b v` (a, b in [0, 1]) is met, or NO_HIT. */
-export function hitQuad(origin: vec3, dir: vec3, corner: vec3, u: vec3, v: vec3): f32 {
-  const n = cross(u, v);
-  const denom = dot(n, dir);
-  if (abs(denom) < 1e-12) {
-    return NO_HIT;
-  }
-  const t = dot(n, corner - origin) / denom;
-  if (t <= EPSILON) {
-    return NO_HIT;
-  }
-  const p = origin + dir * t - corner;
-  const w = n / dot(n, n);
-  const a = dot(w, cross(p, v));
-  const b = dot(w, cross(u, p));
-  if (a < 0. || a > 1. || b < 0. || b > 1.) {
-    return NO_HIT;
-  }
-  return t;
-}
-
-/** The nearest surface the ray meets before `limit`. */
-export function nearest(origin: vec3, dir: vec3, limit: f32): Hit {
-  let best: Hit = { t: limit, normal: vec3(0., 0., 1.), material: 0 };
-  for (let i: u32 = 0; i < params.counts.x; i++) {
-    const s = spheres[i * 2];
-    const t = hitSphere(origin, dir, s.xyz, s.w);
-    if (t < best.t) {
-      best = { t: t, normal: normalize(origin + dir * t - s.xyz), material: u32(spheres[i * 2 + 1].x) };
+/** The index of the light whose share of the table's probability holds `pick`, in [0, 1). */
+export function pickLight(pick: f32, count: u32): u32 {
+  let lo: u32 = 0;
+  let hi: u32 = count - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) / 2;
+    if (lightCdf(mid) > pick) {
+      hi = mid;
+    } else {
+      lo = mid + 1;
     }
   }
-  for (let i: u32 = 0; i < params.counts.y; i++) {
-    const q = quads[i * 3];
-    const u = quads[i * 3 + 1].xyz;
-    const v = quads[i * 3 + 2].xyz;
-    const t = hitQuad(origin, dir, q.xyz, u, v);
-    if (t < best.t) {
-      best = { t: t, normal: normalize(cross(u, v)), material: u32(q.w) };
-    }
-  }
-  return best;
+  return lo;
 }
 
 /**
- * cos and sin of 2 pi r, for r in [0, 1), from multiplications and additions alone. WGSL lets a
- * GPU's `cos` and `sin` be off by 2^-11 (an absolute error), enough to send a path past another
- * edge than the oracle's does; a sum and a product are correctly rounded on every target, so this
- * keeps the GPU's paths on the oracle's (plan 3.1, constraint 4). The quarter turn r falls in is
- * folded away, and the angle left, in [0, pi/2), goes through the Taylor series to the 13th and
- * 14th powers: under 1e-8 off, below f32's resolution.
+ * The light that reaches the surface `s` toward `wo` from one point on one light, by next-event
+ * estimation: the light chosen from the table by `pick`, the point on its triangle by `r`, the
+ * BSDF's value from `evalBsdf`, the light's from `emission`. A shadow ray checks the way.
  */
-export function turn(r: f32): vec2 {
-  const a = r * 4.;
-  const quarter = min(u32(a), 3);
-  const x = (a - f32(quarter)) * 1.5707963267948966;
-  const x2 = x * x;
-  const s = x * (1. + x2 * (-1. / 6. + x2 * (1. / 120. + x2 * (-1. / 5040. + x2 * (1. / 362880. + x2 * (-1. / 39916800. + x2 / 6227020800.))))));
-  const c = 1. + x2 * (-0.5 + x2 * (1. / 24. + x2 * (-1. / 720. + x2 * (1. / 40320. + x2 * (-1. / 3628800. + x2 * (1. / 479001600. - x2 / 87178291200.))))));
-  if (quarter === 0) {
-    return vec2(c, s);
-  }
-  if (quarter === 1) {
-    return vec2(-s, c);
-  }
-  if (quarter === 2) {
-    return vec2(-c, -s);
-  }
-  return vec2(s, -c);
-}
-
-/** A direction about `n` with the cosine's distribution, from two numbers in [0, 1). */
-export function aboutNormal(n: vec3, r: vec2): vec3 {
-  const phi = turn(r.x);
-  const cosTheta = sqrt(1. - r.y);
-  const sinTheta = sqrt(r.y);
-  const helper = select(vec3(1., 0., 0.), vec3(0., 1., 0.), abs(n.x) > 0.9);
-  const tangent = normalize(cross(helper, n));
-  const bitangent = cross(n, tangent);
-  return tangent * (phi.x * sinTheta) + bitangent * (phi.y * sinTheta) + n * cosTheta;
-}
-
-/** The light that reaches `p` on a diffuse surface facing `n`, from a point sampled on one
- *  light: the light chosen by `pick`, the point by `r`. Not yet multiplied by the albedo. */
-export function direct(p: vec3, n: vec3, pick: f32, r: vec2): vec3 {
-  const count = params.counts.z;
+export function direct(s: Surface, wo: vec3, pick: f32, r: vec2): vec3 {
+  const count = params.scene.z;
   if (count === 0) {
     return vec3(0.);
   }
-  const which = lights[min(u32(pick * f32(count)), count - 1)];
-  const q = quads[which * 3];
-  const u = quads[which * 3 + 1].xyz;
-  const v = quads[which * 3 + 2].xyz;
-  const to = q.xyz + u * r.x + v * r.y - p;
-  const dist2 = dot(to, to);
+  const which = pickLight(pick, count);
+  const light = lightWords(which);
+  let chance = light.cdf;
+  if (which > 0) {
+    chance = light.cdf - lightCdf(which - 1);
+  }
+  if (chance <= 0.) {
+    return vec3(0.);
+  }
+  // A point spread evenly over the triangle: the weights of its second and third vertices.
+  const su = sqrt(r.x);
+  const b1 = su * (1. - r.y);
+  const b2 = su * r.y;
+  const bases = instanceBases(light.instance);
+  const tw = triangleWords(light.triangle);
+  const p0 = vertexPosition(bases.z, tw.x);
+  const e1 = instanceToWorld(light.instance, vec4(vertexPosition(bases.z, tw.y) - p0, 0.));
+  const e2 = instanceToWorld(light.instance, vec4(vertexPosition(bases.z, tw.z) - p0, 0.));
+  const area = length(cross(e1, e2)) * 0.5;
+  const toward = instanceToWorld(light.instance, vec4(p0, 1.)) + e1 * b1 + e2 * b2 - s.p;
+  const dist2 = dot(toward, toward);
   const dist = sqrt(dist2);
-  const wi = to / dist;
-  const ln = cross(u, v);
-  const area = length(ln);
-  const cosLight = -dot(ln, wi) / area;
-  const cosSurface = dot(n, wi);
-  if (cosLight <= 0. || cosSurface <= 0.) {
+  const wi = toward / dist;
+  if (dot(wi, s.ng) <= 0.) {
     return vec3(0.);
   }
-  if (nearest(p, wi, dist * (1. - EPSILON)).t < dist * (1. - EPSILON)) {
+  const at = surfaceAt(light.instance, light.triangle, b1, b2, wi);
+  const le = emission(at, -wi);
+  if (le.x <= 0. && le.y <= 0. && le.z <= 0.) {
     return vec3(0.);
   }
-  const emission = materials[u32(q.w) * 2 + 1].xyz;
-  return emission * (INV_PI * cosSurface * cosLight * area * f32(count) / dist2);
+  const f = evalBsdf(s, wo, wi);
+  if (f.x <= 0. && f.y <= 0. && f.z <= 0.) {
+    return vec3(0.);
+  }
+  if (occluded(s.p, wi, dist * (1. - SHADOW_SHORT))) {
+    return vec3(0.);
+  }
+  // The point's density in area, chance / area, turned into one in solid angle: dist2 / cosLight.
+  const cosLight = -dot(at.ng, wi);
+  const cosSurface = dot(s.ns, wi);
+  return le * f.xyz * (max(cosSurface, 0.) * cosLight * area / (chance * dist2));
 }
 
 /** The radiance one camera ray brings back: sample `index` of the pixel keyed by `pixelSeed`. */
@@ -227,37 +153,34 @@ export function radiance(origin0: vec3, dir0: vec3, pixelSeed: u32, index: u32):
   const bounces = params.path.x;
   for (let bounce: u32 = 0; bounce <= bounces; bounce++) {
     const hit = nearest(origin, dir, NO_HIT);
-    if (hit.t >= NO_HIT) {
+    if (hit.instance === NONE) {
       break;
     }
-    const albedo = materials[hit.material * 2];
-    const emission = materials[hit.material * 2 + 1].xyz;
-    const front = dot(hit.normal, dir) < 0.;
-    if (specular && front) {
-      sum += throughput * emission;
+    const s = surface(hit, dir);
+    const wo = -dir;
+    if (specular) {
+      sum += throughput * emission(s, wo);
     }
     if (bounce === bounces) {
       break;
     }
-    const n = select(-hit.normal, hit.normal, front);
-    const p = origin + dir * hit.t + n * EPSILON;
-    if (albedo.w > 0.5) {
-      dir = reflect(dir, n);
-      origin = p;
-      throughput *= albedo.xyz;
-      specular = true;
-      continue;
+    const pair = 1 + bounce * PAIRS_PER_BOUNCE;
+    const choice = sample2(pixelSeed, index, pair + 2);
+    const bsdf = sampleBsdf(s, wo, vec3(choice.y, sample2(pixelSeed, index, pair + 1)));
+    if (!bsdf.specular) {
+      sum += throughput * direct(s, wo, choice.x, sample2(pixelSeed, index, pair));
     }
-    const pair = bounce * 3 + 1;
-    const pick = sample2(pixelSeed, index, pair + 2);
-    sum += throughput * albedo.xyz * direct(p, n, pick.x, sample2(pixelSeed, index, pair));
-    dir = aboutNormal(n, sample2(pixelSeed, index, pair + 1));
-    origin = p;
-    throughput *= albedo.xyz;
-    specular = false;
+    // A direction under the surface, which a shading normal can give, ends the path.
+    if (bsdf.pdf <= 0. || dot(bsdf.wi, s.ng) <= 0.) {
+      break;
+    }
+    throughput *= bsdf.weight;
+    origin = s.p;
+    dir = bsdf.wi;
+    specular = bsdf.specular;
     if (bounce >= params.path.y) {
       const survive = clamp(max(throughput.x, max(throughput.y, throughput.z)), 0.05, 0.95);
-      if (pick.y >= survive) {
+      if (sample2(pixelSeed, index, pair + 3).x >= survive) {
         break;
       }
       throughput /= survive;
@@ -266,17 +189,22 @@ export function radiance(origin0: vec3, dir0: vec3, pixelSeed: u32, index: u32):
   return sum;
 }
 
-/** Adds `params.frame.w` samples to every pixel of the frame. */
+/** Adds `params.frame.w` samples to every pixel of the dispatch's tile. */
 @compute([64])
 export function trace(@builtin("global_invocation_id") gid: vec3u): void {
-  const width = params.frame.x;
-  const height = params.frame.y;
-  if (gid.x >= width * height) {
+  const tile = params.tile;
+  if (gid.x >= tile.z * tile.w) {
     return;
   }
-  const px = gid.x % width;
-  const py = gid.x / width;
-  const pixelSeed = hash2(gid.x, params.counts.w);
+  const width = params.frame.x;
+  const height = params.frame.y;
+  const px = tile.x + gid.x % tile.z;
+  const py = tile.y + gid.x / tile.z;
+  if (px >= width || py >= height) {
+    return;
+  }
+  const pixel = py * width + px;
+  const pixelSeed = hash2(pixel, params.scene.w);
   let sum = vec3(0.);
   for (let s: u32 = 0; s < params.frame.w; s++) {
     const index = params.frame.z + s;
@@ -290,7 +218,7 @@ export function trace(@builtin("global_invocation_id") gid: vec3u): void {
     );
     sum += radiance(params.eye.xyz, dir, pixelSeed, index);
   }
-  accum[gid.x] += vec4(sum, f32(params.frame.w));
+  accum[pixel] += vec4(sum, f32(params.frame.w));
 }
 
 /** The display transform: exposure, Narkowicz's fit of the ACES filmic curve, the sRGB curve. */

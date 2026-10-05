@@ -124,7 +124,11 @@ try {
   await site.goto(`${origin}/examples/cornell-box/`);
   const TOOLBAR = '[data-stage-toolbar]';
   const status = () => site.evaluate((q) => document.querySelector(q)?.dataset.status, TOOLBAR);
-  const waitFor = (test, arg, timeout = 60_000) =>
+  // On SwiftShader a full frame of the triangle kernel (design record 0001) at the stage's size
+  // takes about ten seconds, and the page answers the mouse at the frame after the one in
+  // flight. So each wait allows several frames: a frame that takes longer is a failure.
+  const FRAME = 20_000;
+  const waitFor = (test, arg, timeout = 4 * FRAME) =>
     site.waitForFunction(test, [TOOLBAR, arg], { timeout });
   const waitSamples = (n) =>
     waitFor(([q, k]) => Number(document.querySelector(q)?.dataset.samples) >= k, n);
@@ -142,10 +146,10 @@ try {
   await site.mouse.move(cx, cy);
   await site.mouse.down();
   for (let i = 1; i <= 10; i++) await site.mouse.move(cx + i * 15, cy + i * 3);
-  await waitFor(([q]) => document.querySelector(q)?.dataset.status === 'Preview', null, 10_000);
+  await waitFor(([q]) => document.querySelector(q)?.dataset.status === 'Preview', null, 2 * FRAME);
   const during = await status();
   await site.mouse.up();
-  await waitFor(([q]) => document.querySelector(q)?.dataset.status !== 'Preview', null, 10_000);
+  await waitFor(([q]) => document.querySelector(q)?.dataset.status !== 'Preview', null, 2 * FRAME);
   await waitSamples(2);
   const after = await canvas.screenshot();
   if (before.equals(after)) fail('site: the view is the same after a drag');
@@ -154,7 +158,7 @@ try {
   await site.mouse.move(cx, cy);
   const scrolled = await site.evaluate(() => window.scrollY);
   await site.mouse.wheel(0, -400);
-  await waitFor(([q]) => Number(document.querySelector(q)?.dataset.samples) < 4, null, 10_000);
+  await waitFor(([q]) => Number(document.querySelector(q)?.dataset.samples) < 4, null, 2 * FRAME);
   if ((await site.evaluate(() => window.scrollY)) !== scrolled)
     fail('site: a wheel turn over the canvas scrolled the page');
   await waitSamples(2);
