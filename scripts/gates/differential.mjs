@@ -91,6 +91,10 @@ export function compareImages(gpu, cpu, bounds) {
   };
 }
 
+/** `bounds` with `abs` and `rel` opened without limit, so that only the `mean` bound can fail. The
+ *  probe judges with it, to show that the gate holds the `mean` bound by itself. */
+export const meanBoundOnly = (bounds) => ({ ...bounds, abs: Infinity, rel: Infinity });
+
 /** `image` moved one pixel to the right: each pixel takes its left neighbour's value, and the
  *  first column repeats. The fault the probe plants. */
 export function shiftOnePixel(image, width, height) {
@@ -161,23 +165,25 @@ export async function run(options = {}) {
   });
 }
 
-/** Runs the gate on the oracle's image moved one pixel, which must fail the `mean` bound. Throws
- *  when it does not. Answers `{ ok: true, numbers, message }` of the failure it saw. */
+/** Runs the gate on the oracle's image moved one pixel, twice: with the bounds of the scene, and
+ *  with `meanBoundOnly` of them. Both must fail, so the `mean` bound fails the image by itself.
+ *  Throws when one does not. Answers `{ ok: true, numbers, message }` of the failure it saw. */
 export async function probe(options = {}) {
   const name = options.scene ?? 'cornell';
   const { gate, oracle } = gatedScene(name);
   return withRenderPage(options, async (session) => {
     const m = measured.get(name) ?? (await measure(name, session));
     const moved = shiftOnePixel(m.cpu, gate.size[0], gate.size[1]);
-    const result = compareImages(m.render.radiance, moved, oracle);
-    if (result.ok || !(result.numbers.mean > oracle.mean))
+    const whole = compareImages(m.render.radiance, moved, oracle);
+    const alone = compareImages(m.render.radiance, moved, meanBoundOnly(oracle));
+    if (whole.ok || alone.ok || !(alone.numbers.mean > oracle.mean))
       throw new Error(
-        `the differential gate does not fail the mean bound on the oracle's image moved one pixel (mean ${result.numbers.mean}, bound ${oracle.mean}), so it cannot see a picture that moved`,
+        `the differential gate does not fail the mean bound on the oracle's image moved one pixel (the bounds of the scene: ok ${whole.ok}; the mean bound alone: ok ${alone.ok}, mean ${alone.numbers.mean}, bound ${oracle.mean}), so it cannot see a picture that moved`,
       );
     return {
       ok: true,
-      numbers: result.numbers,
-      message: `the oracle's image moved one pixel fails the mean bound, as it must: mean ${result.numbers.mean.toExponential(2)} over ${oracle.mean}`,
+      numbers: alone.numbers,
+      message: `the oracle's image moved one pixel fails the gate, and fails the mean bound alone, as it must: mean ${alone.numbers.mean.toExponential(2)} over ${oracle.mean}`,
     };
   });
 }

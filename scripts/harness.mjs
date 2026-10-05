@@ -41,7 +41,7 @@ const PREVIEW = { size: [side, side], samples: previewSamples, perFrame: 16, see
 // ---- 1: the site the last section runs, built as it is deployed -------------------------------
 const build = spawnSync('bun', ['run', 'site'], { encoding: 'utf8' });
 if (build.status !== 0) {
-  process.stderr.write(`bundling failed:\n${build.stdout}${build.stderr}`);
+  process.stderr.write(`the site build failed:\n${build.stdout}${build.stderr}`);
   process.exit(1);
 }
 

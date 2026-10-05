@@ -6,7 +6,7 @@ import { describe, expect, test } from 'bun:test';
 import { crc32, inflateSync } from 'node:zlib';
 import { encodePng } from './_png.mjs';
 import { bitwiseDifference, judge } from './determinism.mjs';
-import { compareImages, gatedScene, shiftOnePixel } from './differential.mjs';
+import { compareImages, gatedScene, meanBoundOnly, shiftOnePixel } from './differential.mjs';
 
 /** A 16 x 16 image of RGBA floats: a gradient left to right, 1024 samples in each pixel. */
 const WIDTH = 16;
@@ -48,6 +48,7 @@ describe('differential comparison', () => {
     const gpu = gradient();
     gpu[0]! *= 1.02;
     const result = compareImages(gpu, gradient(), BOUNDS);
+    expect(result.ok).toBe(true);
     expect(result.numbers.outOfBounds).toBe(0);
     expect(result.numbers.abs).toBeLessThanOrEqual(BOUNDS.abs);
     expect(result.numbers.rel).toBeGreaterThan(0.01);
@@ -65,13 +66,23 @@ describe('differential comparison', () => {
     expect(result.ok).toBe(false);
     expect(result.message).toMatch(/floats/);
   });
-  test('the image moved one pixel fails the mean bound, as the probe needs', () => {
+  test('a mean over the bound fails when every channel is within abs', () => {
+    const gpu = gradient().map((v, i) => (i % 4 === 3 ? v : v + 5e-4));
+    const result = compareImages(gpu, gradient(), BOUNDS);
+    expect(result.numbers.outOfBounds).toBe(0);
+    expect(result.numbers.mean).toBeGreaterThan(BOUNDS.mean);
+    expect(result.ok).toBe(false);
+    expect(result.message).toMatch(/mean relative difference .* is over/);
+  });
+  test('the image moved one pixel fails the mean bound alone, as the probe needs', () => {
     const moved = shiftOnePixel(gradient(), WIDTH, HEIGHT);
     expect(moved[4]).toBe(gradient()[0]);
     expect(moved[0]).toBe(gradient()[0]);
-    const result = compareImages(gradient(), moved, BOUNDS);
-    expect(result.ok).toBe(false);
-    expect(result.numbers.mean).toBeGreaterThan(BOUNDS.mean);
+    expect(compareImages(gradient(), moved, BOUNDS).ok).toBe(false);
+    const alone = compareImages(gradient(), moved, meanBoundOnly(BOUNDS));
+    expect(alone.numbers.outOfBounds).toBe(0);
+    expect(alone.numbers.mean).toBeGreaterThan(BOUNDS.mean);
+    expect(alone.ok).toBe(false);
   });
   test('the Cornell box is the scene the gates hold', () => {
     expect(gatedScene('cornell').gate.size).toEqual([16, 16]);
