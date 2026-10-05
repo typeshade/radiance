@@ -8,6 +8,13 @@
 //
 // Everything here is integer arithmetic on u32, so it is exact: the GPU and the CPU oracle draw
 // the same numbers for the same pixel, sample and dimension.
+//
+// Determinism (design record 0005, "The six rules"). This file is the source Rule 1 names: every
+// random number of every kernel comes from here. It leans on these rules:
+//   Rule 2: no transcendental function.
+//   Rule 3: its one `/`, in `toUnit`, is a bounded row that the lint admits.
+//   Rule 6: no `f16`, no subgroup operation, no `raw`.
+// The lint in determinism.test.ts reads the compiler's determinism report of this file.
 
 /** A hash of a whole number to a whole number, spread over all 32 bits (PCG). */
 export function hash(x: u32): u32 {
