@@ -3,29 +3,35 @@
 // page counts the floats that differ. Two renders of seed 1 differ in none, and seed 2 differs
 // in many.
 //
-// The size, the samples and the samples a frame are fixed, and nothing moves. A pixel's samples
-// add up in chunks of `samplesPerFrame`, so two renders compared bit for bit must use the same
-// chunks. That is why `targetFrameTime`, which changes the chunk with the time, is not set here.
+// The size is the canvas's, and the samples and the samples a frame are fixed. Nothing moves. A
+// pixel's samples add up in chunks of `samplesPerFrame`, so two renders compared bit for bit must
+// use the same chunks. That is why `targetFrameTime`, which changes the chunk with the time, is
+// not set here. The render gate (scripts/gates/render.mjs) sets `maxSamples` after the set-up, so
+// each render stops at the smaller of `RENDER.samples` and `maxSamples`.
 
 import { PathTracer } from '@typeshade/radiance';
 import { createCornellBox } from '@typeshade/radiance-addons';
 import type { ExampleRun } from './types.ts';
 
-/** The render, fixed. The page's text reads these numbers from here. */
+/** The render. The size is the canvas's, and these are its fallback. The page reads the rest. */
 export const RENDER = {
   width: 320,
   height: 200,
-  samples: 128,
+  samples: 64,
   perFrame: 16,
   seed: 1,
   otherSeed: 2,
 } as const;
-const { width: WIDTH, height: HEIGHT, samples: SAMPLES, perFrame: PER_FRAME } = RENDER;
+const { samples: SAMPLES, perFrame: PER_FRAME } = RENDER;
 const { seed: SEED, otherSeed: OTHER_SEED } = RENDER;
+/** A render's size in pixels. */
+type Size = { width: number; height: number };
 /** The difference picture shows each channel's difference times this. */
 const GAIN = 16;
 /** A pixel with a differing float shows at least this bright, so no difference is too small. */
 const FLOOR = 0.25;
+/** The milliseconds a finished render stays on the canvas before the next one starts. */
+const HOLD = 100;
 
 /** How many floats of `a` and `b` differ bit for bit. `Object.is` decides, as the gate does. */
 function countDifferent(a: Float32Array, b: Float32Array): number {
@@ -35,8 +41,8 @@ function countDifferent(a: Float32Array, b: Float32Array): number {
 }
 
 /** The difference of two renders as a picture: black where every float of a pixel is the same. */
-function differencePicture(a: Float32Array, b: Float32Array): ImageData {
-  const bytes = new Uint8ClampedArray(WIDTH * HEIGHT * 4);
+function differencePicture(a: Float32Array, b: Float32Array, size: Size): ImageData {
+  const bytes = new Uint8ClampedArray(size.width * size.height * 4);
   for (let i = 0; i < bytes.length; i += 4) {
     const differs = [0, 1, 2, 3].some((c) => !Object.is(a[i + c], b[i + c]));
     for (let c = 0; c < 3; c++) {
@@ -46,15 +52,15 @@ function differencePicture(a: Float32Array, b: Float32Array): ImageData {
     }
     bytes[i + 3] = 255;
   }
-  return new ImageData(bytes, WIDTH, HEIGHT);
+  return new ImageData(bytes, size.width, size.height);
 }
 
 /** The displayed image of a render, `readPixels()`'s floats, as a picture. */
-function picture(texels: Float32Array): ImageData {
+function picture(texels: Float32Array, size: Size): ImageData {
   return new ImageData(
     Uint8ClampedArray.from(texels, (t) => Math.round(t * 255)),
-    WIDTH,
-    HEIGHT,
+    size.width,
+    size.height,
   );
 }
 
@@ -66,7 +72,7 @@ function element<K extends keyof HTMLElementTagNameMap>(tag: K, className: strin
 }
 
 /** Three pictures with captions, and a list of counts. `rd-panel` is styled in custom.css. */
-function buildPanel() {
+function buildPanel(size: Size) {
   const panel = element('div', 'rd-panel');
   const pictures = element('div', 'rd-panel-pictures');
   const tiles = (
@@ -78,7 +84,7 @@ function buildPanel() {
   ).map(([title, note]) => {
     const figure = element('figure', '');
     const tile = document.createElement('canvas');
-    [tile.width, tile.height] = [WIDTH, HEIGHT];
+    [tile.width, tile.height] = [size.width, size.height];
     tile.setAttribute('role', 'img');
     tile.setAttribute('aria-label', `${title}. ${note}`);
     const caption = element('figcaption', '', title);
@@ -90,7 +96,7 @@ function buildPanel() {
   const list = element('dl', 'rd-panel-counts');
   const counts = (
     [
-      ['floats', 'Floats in one render', WIDTH * HEIGHT * 4],
+      ['floats', 'Floats in one render', size.width * size.height * 4],
       ['same-seed', `Differ, seed ${SEED} against seed ${SEED} again`, undefined],
       ['other-seed', `Differ, seed ${SEED} against seed ${OTHER_SEED}`, undefined],
     ] as const
@@ -115,34 +121,45 @@ function buildPanel() {
 
 export default async function determinism(canvas: HTMLCanvasElement): Promise<ExampleRun> {
   const { scene, camera } = createCornellBox();
-  camera.aspect = WIDTH / HEIGHT;
+  const size: Size = {
+    width: canvas.clientWidth || RENDER.width,
+    height: canvas.clientHeight || RENDER.height,
+  };
+  camera.aspect = size.width / size.height;
   const renderer = new PathTracer({ canvas, seed: SEED, samplesPerFrame: PER_FRAME });
-  renderer.setSize(WIDTH, HEIGHT);
+  renderer.setSize(size.width, size.height);
   renderer.maxSamples = SAMPLES;
   await renderer.init();
   canvas.style.cursor = 'default';
-  const { panel, tiles, counts, status } = buildPanel();
+  const { panel, tiles, counts, status } = buildPanel(size);
 
   let stopped = false;
   const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
-  /** Render from zero to SAMPLES, one frame at a time, so that the stage's Pause stops it. */
+  /**
+   * Render from zero to the sample count, one frame at a time, so that the stage's Pause stops
+   * it. The picture of the render before stays on the canvas for a moment first: the render gate
+   * reads the displayed image when the samples reach their count, and a reset at that moment
+   * would give it a picture of the next render.
+   */
   async function render(message: string) {
     status.textContent = message;
+    await new Promise((resolve) => setTimeout(resolve, HOLD));
+    if (stopped) throw new Error('stopped');
     renderer.reset();
     do {
       await nextFrame();
       if (stopped) throw new Error('stopped');
       await renderer.render(scene, camera);
-    } while (renderer.samples < SAMPLES);
+    } while (renderer.samples < Math.min(SAMPLES, renderer.maxSamples));
     return { radiance: await renderer.readRadiance(), pixels: await renderer.readPixels() };
   }
 
   async function run() {
     const first = await render(`Rendering seed ${SEED}.`);
-    tiles[0]!.putImageData(picture(first.pixels), 0, 0);
+    tiles[0]!.putImageData(picture(first.pixels, size), 0, 0);
     const again = await render(`Rendering seed ${SEED} again.`);
-    tiles[1]!.putImageData(picture(again.pixels), 0, 0);
-    tiles[2]!.putImageData(differencePicture(first.radiance, again.radiance), 0, 0);
+    tiles[1]!.putImageData(picture(again.pixels, size), 0, 0);
+    tiles[2]!.putImageData(differencePicture(first.radiance, again.radiance, size), 0, 0);
     const same = countDifferent(first.radiance, again.radiance);
     counts[1]!(same);
     renderer.seed = OTHER_SEED;
