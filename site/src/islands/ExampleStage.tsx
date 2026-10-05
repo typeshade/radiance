@@ -189,9 +189,9 @@ export default function ExampleStage(props: { id: string; copy: StageCopy; compa
         : copy.rendering;
   const colour = error ? 'error' : status === copy.rendering ? 'processing' : 'default';
   const count = (
-    <span className="rd-num text-[12px] leading-[18px]">
+    <span className="rd-num text-[12px] leading-[18px] whitespace-nowrap">
       {stats.samples} {copy.samples}
-      {stats.frameTime !== undefined && (
+      {!compact && stats.frameTime !== undefined && (
         <span className="text-hint">
           {' '}
           / {stats.frameTime.toFixed(1)} {copy.frameTime}
@@ -223,7 +223,7 @@ export default function ExampleStage(props: { id: string; copy: StageCopy; compa
         )}
         {compact && error === undefined && (
           <div
-            className="pointer-events-none absolute top-3 left-3 flex items-center gap-2 rounded-[8px] bg-overlay px-2 py-1 text-fg shadow-[0_4px_10px_rgb(0_0_0/0.2)]"
+            className="pointer-events-none absolute top-3 left-3 flex items-center gap-2 rounded-[8px] border border-hairline bg-overlay px-2 py-1 text-fg"
             data-samples={stats.samples}
             data-status={status}
           >

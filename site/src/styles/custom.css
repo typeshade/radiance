@@ -148,9 +148,17 @@
   color-scheme: dark;
 }
 
-/* The site's own wide pages (the front page, the examples) run in a 1200px measure. */
+/* The site's own wide pages (the front page, the examples) run in a 1200px measure, on the
+   page ground (canvas-200), so their white cards stand off it. The header and the sidebar
+   stay on the canvas. This block comes after both themes, so it wins in each. */
 :root[data-rd-wide] {
   --sl-content-width: 75rem;
+  --sl-color-bg: var(--rd-page);
+}
+
+/* No shadow at rest (DESIGN.md): Starlight's previous and next cards draw one. */
+.pagination-links a {
+  box-shadow: none;
 }
 
 ::selection {

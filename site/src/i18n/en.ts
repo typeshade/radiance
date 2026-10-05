@@ -22,8 +22,8 @@ export const en = {
     examples: 'Examples',
     showcase: {
       file: 'first-scene.ts',
-      caption:
-        'The file on the left draws the picture on the right. Drag the picture to move the camera: the render starts again and sharpens.',
+      caption: 'This file draws this picture.',
+      open: 'Open this example',
     },
     graph: {
       h: 'A scene graph you already know',
@@ -50,7 +50,7 @@ export const en = {
     },
     gallery: {
       h: 'Examples',
-      p: 'Every example is a file in the repository, run on its page. Open one, drag it, and read the file that made it.',
+      p: 'Every example is a file in the repository, run on its page. Open one and read the file that made it.',
       all: 'All examples',
     },
     install: {
@@ -63,7 +63,7 @@ export const en = {
   examples: {
     h1: 'Examples',
     description:
-      'Every example is a TypeScript file in the repository, run on its page by the engine. Open one, move the camera, and read the file that made it.',
+      'Every example is a TypeScript file in the repository, run on its page by the engine. Open one and read the file that made it.',
     source: 'Source',
     onGithub: 'Open the file on GitHub',
     stage: {

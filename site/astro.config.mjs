@@ -57,7 +57,18 @@ export default defineConfig({
           codeLineHeight: '1.6',
           codePaddingBlock: '0.75rem',
           codePaddingInline: '1rem',
-          frames: { frameBoxShadowCssValue: 'none', shadowColor: 'transparent' },
+          // The code panes sit on Vapor's overlay, not the github themes' own grounds.
+          codeBackground: 'var(--rd-overlay)',
+          frames: {
+            frameBoxShadowCssValue: 'none',
+            shadowColor: 'transparent',
+            editorTabBarBackground: 'var(--rd-page)',
+            editorActiveTabBackground: 'var(--rd-overlay)',
+            editorActiveTabIndicatorTopColor: 'transparent',
+            editorActiveTabIndicatorBottomColor: 'var(--rd-primary)',
+            terminalTitlebarBackground: 'var(--rd-page)',
+            terminalBackground: 'var(--rd-overlay)',
+          },
         },
       },
       plugins: [

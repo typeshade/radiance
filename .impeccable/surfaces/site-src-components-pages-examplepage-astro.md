@@ -1,8 +1,8 @@
 ---
 version: 1
 slug: "site-src-components-pages-examplepage-astro"
-primary_target: "site/src/components/pages/ExamplePage.astro"
-related_targets: ["site/src/components/pages/ExamplesPage.astro","site/src/islands/ExampleStage.tsx"]
+primary_target: "site/src/pages/examples/[id].astro"
+related_targets: ["site/src/pages/examples/index.astro","site/src/components/Stage.astro","site/src/islands/ExampleStage.tsx"]
 ---
 
 # Examples (`/examples/`, `/examples/<id>/`)

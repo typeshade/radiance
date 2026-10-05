@@ -19,16 +19,27 @@ import type { ExampleRun } from './types.ts';
 export default async function firstScene(canvas: HTMLCanvasElement): Promise<ExampleRun> {
   const scene = new Scene();
 
-  const floor = new Mesh(new QuadGeometry(6, 6), new DiffuseMaterial({ color: 0xbfbfbf }));
+  const ground = new QuadGeometry(6, 6);
+  const grey = new DiffuseMaterial();
+  grey.color.setHex(0xbfbfbf);
+  const floor = new Mesh(ground, grey);
   floor.rotation.x = -Math.PI / 2;
 
-  const lamp = new Mesh(new QuadGeometry(1.2, 1.2), new EmissiveMaterial({ intensity: 10 }));
+  const panel = new QuadGeometry(1.2, 1.2);
+  const light = new EmissiveMaterial();
+  light.emissive.multiplyScalar(10);
+  const lamp = new Mesh(panel, light);
   lamp.position.set(0, 2.2, 0);
   lamp.rotation.x = Math.PI / 2;
 
-  const mirror = new Mesh(new SphereGeometry(0.5), new MirrorMaterial());
+  const sphere = new SphereGeometry(0.5);
+  const chrome = new MirrorMaterial();
+  const mirror = new Mesh(sphere, chrome);
   mirror.position.set(-0.6, 0.5, 0);
-  const ball = new Mesh(new SphereGeometry(0.5), new DiffuseMaterial({ color: 0xe8703a }));
+
+  const orange = new DiffuseMaterial();
+  orange.color.setHex(0xe8703a);
+  const ball = new Mesh(sphere, orange);
   ball.position.set(0.6, 0.5, 0.2);
 
   scene.add(floor, lamp, mirror, ball);

@@ -56,6 +56,14 @@ const copy: StageCopy = { ...s, canvasLabel: s.canvasLabel(entry.title) };
     min-height: 3rem;
     border-top: 1px solid var(--rd-hairline);
   }
+  /* The front page's stage fills its pane beside the code, so no band is left under it. */
+  .rd-stage[data-compact] {
+    height: 100%;
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .rd-stage[data-compact] .rd-still {
+    aspect-ratio: auto !important;
+  }
   .rd-stage:fullscreen {
     grid-template-rows: minmax(0, 1fr) auto;
     border: 0;

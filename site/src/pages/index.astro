@@ -37,14 +37,14 @@ const lead = 'mt-2 mb-0 max-w-[62ch] text-[16px] leading-[24px] text-fg-2';
         <p class="mt-4 mb-0 max-w-[52ch] text-[16px] leading-[24px] text-fg-2 text-pretty">{f.lede}</p>
         <p class="mt-8 mb-0 flex flex-wrap gap-3">
           <a class="rd-press inline-flex h-10 items-center rounded-[8px] bg-primary px-4 text-[14px] leading-[22px] font-medium text-white no-underline" href={localePath('en', '/guide/getting-started/')}>{f.getStarted}</a>
-          <a class="rd-press inline-flex h-10 items-center rounded-[8px] bg-canvas px-4 text-[14px] leading-[22px] font-medium text-primary-fg no-underline shadow-[inset_0_0_0_1px_var(--rd-primary)]" href={localePath('en', '/examples/')}>{f.examples}</a>
+          <a class="rd-press inline-flex h-10 items-center rounded-[8px] bg-canvas px-4 text-[14px] leading-[22px] font-medium text-fg no-underline shadow-[inset_0_0_0_1px_var(--rd-ring)]" href={localePath('en', '/examples/')}>{f.examples}</a>
         </p>
       </div>
       <figure class="m-0 overflow-hidden rounded-[8px] border border-hairline bg-overlay">
         <div class="flex h-12 items-end gap-4 border-b border-hairline px-4">
           <a class="rd-num -mb-px border-b-2 border-primary pb-3 font-mono text-[12px] leading-[18px] text-fg no-underline" href={sourceUrl('site/examples/first-scene.ts')}>{f.showcase.file}</a>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
+        <div class="grid grid-cols-1 md:grid-cols-[minmax(0,6fr)_minmax(0,5fr)]">
           <div class="order-2 max-h-[22rem] min-w-0 overflow-auto border-t border-hairline md:order-1 md:border-t-0 md:border-r rd-excerpt">
             <Code code={excerpt} lang="ts" />
           </div>
@@ -52,7 +52,10 @@ const lead = 'mt-2 mb-0 max-w-[62ch] text-[16px] leading-[24px] text-fg-2';
             <Stage id="first-scene" compact aspect="4 / 3" />
           </div>
         </div>
-        <figcaption class="border-t border-hairline px-4 py-3 text-[12px] leading-[18px] text-hint">{f.showcase.caption}</figcaption>
+        <figcaption class="border-t border-hairline px-4 py-3 text-[12px] leading-[18px] text-hint">
+          {f.showcase.caption}{' '}
+          <a class="text-primary-fg" href={localePath('en', '/examples/first-scene/')}>{f.showcase.open}</a>
+        </figcaption>
       </figure>
     </section>
 
@@ -108,11 +111,11 @@ const lead = 'mt-2 mb-0 max-w-[62ch] text-[16px] leading-[24px] text-fg-2';
     <section class="mt-20 mb-8">
       <h2 class={heading}>{f.install.h}</h2>
       <p class={lead}>{f.install.p}</p>
-      <div class="mt-6 max-w-[40rem]"><Code code={f.install.command} lang="sh" /></div>
-      <p class="mt-4 mb-0 max-w-[62ch] rounded-[8px] border border-primary bg-primary-soft px-4 py-3 text-[14px] leading-[22px] text-fg">{f.install.note}</p>
+      <div class="mt-6 max-w-[40rem]"><Code code={f.install.command} lang="sh" frame="none" /></div>
+      <p class="mt-4 mb-0 max-w-[62ch] rounded-[8px] border border-hairline bg-page px-4 py-3 text-[14px] leading-[22px] text-fg-2">{f.install.note}</p>
       <p class="mt-8 mb-0 flex flex-wrap gap-3">
         <a class="rd-press inline-flex h-10 items-center rounded-[8px] bg-primary px-4 text-[14px] leading-[22px] font-medium text-white no-underline" href={localePath('en', '/guide/getting-started/')}>{f.getStarted}</a>
-        <a class="rd-press inline-flex h-10 items-center rounded-[8px] bg-canvas px-4 text-[14px] leading-[22px] font-medium text-primary-fg no-underline shadow-[inset_0_0_0_1px_var(--rd-primary)]" href={facts.repoUrl}>GitHub</a>
+        <a class="rd-press inline-flex h-10 items-center rounded-[8px] bg-canvas px-4 text-[14px] leading-[22px] font-medium text-fg no-underline shadow-[inset_0_0_0_1px_var(--rd-ring)]" href={facts.repoUrl}>GitHub</a>
       </p>
     </section>
   </div>

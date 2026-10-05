@@ -1,8 +1,8 @@
 ---
 version: 1
 slug: "site-src-components-pages-frontpage-astro"
-primary_target: "site/src/components/pages/FrontPage.astro"
-related_targets: ["site/src/styles/global.css","site/src/components/SiteHeader.astro","site/src/components/SiteFooter.astro","site/src/islands/Showcase.tsx"]
+primary_target: "site/src/pages/index.astro"
+related_targets: ["site/src/styles/custom.css","site/src/components/SiteTitle.astro","site/src/components/Footer.astro","site/src/components/Stage.astro","site/src/islands/ExampleStage.tsx"]
 ---
 
 # Front page (`/`)

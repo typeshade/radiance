@@ -35,6 +35,10 @@ const categories = [...new Set(EXAMPLES.map((e) => e.category))];
   }
 </StarlightPage>
 
+<script is:inline>
+  document.documentElement.dataset.rdWide = '';
+</script>
+
 <style>
   .rd-tile {
     transition: box-shadow 150ms ease, border-color 150ms ease;

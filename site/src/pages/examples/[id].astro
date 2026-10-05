@@ -30,3 +30,7 @@ const file = `site/examples/${entry.id}.ts`;
   <p><a href={sourceUrl(file)}>{t.onGithub}</a></p>
   <Code code={exampleSource(entry.id)} lang="ts" title={`examples/${entry.id}.ts`} />
 </StarlightPage>
+
+<script is:inline>
+  document.documentElement.dataset.rdWide = '';
+</script>
