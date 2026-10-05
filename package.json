@@ -18,6 +18,7 @@
     "check:boundary": "node scripts/boundary.mjs",
     "bake:api-surface": "bun scripts/bake-api-surface.ts",
     "gate:api": "bun scripts/gates/api.mjs",
+    "gate:site": "bun scripts/gates/site.mjs",
     "check:ste": "node scripts/check-ste.mjs",
     "reqs:sync": "bun scripts/reqs-sync.ts",
     "reqs:check": "bun scripts/reqs-sync.ts --check",
@@ -25,7 +26,7 @@
     "harness": "node scripts/harness.mjs",
     "gate:differential": "node scripts/gates/differential.mjs",
     "gate:determinism": "node scripts/gates/determinism.mjs",
-    "check": "bun run format:check && bun run check:prose && bun run check:ste && bun run check:boundary && bun run gate:api && bun run check:shaders && bun run typecheck && bun run test",
+    "check": "bun run format:check && bun run check:prose && bun run check:ste && bun run check:boundary && bun run gate:api && bun run gate:site && bun run check:shaders && bun run typecheck && bun run test",
     "site": "bun run sync && cd site && bun --bun astro build",
     "site:dev": "bun run sync && cd site && bun --bun astro dev",
     "capture:stills": "STILLS_REBASELINE=1 bun run site && node scripts/capture-stills.mjs"
