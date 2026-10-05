@@ -1,8 +1,8 @@
 // The determinism lint (design record 0005, "The lint", with record 0002, step 3). It compiles
 // every `*.shade.ts` under `src/kernels` and reads `compile().determinism`, the compiler's list of
 // the operations whose result may differ by driver (surface section 38). Each row must be in the
-// allowlist below, or be an `absolute` row that only a value-only function holds. A row outside both
-// fails the test with its operation, kind, accuracy and functions.
+// allowlist below, or be an `absolute` row whose every function lists that operation as value-only.
+// A row outside both fails the test with its operation, kind, accuracy and functions.
 //
 // The two lists are edited only with record 0005 amended. A pull request that adds a row cites the
 // rule of the record it keeps.
@@ -57,6 +57,20 @@ function describeRow(label: string, row: DeterminismEntry): string {
   return `${label}: ${row.op} (kind ${row.kind}, ${row.accuracy}) in ${row.where.join(', ')}`;
 }
 
+/**
+ * Operations a kernel file is known to hold at the pin. A report that lacks one of them is a
+ * broken instrument, not a clean kernel, so the lint fails on it. A new kernel file needs no entry.
+ */
+const KNOWN_OPS: Record<string, readonly string[]> = {
+  'sampler.shade.ts': ['/'],
+  'trace.shade.ts': ['/', 'dot'],
+};
+
+/** The operations of `known` that no row of the report names. */
+function missingOps(rows: readonly DeterminismEntry[], known: readonly string[]): string[] {
+  return known.filter((op) => !rows.some((row) => row.op === op));
+}
+
 const kernelsDir = import.meta.dir;
 const kernelFiles = (readdirSync(kernelsDir, { recursive: true }) as string[])
   .filter((f) => f.endsWith('.shade.ts'))
@@ -87,8 +101,15 @@ describe('the determinism lint over src/kernels', () => {
       const path = join(kernelsDir, file);
       const rows = determinismOf(readFileSync(path, 'utf8'), path);
       expect(outsideLists(rows).map((row) => describeRow(file, row))).toEqual([]);
+      expect(missingOps(rows, KNOWN_OPS[file] ?? [])).toEqual([]);
     });
   }
+});
+
+describe('the probe: an empty report', () => {
+  it('fails the known-operations check, so a report that lost its rows is not a pass', () => {
+    expect(missingOps([], KNOWN_OPS['trace.shade.ts'] ?? [])).toEqual(['/', 'dot']);
+  });
 });
 
 // The probe (record 0002, "The probes"): the lint runs once wrong on purpose and must fail. The
@@ -127,5 +148,51 @@ describe('the probe: a sin in a function that steers a comparison', () => {
 
   it('passes when its function is value-only for sin, so the lint is not a wall', () => {
     expect(outsideLists(rows, ALLOWED, { steer: ['sin'] })).toEqual([]);
+  });
+});
+
+// The probe for the two conditions the first probe leaves open: the `absolute` guard, and the
+// rule that every function of a row lists the operation. `exp` is a `ulp` row. `sin` is an
+// `absolute` row in two functions.
+const PROBE_CONDITIONS = `"use typeshade";
+
+export function grow(x: f32): f32 {
+  return exp(x);
+}
+
+export function wobble(x: f32): f32 {
+  return sin(x);
+}
+
+export function swing(x: f32): f32 {
+  return sin(x) * 2.0;
+}
+`;
+
+describe('the probe: a row that is not absolute, and a row in two functions', () => {
+  const rows = determinismOf(PROBE_CONDITIONS, 'probe-conditions.shade.ts');
+  const valueOnly = { grow: ['exp'], wobble: ['sin'], swing: ['sin'] };
+
+  it('is two rows of the report, so the lint can see both', () => {
+    const exp = rows.find((row) => row.op === 'exp');
+    const sin = rows.find((row) => row.op === 'sin');
+    expect(exp?.kind).toBe('ulp');
+    expect(sin?.kind).toBe('absolute');
+    expect([...(sin?.where ?? [])].sort()).toEqual(['swing', 'wobble']);
+  });
+
+  it('fails a row that is not absolute, even when its function lists it as value-only', () => {
+    const failures = outsideLists(rows, ALLOWED, valueOnly).map((row) => row.op);
+    expect(failures).toEqual(['exp']);
+  });
+
+  it('fails an absolute row when only one of its two functions lists it', () => {
+    const failures = outsideLists(rows, ALLOWED, { ...valueOnly, swing: [] }).map((row) => row.op);
+    expect(failures).toContain('sin');
+  });
+
+  it('passes an absolute row when both of its functions list it', () => {
+    const failures = outsideLists(rows, ALLOWED, valueOnly).map((row) => row.op);
+    expect(failures).not.toContain('sin');
   });
 });
