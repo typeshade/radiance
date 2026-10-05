@@ -1,0 +1,88 @@
+name: ci
+
+# The gate for this repository: the same steps `bun run check` runs locally, then the harness
+# on a real WebGPU device (headless Chromium on SwiftShader, as the compiler's journeys run), and,
+# on a pull request, what a move of the compiler pin owes this repository. Each job's `name:` is
+# a required check of the `main` ruleset (CLAUDE.md, Merging): renaming one changes the ruleset
+# in the same step.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: format + boundary + typecheck + test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The compiler is a pinned submodule until it publishes; every package imports it.
+          submodules: true
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun run format:check
+      - run: bun run check:prose
+      - run: bun run check:boundary
+      - run: bun run typecheck
+      - run: bun run test
+
+  harness:
+    name: harness (headless WebGPU)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: bun install --frozen-lockfile
+      - run: npx playwright install --with-deps chromium
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: ''
+      - run: bun run harness
+
+  compiler-bump:
+    # What a compiler bump owes this repository: a package, a document or a test that still
+    # names an export or a file the new pin removes fails here, as does a compiler ThenChange
+    # target in this repository that the branch did not change. Both scripts run from the pinned
+    # compiler, so a pin from before they existed skips the job's checks.
+    name: compiler bump impact
+    if: github.event_name == 'pull_request' || github.ref != 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: |
+          [ ! -f vendor/typeshade/scripts/downstream-impact.ts ] || \
+            bun vendor/typeshade/scripts/downstream-impact.ts --repo radiance --submodule vendor/typeshade
+      - run: |
+          [ ! -f vendor/typeshade/scripts/ifchange.ts ] || \
+            TYPESHADE_DOCS_ROOT=$PWD bun vendor/typeshade/scripts/ifchange.ts
