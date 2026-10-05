@@ -23,10 +23,10 @@ renderer.setAnimationLoop(() => renderer.render(scene, camera));
 
 | Option               | Default | What it does                                                                   |
 | -------------------- | ------- | ------------------------------------------------------------------------------ |
-| `canvas`             | none    | the canvas to draw on; without one, `readPixels` and `readRadiance` still work |
-| `seed`               | 0       | one seed gives one image; another seed gives other noise                       |
+| `canvas`             | none    | the canvas to draw on. Without one, `readPixels` and `readRadiance` still work |
+| `seed`               | 0       | one seed gives one image. Another seed gives other noise                       |
 | `samplesPerFrame`    | 1       | the samples each frame adds, in one dispatch                                   |
-| `targetFrameTime`    | none    | milliseconds a frame should take; the renderer adapts `samplesPerFrame` to it  |
+| `targetFrameTime`    | none    | milliseconds a frame should take. The renderer adapts `samplesPerFrame` to it  |
 | `maxSamplesPerFrame` | 64      | the most samples a frame may take when it adapts                               |
 | `bounces`            | 8       | the bounces a path may take after the camera ray                               |
 | `rouletteFrom`       | 3       | the bounce from which Russian roulette may end a path                          |
@@ -48,7 +48,7 @@ renderer.preview = controls.moving ? 4 : 1;
 ## Stopping and pausing
 
 `maxSamples` stops the accumulation at that many samples a pixel. `paused` stops it until it is
-set back; the canvas keeps the last picture.
+set back. The canvas keeps the last picture.
 
 ## Reading the image
 

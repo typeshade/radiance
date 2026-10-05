@@ -15,9 +15,9 @@ compiler: []
 | ------------- | ----------------------------------------------------------------------------------- |
 | Identity      | Design record 0005, status `draft`                                                  |
 | Date          | 2026-10-05 (UTC), the date of authorship                                            |
-| Author        | Written in a Claude Code session for the owner; the owner's review is the approval  |
-| Applicability | Every `.shade.ts` under `packages/radiance/src/kernels`; `docs/plan.md` §3.1 item 4 |
-| Baseline      | `main` at 0f17f5e; the compiler pinned at e923a34                                   |
+| Author        | Written in a Claude Code session for the owner. The owner's review is the approval  |
+| Applicability | Every `.shade.ts` under `packages/radiance/src/kernels`. `docs/plan.md` §3.1 item 4 |
+| Baseline      | `main` at 0f17f5e. The compiler pinned at e923a34                                   |
 | Pull request  | typeshade/radiance#6, the pull request that carries this record and is its review   |
 
 ## What changes
@@ -26,7 +26,7 @@ compiler: []
 
 Plan §3.1 item 4 states the promise. The sampler is integer-exact by design, and `turn()` in
 `trace.shade.ts` replaced the GPU's `sin` and `cos` after a measured 3 % divergence
-(`docs/typeshade-feedback.md`, 2026-10-05). Both are facts in two files; no rule says a new
+(`docs/typeshade-feedback.md`, 2026-10-05). Both are facts in two files. No rule says a new
 kernel must do the same, and no test reads the compiler's determinism report (surface §38).
 
 ### After
@@ -53,7 +53,7 @@ comment names the rules it leans on.
    `length`, `dot`, `cross` and `inverseSqrt` are bounded or inherited rows and are needed
    in every intersection. A path they move by one sample's share is what the differential
    gate's `rel` and `mean` are for.
-4. **No atomics on the accumulation path.** One pixel is one invocation in one dispatch; a
+4. **No atomics on the accumulation path.** One pixel is one invocation in one dispatch. A
    pixel's samples are added in index order inside it (record 0001, tiles).
 5. **A reduction has one order.** A sum over many values on the GPU (M5's loss, a histogram)
    is a compiler kernel function (Rule 7.2's tree) or is read back and summed on the host.
@@ -93,13 +93,13 @@ allowlist and the reason for each row, becomes a page of the guide at M4.
   §3.6's FLIP decision (sorted gather, not atomic scatter).
 
 Alternatives considered: making every operation exact by computing in integers or `f64`
-(a path tracer at `df64` cost is out of the question for an interactive renderer); no rule
+(a path tracer at `df64` cost is out of the question for an interactive renderer). No rule
 and no lint (the status quo, which caught the divergence late).
 
 ## What it touches
 
-- `src/kernels/*.shade.ts` headers; `determinism.test.ts` (new); the guide's determinism
-  page (M4); `docs/plan.md` §3.1 item 4 gains a pointer to this record.
+- `src/kernels/*.shade.ts` headers. `determinism.test.ts` (new). The guide's determinism
+  page (M4). `docs/plan.md` §3.1 item 4 gains a pointer to this record.
 
 ## Implementation, in steps
 

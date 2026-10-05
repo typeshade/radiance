@@ -32,7 +32,8 @@ of the site, a performance change that moves no layout.
 2. **Accepted.** The owner's review or go-ahead in the conversation merges it with
    `status: accepted`. The merged text is the approved design.
 3. **Implementation.** Each implementing pull request names the record on a line of its own in
-   the commit message: `Design: 0001`. A pull request that reaches past what the record
+   the commit message: `Design: 0001`. A test that verifies a decision carries
+   `Verifies: Design 0001.3` in a comment. A pull request that reaches past what the record
    declares amends the record first, in its own pull request.
 4. **Implemented.** The pull request that finishes the record's steps sets
    `status: implemented` and records the delivered configuration: the commits, the pin, the
@@ -64,7 +65,8 @@ pull request), and these sections:
 - **What it touches.** Files, tests owed, gates, and the site pages that describe the old shape.
 - **Implementation, in steps.** Numbered pull-request-sized steps, each with what it delivers
   and what proves it.
-- **Decisions for the owner.** Each choice the record makes that the owner may want changed.
+- **Decisions for the owner.** Each choice the record makes that the owner may want changed, as
+  a numbered list. `bun run reqs:sync` makes each entry a Doorstop item (`reqs/README.md`).
 - **Record.** The approval and validation records. For a draft, both say they do not yet apply.
 
 ## The records
@@ -80,4 +82,4 @@ pull request), and these sections:
 
 The order of implementation is 0001 and 0002 first, in parallel, because M2 is written on them.
 0003 is done before the first npm release. 0004 and 0005 are needed before M3. 0006 is a list
-of proposals the compiler's owner schedules; each record names the item it waits on.
+of proposals the compiler's owner schedules. Each record names the item it waits on.

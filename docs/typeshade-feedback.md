@@ -4,7 +4,7 @@ This renderer is where TypeShade gets used for real, as `stepinside` is, so this
 what that is like: friction, surprises, gaps in the docs, things that were hard, and things that
 went well. It is written as the work happens, not afterwards, and it is the input for a round of
 feedback to the language. A problem that is a bug or a missing feature also becomes an issue on
-typeshade/typeshade, linked here; a note does not wait for one.
+typeshade/typeshade, linked here. A note does not wait for one.
 
 Add an entry at the top of the log. Keep it concrete: what was being built, what happened, what
 was expected, what it cost, and what was done instead. Say which TypeShade commit it was (the
@@ -21,7 +21,7 @@ editor), **docs**.
 Pin e923a34. The site (Astro 7, Starlight, React islands) imports the engine, whose kernels are
 `*.shade.ts` modules, and `typeshade/vite` compiled them inside Astro's Vite with no change:
 the examples run the same kernels the harness gates. Two notes. Bun prints `moduleSuffixes is
-not supported yet` for every tsconfig that sets the host views' suffix, on every `bun run`; it
+not supported yet` for every tsconfig that sets the host views' suffix, on every `bun run`. It
 is harmless but looks like an error in a build log. And the engine became classes in three.js's
 shape on `typeshade/runtime` (`PathTracer` owns the runtime, the program and the textures), and
 the public runtime was enough for all of it: nothing reaches past it (`scripts/boundary.mjs`).
@@ -32,7 +32,7 @@ Pin e923a34. The path tracer is about 300 lines of TypeShade: classes for the un
 the hit record, a struct returned from a function, loops over runtime-length storage arrays,
 `reverseBits` and hexadecimal `u32` constants for the sampler, and a second shader module
 imported by relative path. `tshc check` passed it on the second try (the first called a class
-as a constructor, `Hit(...)`; an object literal is the spelling). The CPU oracle ran the same
+as a constructor, `Hit(...)`. An object literal is the spelling). The CPU oracle ran the same
 module unchanged, and its integer arithmetic matched `Math.imul` exactly, so the sampler draws
 the same numbers on both sides.
 
@@ -45,7 +45,7 @@ apart: WGSL allows `sin` and `cos` an absolute error of 2^-11, and that turns a 
 edge. Replacing them with a polynomial of sums and products (`turn` in trace.shade.ts), which
 WGSL rounds correctly, brought the mean difference to 1.4e-6. This is the plan's constraint 4
 (the determinism report) seen from a renderer: any transcendental that steers control flow
-should not be the GPU's own. Not a bug; a note for the determinism report's documentation.
+should not be the GPU's own. Not a bug. A note for the determinism report's documentation.
 
 ### 2026-10-05 · host · M1: the oracle's `dispatch` is 45 times slower than its `fns`
 
@@ -64,15 +64,15 @@ typeshade/typeshade#468.
 ### 2026-10-05 · host · M1: importing a shader module outside Vite
 
 Pin e923a34. The compiler ships a Vite plugin and no bun loader, so `scripts/shade-plugin.ts`
-wraps the Vite plugin's `transform` in a bun plugin; it worked unchanged. Two things took a
+wraps the Vite plugin's `transform` in a bun plugin. It worked unchanged. Two things took a
 while to find. A sibling package's shader, imported by a package `exports` subpath, does not get
 the `moduleSuffixes` host view, so `@typeshade/radiance-kernels` names each view under a `types`
 condition. And `bun install` sets the executable bit on the pinned compiler's `src/cli/bin.ts`,
-which shows as a change to the submodule; `chmod 644` puts it back.
+which shows as a change to the submodule. `chmod 644` puts it back.
 
 ### 2026-10-05 · runtime · M0: a frame with an empty pass, read back as floats
 
 Pin e923a34. The M0 renderer draws a pass that only clears a `rgba16float` target and reads it
-with `readFloats()`. Nothing in the runtime's docs says whether a pass with no draw is allowed;
+with `readFloats()`. Nothing in the runtime's docs says whether a pass with no draw is allowed.
 the compiler's own harness does it (its "later" frame), so it is relied on here. If a later
 runtime refuses it, M0's harness is the test that says so.

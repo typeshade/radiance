@@ -9,6 +9,77 @@ Answer the owner in Korean, every reply, from the first to the last of a session
 report, a question, a summary after a merge. What goes into the repository stays in English:
 code, comments, commit messages, pull request titles and bodies, and every document in the tree.
 
+## Writing and configuration management
+
+Every reply to the owner and every task follows two disciplines from aircraft maintenance
+practice. The writing follows ASD-STE100, Simplified Technical English. The work follows the
+configuration management functions of SAE EIA-649 and ISO 10007. Both are local conventions, and
+they claim no compliance or certification.
+
+**Writing.** The `asd-ste100` skill (`.agents/skills/asd-ste100/SKILL.md`, pinned by
+`skills-lock.json`) is the rule book. Read it before you write a document, and apply it in two
+modes:
+
+- Strict mode for `CLAUDE.md`, a procedure, a numbered step, a check's message and the rules of a
+  design record. A wrong reading there has a cost.
+- STE-flavored mode for `README.md`, `docs/plan.md`, `docs/typeshade-feedback.md`, the site's
+  guide pages and the descriptive text of a design record. The structural rules apply in full.
+  The lexical rules are a direction.
+
+The structural rules, in short:
+
+- Keep descriptive text and procedures apart. Write a procedure as numbered steps in the
+  imperative, with one action in each step.
+- Give each sentence one topic. Keep a step to 20 words and a descriptive sentence to 25. Give
+  each paragraph one topic and at most six sentences.
+- Use one term for one thing. Use the exact identifier of each file, symbol, check and command.
+- Use the active voice when the actor is known. Do not invent an actor.
+- Do not write a semicolon. Split the sentence instead.
+- Keep each hedge as written. "May fail" does not become "fails".
+- Put a warning before the step it applies to. Name an action that cannot be undone (a merge, a
+  force push, a deletion) before it is done.
+- Keep facts, inferences, proposals, decisions and observed results apart. Label each one when
+  the difference matters.
+
+`bun run check:ste` (`scripts/check-ste.mjs`) runs the skill's linter over every document and
+fails on a hard violation. It runs before every `git commit` and in CI. A reply in Korean applies
+the same principles in Korean. ASD-STE100's dictionary is English and governs only English text.
+
+**Configuration management.**
+
+- Identification. Name each configuration item by its identifier: a repository, a branch, a
+  commit, a pull request, a design record, a decision (`Design 0001.3`), the submodule pin or a
+  required check. "The latest" is no identifier. A commit hash is one.
+- Baselines. `main` at a commit is this repository's baseline. The pin `vendor/typeshade` is its
+  baseline of the compiler. An accepted design record is the approved design of its part.
+- Change control. Change a baseline only through a pull request. A change to a contract needs an
+  accepted design record first (below). The approval is a review or the owner's go-ahead in the
+  conversation (Merging). A pull request does only what its description says. One pull request
+  carries one change, so two unrelated changes are two pull requests.
+- Status accounting. Record the status of each request and each change: not started, in progress
+  or done, and for a record its lifecycle state. A status report names each one with its
+  identifiers. List each open item with its reason and its next action.
+- Verification and audit. Support a claim of completion with the checks that actually ran: the
+  command or check, the date, the configuration (commit, pin, tool versions) and the result.
+  Functional verification (`bun run check`, `bun run harness`) and the document audit (the
+  documents and `reqs/` match the delivered configuration) are separate. One does not replace
+  the other. Report a check that did not run as not run.
+- Traceability. `reqs/` is the Doorstop tree of the design records and their decisions
+  (`reqs/README.md`). `bun run reqs:sync` derives it. A record changed without a review of its
+  decisions fails CI's `traceability (Doorstop)` job.
+- Deviations. Record each difference between the record and the delivered work on the pull
+  request and in the record's "Record" section, with its disposition: closed, made part of the
+  record by an amendment, or open.
+
+Each task runs in the order of a maintenance task card:
+
+1. Identify the request, the configuration items it touches and their baselines.
+2. Find the design record that authorizes the change, or open one.
+3. Make the change inside what that record declares.
+4. Run the functional checks and the document audit on the change.
+5. Record what was done, on which configuration, what was verified and what remains open.
+6. Report the status of every request to the owner.
+
 ## Every package is written on the public runtime alone
 
 `vendor/typeshade` is the compiler, pinned as a git submodule. The compiler decided (#335) that
@@ -52,9 +123,12 @@ compiler (0006). `docs/design/README.md` says which changes need a record and th
 - Before implementing a change to one of those, find its accepted record. If there is none, or
   the change reaches past what the record declares, write or amend the record first, as its own
   pull request, and do not implement until it is merged as accepted.
-- Each implementing commit names its record on a line of its own: `Design: 0001`.
+- Each implementing commit names its record on a line of its own: `Design: 0001`. A test that
+  verifies a decision carries `Verifies: Design 0001.3` in a comment.
 - A record is written for an agent that has not read the conversation: files, names, layouts in
   bytes, tests and the numbers that prove each step.
+- After you edit a record, run `bun run reqs:sync`, then `doorstop -e -F`, and work through what
+  it flags as `reqs/README.md` says. Install Doorstop once with `pip install doorstop==3.2`.
 
 ## Report what using TypeShade is like
 
@@ -76,9 +150,10 @@ trusted to pass).
 
 ## Before pushing
 
-Run `bun run check` and `bun run harness`: together they are CI's jobs, so a push that passes
-them locally passes there. `.claude/settings.json` runs the fast half (prettier, the prose check,
-the boundary) before every `git commit` and blocks the commit while one fails.
+Run `bun run check` and `bun run harness`, then `doorstop -e -F`: together they are CI's jobs, so
+a push that passes them locally passes there. `.claude/settings.json` runs the fast half
+(prettier, the prose check, the STE check, the boundary and `reqs:check`) before every
+`git commit` and blocks the commit while one fails.
 
 ## Merging
 

@@ -1,6 +1,6 @@
 ---
 id: '0003'
-title: The engine's public API is a baked surface with three.js's names, versioned by SemVer with the minor as the breaking position, and released from a tag through gates
+title: The public API is a baked surface with three.js's names, versioned by SemVer with the minor as the breaking position, and released through gates
 status: draft
 milestones: [M2, 0.1.0]
 touches:
@@ -23,9 +23,9 @@ compiler: []
 | ------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | Identity      | Design record 0003, status `draft`                                                                                                 |
 | Date          | 2026-10-05 (UTC), the date of authorship                                                                                           |
-| Author        | Written in a Claude Code session for the owner; the owner's review is the approval                                                 |
-| Applicability | `@typeshade/radiance` and `@typeshade/radiance-addons`, 0.0.0 today, 0.1.0 as the first release; the release version is unassigned |
-| Baseline      | `main` at 0f17f5e; the compiler pinned at e923a34                                                                                  |
+| Author        | Written in a Claude Code session for the owner. The owner's review is the approval                                                 |
+| Applicability | `@typeshade/radiance` and `@typeshade/radiance-addons`, 0.0.0 today, 0.1.0 as the first release. The release version is unassigned |
+| Baseline      | `main` at 0f17f5e. The compiler pinned at e923a34                                                                                  |
 | Pull request  | typeshade/radiance#6, the pull request that carries this record and is its review                                                  |
 
 ## What changes
@@ -86,7 +86,7 @@ tolerance. A faster render of the same picture is not breaking.
 
 **Deprecation.** A public name that will go carries `@deprecated` in its JSDoc for one minor,
 naming its replacement, and logs one `console.warn` at its first use in a session. The next
-minor removes it. Before 1.0.0 a removal takes that one minor; from 1.0.0 it takes a major.
+minor removes it. Before 1.0.0 a removal takes that one minor. From 1.0.0 it takes a major.
 
 **The changelog.** `CHANGELOG.md` in the Keep a Changelog form the compiler uses, with
 `## [Unreleased]` on top and `### Added`, `### Changed`, `### Fixed`, `### Removed`. A
@@ -100,11 +100,11 @@ compiler's first release the pin is a commit and the peer range is `*`, as today
 A pin that moves across a compiler minor is a row and an engine minor.
 
 **The release.** `RELEASING.md` is the compiler's procedure with the engine's names: a version
-bump and a changelog entry in one pull request; the gates locally; the tag `v<version>`; a
+bump and a changelog entry in one pull request. The gates locally. The tag `v<version>`. A
 GitHub release, whose `publish.yml` runs `ci.yml`'s jobs, builds, packs both tarballs, installs
 them into a scratch project beside the compiler's tarball, renders `first-scene` there on
 headless WebGPU (record 0002, `journeys`), and publishes both with provenance. The
-`NPM_ACCESS_TOKEN` organisation secret the owner named is the credential; trusted publishing
+`NPM_ACCESS_TOKEN` organisation secret the owner named is the credential. Trusted publishing
 does not authenticate a repository created after 2026-07-15 (`vendor/typeshade/RELEASING.md`,
 section 0), and this one was created in October 2026.
 
@@ -125,14 +125,14 @@ real command, and the first benchmark row exists.
 - three.js's names are the owner's decision (plan §12, item 4) and the reason a user can read
   an example without the guide. The one place the rule bends, materials, is the one place the
   product differs from three.js on purpose.
-- The compiler's version rules are written and tested; the engine on a pre-1.0 compiler needs
+- The compiler's version rules are written and tested. The engine on a pre-1.0 compiler needs
   the same rules, and a reader of both should meet one set.
 - A version with no compatibility table is a version a user cannot install against the right
   compiler.
 
 Alternatives considered: one package instead of two (addons would carry the loader's and the
-controls' code into every bundle); independent versions for the two packages (a consumer
-would pin two numbers that must agree); a wider peer range than one minor (the compiler is
+controls' code into every bundle). Independent versions for the two packages (a consumer
+would pin two numbers that must agree). A wider peer range than one minor (the compiler is
 pre-1.0 and its minor is the breaking position).
 
 ## What it touches
@@ -141,19 +141,19 @@ pre-1.0 and its minor is the breaking position).
   (new), both `package.json` files (`exports`, `version`, `peerDependencies`, `files`).
 - `scripts/bake-api-surface.ts` (new), `packages/*/__api__/surface.md` (generated).
 - `CHANGELOG.md`, `RELEASING.md`, `docs/compatibility.md` (new), `scripts/changelog.test.ts`.
-- `.github/workflows/publish.yml` (new); `README.md` (Checks, Install); the site's install
+- `.github/workflows/publish.yml` (new). `README.md` (Checks, Install). The site's install
   section (`site/src/i18n/en.ts`) and the guide's getting-started page.
 - Record 0001 (the renames), record 0002 (`api`, `bundle`, `journeys`).
 
 **The public surface at 0.1.0**, `@typeshade/radiance`:
 
-- math: `Vector3`, `Color`, `Euler`, `Matrix4`, `Box3`;
-- core: `Object3D`, `Group` (new: an `Object3D` with nothing added, as three.js has it), `EventDispatcher`, `Clock`;
-- cameras: `Camera`, `PerspectiveCamera`;
-- geometries: `Geometry`, `BufferGeometry`, `SphereGeometry`, `PlaneGeometry`, `BoxGeometry`;
+- math: `Vector3`, `Color`, `Euler`, `Matrix4`, `Box3`.
+- core: `Object3D`, `Group` (new: an `Object3D` with nothing added, as three.js has it), `EventDispatcher`, `Clock`.
+- cameras: `Camera`, `PerspectiveCamera`.
+- geometries: `Geometry`, `BufferGeometry`, `SphereGeometry`, `PlaneGeometry`, `BoxGeometry`.
 - materials: `Material`, `MaterialParameters`, `DiffuseMaterial`, `MirrorMaterial`,
-  `EmissiveMaterial`, `PhysicalMaterial`, `PhysicalMaterialParameters`;
-- objects: `Mesh`, `Scene`;
+  `EmissiveMaterial`, `PhysicalMaterial`, `PhysicalMaterialParameters`.
+- objects: `Mesh`, `Scene`.
 - renderers: `Renderer`, `PathTracer`, `PathTracerParameters`, `TARGET_FORMAT`, `CANVAS_FORMAT`.
 
 `@typeshade/radiance-addons`: `OrbitControls`, `OrbitControlsEvents`, `GLTFLoader`,
@@ -168,8 +168,8 @@ Removed from the surface: `packScene`, `cameraUniforms`, `PackedScene`, `CameraU
    `scripts/gates/api.mjs` with its probe, in `check`. Done when the bake matches the tree and
    the probe fails.
 2. **The internal subpath and the names.** `internal.ts`, the `exports` map, `oracle.ts` on
-   `internal`; `QuadGeometry` to `PlaneGeometry` with the deprecation shim for one minor
-   (it is 0.0.0, so the shim may be skipped; the owner decides, item 5). Done when the surface
+   `internal`. `QuadGeometry` to `PlaneGeometry` with the deprecation shim for one minor
+   (it is 0.0.0, so the shim may be skipped, the owner decides, item 5). Done when the surface
    bake shows the list above minus what M2 adds.
 3. **The changelog and the compatibility table.** `CHANGELOG.md` with the entries since M1,
    `scripts/changelog.test.ts`, `docs/compatibility.md` with the one row (0.0.0, pin e923a34).
@@ -184,11 +184,11 @@ Removed from the surface: `packScene`, `cameraUniforms`, `PackedScene`, `CameraU
 2. The naming rule: three.js for what three.js has, the physically based renderer's word for
    materials and lights, with three.js's parameter names.
 3. SemVer with the minor as the breaking position before 1.0.0, as the compiler has it.
-4. The peer range is one compiler minor; the compatibility table is one row per pin.
+4. The peer range is one compiler minor. The compatibility table is one row per pin.
 5. `QuadGeometry` is renamed without a shim, since nothing is published.
 6. Open: whether 0.1.0 ships compiled manifests beside the `.shade.ts` sources, so a consumer
    without the Vite plugin can still load the kernels. The plugin is the compiler's documented
-   path; shipping manifests doubles what the package carries. The record proposes sources only
+   path. Shipping manifests doubles what the package carries. The record proposes sources only
    at 0.1.0 and a manifest subpath when a consumer asks.
 
 ## Record

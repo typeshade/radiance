@@ -16,9 +16,12 @@
     "format:check": "prettier --check .",
     "check:prose": "node scripts/check-prose.mjs",
     "check:boundary": "node scripts/boundary.mjs",
+    "check:ste": "node scripts/check-ste.mjs",
+    "reqs:sync": "bun scripts/reqs-sync.ts",
+    "reqs:check": "bun scripts/reqs-sync.ts --check",
     "test": "bun test scripts packages",
     "harness": "node scripts/harness.mjs",
-    "check": "bun run format:check && bun run check:prose && bun run check:boundary && bun run check:shaders && bun run typecheck && bun run test",
+    "check": "bun run format:check && bun run check:prose && bun run check:ste && bun run check:boundary && bun run check:shaders && bun run typecheck && bun run test",
     "site": "bun run sync && cd site && bun --bun astro build",
     "site:dev": "bun run sync && cd site && bun --bun astro dev",
     "capture:stills": "STILLS_REBASELINE=1 bun run site && node scripts/capture-stills.mjs"

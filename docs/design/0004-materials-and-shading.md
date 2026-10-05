@@ -1,6 +1,6 @@
 ---
 id: '0004'
-title: A material is a 128-byte record and a TypeShade library of BSDFs that the path tracer and a later rasterizer share, behind a shading contract that is the grad boundary
+title: A material is a 128-byte record and a shared TypeShade library of BSDFs, behind a shading contract that is the grad boundary
 status: draft
 milestones: [M2, M3, M5]
 touches:
@@ -16,9 +16,9 @@ compiler: ['0006-4']
 | ------------- | ------------------------------------------------------------------------------------------------- |
 | Identity      | Design record 0004, status `draft`                                                                |
 | Date          | 2026-10-05 (UTC), the date of authorship                                                          |
-| Author        | Written in a Claude Code session for the owner; the owner's review is the approval                |
+| Author        | Written in a Claude Code session for the owner. The owner's review is the approval                |
 | Applicability | `packages/radiance/src/materials`, `src/kernels/materials.shade.ts`, `src/kernels/trace.shade.ts` |
-| Baseline      | `main` at 0f17f5e; the compiler pinned at e923a34                                                 |
+| Baseline      | `main` at 0f17f5e. The compiler pinned at e923a34                                                 |
 | Pull request  | typeshade/radiance#6, the pull request that carries this record and is its review                 |
 
 ## What changes
@@ -45,7 +45,7 @@ function to differentiate.
 | `[6]` | subsurface radius.r | radius.g           | radius.b           | subsurface weight    |
 | `[7]` | bits(emissiveMap)   | reserved           | reserved           | reserved             |
 
-- `emissive` is stored already multiplied by `emissiveIntensity`; the kernel reads one colour.
+- `emissive` is stored already multiplied by `emissiveIntensity`. The kernel reads one colour.
 - `type` is the low 8 bits of `[2].w`: 0 diffuse, 1 mirror, 2 physical. The flags above them:
   bit 8 "emits" (any channel of `[1].xyz` above 0, computed by the host so the kernel tests one
   bit), bit 9 "double sided", bit 10 "alpha cutout" (M3).
@@ -87,15 +87,15 @@ export function sampleBsdf(s: Surface, wo: vec3, r: vec3): BsdfSample;
 export function evalBsdf(s: Surface, wo: vec3, wi: vec3): vec4; // f in xyz, pdf in w
 ```
 
-- `wo` points away from the surface toward the ray's origin; `wi` away from the surface.
+- `wo` points away from the surface toward the ray's origin. `wi` away from the surface.
 - `sampleBsdf` draws from the material's lobes with `r` (three numbers from the sampler:
   the lobe choice and the two direction numbers). `evalBsdf` returns `f` and the pdf of `wi`
   under the same sampling, for multiple importance sampling (M3).
-- A diffuse surface samples the cosine distribution; a mirror returns `specular: true` with
-  `weight = color` and `pdf = 1`; the physical material at M3 is the principled BSDF (a
+- A diffuse surface samples the cosine distribution. A mirror returns `specular: true` with
+  `weight = color` and `pdf = 1`. The physical material at M3 is the principled BSDF (a
   Disney-style diffuse, a GGX specular with Fresnel from `ior` and `specularIntensity`, a transmission
   lobe, then clearcoat, sheen and anisotropy in M3's own steps).
-- `surface(hit, dir)` in `intersect.shade.ts` (record 0001) fills `Surface`; `dpdu` is
+- `surface(hit, dir)` in `intersect.shade.ts` (record 0001) fills `Surface`. `dpdu` is
   `(dp1 * dv2 - dp2 * dv1) / (du1 * dv2 - du2 * dv1)` from the triangle's edges and uv
   differences, and a fallback frame about `ns` when the determinant is 0.
 
@@ -105,7 +105,7 @@ with `evalBsdf` toward a light from the table, `sampleBsdf` for the next directi
 roulette. Nothing in the loop reads a material word: that is the contract.
 
 **The grad boundary** (plan §3.1 item 2, §3.3). `grad` differentiates `evalBsdf`, `emission`
-and the light's contribution with respect to a material's or a light's parameters; it never
+and the light's contribution with respect to a material's or a light's parameters. It never
 sees `nearest`, `surface` or `sampleBsdf`'s lobe choice. So the three exported functions are
 written under the compiler's `grad` rules (`SD0118` lists them: `f32` and float-vector
 arithmetic, the component-wise builtins, `if`, `switch`, a constant-bounded `for`, calls to
@@ -128,20 +128,20 @@ pin (record 0006, item 4): M3's textures wait on it.
 
 - A fixed 128-byte record is the one way M3 adds parameters without changing the kernel's
   layout (record 0001's rule that the layout holds through M3). Materials number in the
-  hundreds; the room costs nothing.
+  hundreds. The room costs nothing.
 - The contract is what makes the BSDF a library: the path tracer, the rasterizer's G-buffer
   shading and the fitter read the same functions, and the oracle tests them one at a time
   (`kernels.test.ts` already tests `aboutNormal` and `tonemap` that way).
 - The `grad` boundary is drawn in code, not in prose: three functions with the rules in their
   header comment and a test that `grad` accepts each (record 0002's determinism lint can carry
   it: `grad(module, 'evalBsdf', 'params')` compiles).
-- Size classes, not one atlas: an atlas needs its own uv mapping and wraps badly; an array
+- Size classes, not one atlas: an atlas needs its own uv mapping and wraps badly. An array
   per class wastes at most the padding to the next class. Four bindings are well inside the
   limit.
 
 Alternatives considered: a struct array for materials (record 0001 rule 2: typed arrays bind
-from one `Float32Array`, structs from objects); storing tangents per vertex (glTF makes them
-optional and `dpdu` from the triangle is exact for a triangle); texture atlases (above).
+from one `Float32Array`, structs from objects). Storing tangents per vertex (glTF makes them
+optional and `dpdu` from the triangle is exact for a triangle). Texture atlases (above).
 
 ## What it touches
 
@@ -149,11 +149,11 @@ optional and `dpdu` from the triangle is exact for a triangle); texture atlases 
 - `src/kernels/materials.shade.ts` (new), `trace.shade.ts`, `intersect.shade.ts` (`surface`).
 - `src/renderers/scene-pack.ts` (the record's packer).
 - `packages/addons/src/loaders/GLTFLoader.ts` (`pbrMetallicRoughness` to `PhysicalMaterial`).
-- Tests: `materials.test.ts` on the oracle (a diffuse sample's weight equals its colour; a
-  mirror sample is the reflection; `evalBsdf`'s pdf integrates to 1 over the hemisphere within
-  2 % by a 4,096-sample estimate; `emission` is zero on the back face); `scene-pack.test.ts`
-  (the record's words); the `physical` differential scene (record 0002).
-- The site's guide page on materials; the API reference follows the JSDoc.
+- Tests: `materials.test.ts` on the oracle (a diffuse sample's weight equals its colour, a
+  mirror sample is the reflection. `evalBsdf`'s pdf integrates to 1 over the hemisphere within
+  2 % by a 4,096-sample estimate. `emission` is zero on the back face). `scene-pack.test.ts`
+  (the record's words). The `physical` differential scene (record 0002).
+- The site's guide page on materials. The API reference follows the JSDoc.
 
 ## Implementation, in steps
 

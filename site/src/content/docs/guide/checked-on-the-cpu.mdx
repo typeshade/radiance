@@ -19,10 +19,10 @@ The harness renders the Cornell box at 16 by 16 pixels and 1024 samples a pixel 
 Chromium on WebGPU, and again on the oracle, with the same kernel, seed and samples. It fails
 when:
 
-- two renders of one seed differ in any bit, or a second seed renders the same image;
-- the mean relative difference between the GPU's image and the oracle's is over the bound;
-- any channel of any pixel is further from the oracle's than the bound allows;
-- the displayed image is not the tone map of the mean radiance;
+- two renders of one seed differ in any bit, or a second seed renders the same image.
+- the mean relative difference between the GPU's image and the oracle's is over the bound.
+- any channel of any pixel is further from the oracle's than the bound allows.
+- the displayed image is not the tone map of the mean radiance.
 - the site's example page does not render.
 
 Each gate was shown to fail before it was trusted to pass: a 1% change to one albedo, a 1%
