@@ -19,7 +19,7 @@ compiler: []
 | Author        | Written in a Claude Code session for the owner, who owns the compiler too; the owner's review is the approval  |
 | Applicability | The compiler at e923a34 (`vendor/typeshade`): `src/runtime/`, `src/core/resident.ts`, `src/core/host-entry.ts` |
 | Baseline      | `main` at 0f17f5e; the compiler pinned at e923a34                                                              |
-| Pull request  | None assigned at the time of writing                                                                           |
+| Pull request  | typeshade/radiance#6, the pull request that carries this record and is its review                              |
 
 ## What changes
 

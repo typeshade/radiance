@@ -19,7 +19,7 @@ compiler: ['0006-4']
 | Author        | Written in a Claude Code session for the owner; the owner's review is the approval                |
 | Applicability | `packages/radiance/src/materials`, `src/kernels/materials.shade.ts`, `src/kernels/trace.shade.ts` |
 | Baseline      | `main` at 0f17f5e; the compiler pinned at e923a34                                                 |
-| Pull request  | None assigned at the time of writing                                                              |
+| Pull request  | typeshade/radiance#6, the pull request that carries this record and is its review                 |
 
 ## What changes
 

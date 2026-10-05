@@ -20,7 +20,7 @@ compiler: ['0006-5', '0006-6']
 | Author        | Written in a Claude Code session for the owner; the owner's review is the approval |
 | Applicability | `scripts/`, `.github/workflows/ci.yml`, `docs/benchmarks.md`; every package        |
 | Baseline      | `main` at 0f17f5e; the compiler pinned at e923a34                                  |
-| Pull request  | None assigned at the time of writing                                               |
+| Pull request  | typeshade/radiance#6, the pull request that carries this record and is its review  |
 
 ## What changes
 

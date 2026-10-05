@@ -24,7 +24,7 @@ compiler: ['0006-1', '0006-2', '0006-3']
 | Author        | Written in a Claude Code session for the owner (Seungup Noh); the owner's review is the approval, not this attribution         |
 | Applicability | `@typeshade/radiance` and `@typeshade/radiance-addons` at 0.0.0; the kernels under `packages/radiance/src/kernels`; `scripts/` |
 | Baseline      | `main` at 0f17f5e; the compiler pinned at `vendor/typeshade` e923a34                                                           |
-| Pull request  | None assigned at the time of writing; the pull request that carries this record is its review                                  |
+| Pull request  | typeshade/radiance#6, the pull request that carries this record and is its review                                              |
 
 ## What changes
 

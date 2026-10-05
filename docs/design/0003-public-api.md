@@ -26,7 +26,7 @@ compiler: []
 | Author        | Written in a Claude Code session for the owner; the owner's review is the approval                                                 |
 | Applicability | `@typeshade/radiance` and `@typeshade/radiance-addons`, 0.0.0 today, 0.1.0 as the first release; the release version is unassigned |
 | Baseline      | `main` at 0f17f5e; the compiler pinned at e923a34                                                                                  |
-| Pull request  | None assigned at the time of writing                                                                                               |
+| Pull request  | typeshade/radiance#6, the pull request that carries this record and is its review                                                  |
 
 ## What changes
 

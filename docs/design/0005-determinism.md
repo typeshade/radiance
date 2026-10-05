@@ -18,7 +18,7 @@ compiler: []
 | Author        | Written in a Claude Code session for the owner; the owner's review is the approval  |
 | Applicability | Every `.shade.ts` under `packages/radiance/src/kernels`; `docs/plan.md` §3.1 item 4 |
 | Baseline      | `main` at 0f17f5e; the compiler pinned at e923a34                                   |
-| Pull request  | None assigned at the time of writing                                                |
+| Pull request  | typeshade/radiance#6, the pull request that carries this record and is its review   |
 
 ## What changes
 
