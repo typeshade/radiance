@@ -14,6 +14,16 @@ import { hash2, sample2 } from "./sampler.shade.ts";
 // write the same element of `accum`, and each adds its samples in one order, so two renders of
 // one seed on one device are bit-identical.
 //
+// Determinism (design record 0005, "The six rules"). This file leans on these rules:
+//   Rule 1: no `random`. The sampler draws every random number.
+//   Rule 2: `turn` makes a direction from sums and products. `exp2` and `pow` only make the tone
+//           map's value.
+//   Rule 3: `sqrt`, `/`, `normalize`, `length`, `dot` and `cross` may steer. The differential
+//           gate bounds them.
+//   Rule 4: no atomics. One pixel is one invocation.
+//   Rule 6: no `f16`, no subgroup operation, no `raw`.
+// The lint in determinism.test.ts reads the compiler's determinism report of this file.
+//
 // The scene layout is `packScene`'s (src/renderers/pack.ts):
 //   spheres:   two vec4 per sphere: centre and radius; material index in x.
 //   quads:     three vec4 per quad: corner and material index (w); edge u; edge v.
