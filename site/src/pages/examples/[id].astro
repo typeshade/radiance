@@ -4,6 +4,7 @@
 // The sidebar lists every example, so the next one is one click away.
 import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
 import { Code } from '@astrojs/starlight/components';
+import DeterminismReport from '../../components/DeterminismReport.astro';
 import Stage from '../../components/Stage.astro';
 import { copyFor } from '../../i18n/index.ts';
 import { EXAMPLES, type ExampleEntry } from '../../../examples/index.ts';
@@ -17,6 +18,11 @@ export function getStaticPaths() {
 const { entry } = Astro.props as { entry: ExampleEntry };
 const t = copyFor('en').examples;
 const file = `site/examples/${entry.id}.ts`;
+// An example with more to say than its stage shows has a component for it, under the stage.
+const MORE: Record<string, typeof DeterminismReport | undefined> = {
+  determinism: DeterminismReport,
+};
+const More = MORE[entry.id];
 ---
 
 <StarlightPage
@@ -26,6 +32,7 @@ const file = `site/examples/${entry.id}.ts`;
 >
   <p class="text-[16px] leading-[24px] text-fg-2">{entry.description}</p>
   <div class="not-content mt-6"><Stage id={entry.id} /></div>
+  {More && <More />}
   <h2 id="source">{t.source}</h2>
   <p><a href={sourceUrl(file)}>{t.onGithub}</a></p>
   <Code code={exampleSource(entry.id)} lang="ts" title={`examples/${entry.id}.ts`} />

@@ -60,5 +60,7 @@ set back. The canvas keeps the last picture.
 
 Two renders of one seed on one device are bit-identical: every random number comes from the
 sampler, keyed by the pixel, the seed, the sample and the dimension, and no two invocations
-write the same pixel. [Checked on the CPU](/guide/checked-on-the-cpu/) explains how CI holds
-the GPU's image to the compiler's CPU oracle.
+write the same pixel. Both renders must take their samples in the same frames. The
+[Determinism](/guide/determinism/) page states the promise and what it needs.
+[Checked on the CPU](/guide/checked-on-the-cpu/) explains how CI holds the GPU's image to the
+compiler's CPU oracle.

@@ -42,6 +42,14 @@ export const EXAMPLES: readonly ExampleEntry[] = [
     load: () => import('./coloured-lights.ts'),
   },
   {
+    id: 'determinism',
+    title: 'Determinism',
+    description:
+      'One seed, one image: two renders of one seed differ in no float, and another seed in many.',
+    category: 'Path tracing',
+    load: () => import('./determinism.ts'),
+  },
+  {
     id: 'scene-graph',
     title: 'Scene graph',
     description: 'A turning group of spheres: the path tracer starts again every frame.',
