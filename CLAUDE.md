@@ -42,6 +42,20 @@ Moving the pin is a step with checks, not a memory:
 - Moving the pin is its own pull request, with `bun run check` and `bun run harness` green on
   the new pin.
 
+## A contract changes in a design record first
+
+`docs/design/` holds the agreed shape of each part the engine is built on: the kernel's buffers
+and their layouts (0001), the gates (0002), the public API (0003), the material record and the
+shading contract (0004), the determinism rules (0005) and the proposals the engine owes the
+compiler (0006). `docs/design/README.md` says which changes need a record and the lifecycle.
+
+- Before implementing a change to one of those, find its accepted record. If there is none, or
+  the change reaches past what the record declares, write or amend the record first, as its own
+  pull request, and do not implement until it is merged as accepted.
+- Each implementing commit names its record on a line of its own: `Design: 0001`.
+- A record is written for an agent that has not read the conversation: files, names, layouts in
+  bytes, tests and the numbers that prove each step.
+
 ## Report what using TypeShade is like
 
 - `docs/typeshade-feedback.md` is the log of what working in TypeShade is like here: friction,

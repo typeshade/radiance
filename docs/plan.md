@@ -115,7 +115,8 @@ Found in the owner's review of what was missing. Each is cheap at M1 or M2 and a
 4. **The exact determinism promise.** Transcendental functions (`sin`, `exp`, `pow`) may differ
    by vendor, and the determinism report lists exactly those. The promise is "bit-identical on
    the same device and driver; identical across vendors within the operations the report lists
-   as deterministic". Any farm-consistency claim is written to that scope.
+   as deterministic". Any farm-consistency claim is written to that scope. Design record 0005
+   (`docs/design/0005-determinism.md`) states the promise and the rules a kernel is written under.
 5. **Sampler quality.** A `random(seed)` hash alone converges slowly. A Sobol plus Owen-scrambled
    low-discrepancy sampler and a blue-noise mask are a module of the kernels package, used
    from M1.
@@ -133,10 +134,14 @@ Found in the owner's review of what was missing. Each is cheap at M1 or M2 and a
   with atomics for the queues.
 - BVH: the host builds with SAH and flattens the nodes into a storage buffer; traversal is a
   stack loop (`while`) over that runtime-length buffer. WebGPU has no hardware ray tracing, so
-  this is the only path (three-gpu-pathtracer proved it).
+  this is the only path (three-gpu-pathtracer proved it). Design record 0001
+  (`docs/design/0001-scene-data-model.md`) fixes the buffers, their layouts and the two-level
+  traversal from M2: triangles only, seven storage buffers, relative indices inside a BLAS.
 - Materials: one principled BSDF (base colour, metallic, roughness, IOR, transmission,
-  emission), later anisotropy, clearcoat and sheen. Textures are one `texture_2d_array` plus an
-  index per material.
+  emission), later anisotropy, clearcoat and sheen. Textures are `texture_2d_array`s, one per
+  size class, plus an index per material. Design record 0004
+  (`docs/design/0004-materials-and-shading.md`) fixes the material record, the shading
+  contract and the texture plan.
 - Lights: emissive triangles, HDRI (the host computes the importance-sampling CDF), MIS; then
   point, spot and sun.
 - Denoising: a simple à-trous or bilateral filter first; SVGF later.
@@ -349,20 +354,24 @@ has run the frame), bind-group, layout and pipeline caches, `resident.write()` u
 makes unnecessary: a uniform ring buffer (the queue stages), resource state transitions, fences,
 explicit memory heaps.
 
-| Item                                                                  | Milestone                                                                 | Why                                                                                                   |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| A cap on frames in flight (2 to 3)                                    | M1                                                                        | A progressive loop that only submits grows the queue; `await submit()` every frame makes it 1         |
-| Scene buffer suballocation (bump plus free list inside large buffers) | M2                                                                        | The binding limits put all geometry into a few buffers                                                |
-| A ring for large per-frame CPU-to-GPU uploads                         | not before M6s                                                            | Until M3 the data lives on the GPU and animation matrices are small uniforms; cache playback needs it |
-| A readback ring (several staging buffers mapped at once)              | M5                                                                        | The fitting loop reads back every iteration; the pool plus sequential `mapAsync` first                |
-| GPU timestamp queries                                                 | M1 coarse (`performance.now()`); `timestamp-query` as a compiler proposal | Tuning the watchdog budget                                                                            |
-| Memory accounting; size classes in the pool                           | M3                                                                        | The pool keys by exact size, so many sizes mean many buffers; with the texture budget                 |
-| Asynchronous pipeline creation warm-up                                | R1                                                                        | The first-frame hitch of the real-time tier                                                           |
+| Item                                                                  | Milestone                                                                 | Why                                                                                                        |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| A cap on frames in flight (2 to 3)                                    | M1                                                                        | A progressive loop that only submits grows the queue; `await submit()` every frame makes it 1              |
+| Scene buffer suballocation (bump plus free list inside large buffers) | after record 0006 item 2 (a partial buffer write)                         | The binding limits put all geometry into a few buffers; until then a changed geometry re-writes them whole |
+| A ring for large per-frame CPU-to-GPU uploads                         | not before M6s                                                            | Until M3 the data lives on the GPU and animation matrices are small uniforms; cache playback needs it      |
+| A readback ring (several staging buffers mapped at once)              | M5                                                                        | The fitting loop reads back every iteration; the pool plus sequential `mapAsync` first                     |
+| GPU timestamp queries                                                 | M1 coarse (`performance.now()`); `timestamp-query` as a compiler proposal | Tuning the watchdog budget                                                                                 |
+| Memory accounting; size classes in the pool                           | M3                                                                        | The pool keys by exact size, so many sizes mean many buffers; with the texture budget                      |
+| Asynchronous pipeline creation warm-up                                | R1                                                                        | The first-frame hitch of the real-time tier                                                                |
 
 ## 9. What goes back to the compiler (expected)
 
 This engine stands on a pre-1.0 runtime, so these are likely to become proposals in
-`typeshade/typeshade`'s `changes/`, opened in the order the engine finds them:
+`typeshade/typeshade`'s `changes/`, opened in the order the engine finds them. Design record
+0006 (`docs/design/0006-compiler-boundary.md`) is the list with the evidence read at e923a34,
+the milestone each blocks and the engine's way around each until it lands; it adds device
+limits, a partial buffer write, raw bytes as a host value, a texture write, a layer read and the
+console's slot to the items below:
 
 - How the runtime helps frame accumulation (#204). Solved on the host at M1, and the need
   written down.
@@ -397,6 +406,9 @@ This engine stands on a pre-1.0 runtime, so these are likely to become proposals
 
 ## 11. Verification
 
+Design record 0002 (`docs/design/0002-verification.md`) is the set of gates, their scenes, their
+numbers and the probe each proves itself with. In short:
+
 - Every milestone's image golden follows the compiler's `gate:render`: render in headless
   Chromium, `readFloats()`, compare within tolerance.
 - The CPU oracle's render against the GPU's (the compiler's `gate:differential` way) is in CI from
@@ -425,3 +437,8 @@ This engine stands on a pre-1.0 runtime, so these are likely to become proposals
 5. The site, radiance.typeshade.dev, is a library site: Starlight for the guide, the search and
    the API reference (generated from the engine's JSDoc), a front page, and an example per page
    that runs the code it shows.
+6. A change to a contract the engine is built on (the kernel's buffers and layouts, a public
+   export, a gate, a determinism rule, the material record, a proposal to the compiler) starts
+   as a design record in `docs/design/`, merged as accepted before its code is written, and
+   each implementing commit names it (`Design: NNNN`). `docs/design/README.md` is the
+   procedure (the owner, 2026-10-05).
