@@ -1,3 +1,3 @@
-// What the harness page imports: the engine and the Cornell box (scripts/harness.mjs).
+// What the harness page imports: the engine and the gate scenes (scripts/gates/_browser.mjs).
 export { PathTracer } from '@typeshade/radiance';
-export { createCornellBox } from '@typeshade/radiance-addons';
+export { scenes } from './scenes.ts';

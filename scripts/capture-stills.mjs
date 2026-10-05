@@ -5,9 +5,8 @@
 // hash (scripts/stills.mjs), so a still changes only by a deliberate capture.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { chromium } from 'playwright';
 import sharp from 'sharp';
-import { CHROMIUM, serve } from './serve.mjs';
+import { launchBrowser, serve } from './gates/_browser.mjs';
 import { exampleIds, sha256, stillPath } from './stills.mjs';
 
 /** The samples a pixel a still is taken at. */
@@ -19,7 +18,7 @@ const siteRoot = join(process.cwd(), 'site');
 const only = process.argv.slice(2);
 const ids = only.length > 0 ? only : exampleIds(siteRoot);
 const { server, origin } = await serve(join(process.cwd(), 'dist/site'));
-const browser = await chromium.launch(CHROMIUM);
+const browser = await launchBrowser();
 let failures = 0;
 try {
   for (const id of ids) {
