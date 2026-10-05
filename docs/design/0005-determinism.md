@@ -48,10 +48,14 @@ comment names the rules it leans on.
 2. **No transcendental decides.** `sin`, `cos`, `exp`, `exp2`, `log`, `log2`, `pow`, `fract`,
    `tan`, `atan`, `atan2`, `asin`, `acos` never feed a comparison, an index, a loop bound or a
    lobe choice. They may produce a radiance value (a BSDF's value, the tone map, a Fresnel
-   term). A direction from an angle goes through `turn()` or its kind: sums and products.
+   term). A direction from an angle goes through `turn()` or its kind: sums and products. A
+   comparison that selects between two pieces of one continuous curve (the tone map's knee)
+   produces a value and is not a decision. The pieces agree at the knee, so a driver's error in
+   `exp2` moves the result by that error and not onto another path.
 3. **Bounded operations may steer, and the gate admits them.** `sqrt`, `/`, `normalize`,
-   `length`, `dot`, `cross` and `inverseSqrt` are bounded or inherited rows and are needed
-   in every intersection. A path they move by one sample's share is what the differential
+   `length`, `dot`, `cross`, `inverseSqrt` and `reflect` are bounded or inherited rows and are
+   needed in every intersection and bounce. The compiler reports `reflect` as inherited from
+   `x - 2 * dot(x, y) * y`. A path they move by one sample's share is what the differential
    gate's `rel` and `mean` are for.
 4. **No atomics on the accumulation path.** One pixel is one invocation in one dispatch. A
    pixel's samples are added in index order inside it (record 0001, tiles).
@@ -68,14 +72,16 @@ value-only list:
 
 ```ts
 /** Operations the kernels may use anywhere (bounded, inherited, or exact on both targets). */
-const ALLOWED = ['/', 'sqrt', 'inverseSqrt', 'normalize', 'length', 'dot', 'cross', 'mix', 'fma', 'exp2', 'pow', 'mod'];
+const ALLOWED = ['/', 'sqrt', 'inverseSqrt', 'normalize', 'length', 'dot', 'cross', 'reflect', 'mix', 'fma', 'exp2', 'pow', 'mod'];
 /** Operations a function may use only to produce a value: the functions named here. */
 const VALUE_ONLY = { tonemap: ['exp2', 'pow'], fresnel: ['pow'] /* M3 adds the BSDF's */ };
 ```
 
 A row outside both fails the test with the operation, its kind, its accuracy and the functions
 it is in. The lists are edited only with this record amended: a pull request that adds a row
-cites the rule it keeps.
+cites the rule it keeps. At pin e923a34 the compiler reports `exp2` and `pow` as rows that are
+not of kind `absolute`, so `VALUE_ONLY` binds no row yet. The lint keeps the list for a compiler
+that reports one.
 
 **The M4 report.** Plan §4's M4 acceptance is "a kernel set for which the report says zero
 driver-dependent operations". The lint is the report's first form: its output, with the
@@ -115,6 +121,12 @@ and no lint (the status quo, which caught the divergence late).
 3. The allowlist as a test, amended only with this record.
 
 ## Record
+
+**Amendment 1** (2026-10-05, UTC). Record 0002 step 3's lint, written against the compiler at
+e923a34, found a row the lists did not admit: `reflect`, which `trace.shade.ts` used at M1 and
+which the compiler reports as its own inherited row. Rule 3 and `ALLOWED` gain `reflect`. Rule 2
+says that the tone map's knee is a value, not a decision. The note after the lists records that
+`VALUE_ONLY` binds no row at this pin.
 
 **Approval and plan record.** Accepted on 2026-10-05 (UTC). The owner approved the merge of typeshade/radiance#6 in the conversation, which merged this record as `draft` at 9e8b479. The owner then said to implement the records with Opus 5.5 and Sonnet 5.5, and that go-ahead is the acceptance. Every entry of "Decisions for the owner" stands as proposed.
 

@@ -2,10 +2,17 @@
 // every visible mesh in world space, its material's index, and the camera's frame. A renderer
 // compares what this returns frame to frame, so any change to the scene or the camera starts
 // the accumulation again without the application saying so.
+//
+// This is the temporary adapter of design record 0001, step 1. The geometries are triangle
+// meshes now, and the kernel still draws two analytic shapes. A `SphereGeometry` packs as the
+// analytic sphere of its radius, and it ignores its segments. A `PlaneGeometry`, and so a
+// `QuadGeometry`, packs as the analytic quad. A `BoxGeometry` has no analytic form, so it is
+// refused. Step 3 of the record replaces this file with the triangle pack.
 
 import type { Camera } from '../cameras/Camera.ts';
 import { PerspectiveCamera } from '../cameras/PerspectiveCamera.ts';
-import { QuadGeometry } from '../geometries/QuadGeometry.ts';
+import { BoxGeometry } from '../geometries/BoxGeometry.ts';
+import { PlaneGeometry } from '../geometries/PlaneGeometry.ts';
 import { SphereGeometry } from '../geometries/SphereGeometry.ts';
 import type { Material } from '../materials/Material.ts';
 import { Vector3 } from '../math/Vector3.ts';
@@ -62,12 +69,17 @@ export function packScene(scene: Scene): PackedScene {
     if (g instanceof SphereGeometry) {
       const c = new Vector3().applyMatrix4(w);
       spheres.push(c.x, c.y, c.z, g.radius * w.maxScale(), m, 0, 0, 0);
-    } else if (g instanceof QuadGeometry) {
+    } else if (g instanceof PlaneGeometry) {
       const corner = new Vector3(-g.width / 2, -g.height / 2, 0).applyMatrix4(w);
       const u = new Vector3(g.width, 0, 0).transformDirection(w);
       const v = new Vector3(0, g.height, 0).transformDirection(w);
       if (emits(o.material)) lights.push(quads.length / 12);
       quads.push(corner.x, corner.y, corner.z, m, u.x, u.y, u.z, 0, v.x, v.y, v.z, 0);
+    } else if (g instanceof BoxGeometry) {
+      throw new Error(
+        'the path tracer cannot draw a BoxGeometry yet: it has no analytic form, and triangles ' +
+          'reach the kernel at step 3 of design record 0001',
+      );
     } else {
       throw new Error(`the path tracer cannot draw a ${g.type} yet`);
     }

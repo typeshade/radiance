@@ -1,5 +1,6 @@
-// The numbers M1's acceptance is held to, in one place: scripts/harness.mjs runs the gates and
-// the site prints them (site/src/lib/facts.ts), so a bound on the page is the bound CI holds.
+// The numbers M1's acceptance is held to, in one place: scripts/gates/differential.mjs and
+// scripts/gates/determinism.mjs hold the engine to them, scripts/harness.mjs runs those gates,
+// and the site prints them (site/src/lib/facts.ts), so a bound on the page is the bound CI holds.
 
 /** The gated render: small, so SwiftShader and the oracle finish in CI's time. */
 export const GATE = { size: [16, 16], samples: 1024, perFrame: 64, seed: 1 };

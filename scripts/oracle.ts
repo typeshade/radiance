@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { compile, compileModuleJs, type CpuValue } from 'typeshade';
 import { cameraUniforms, packScene, type Camera, type Scene } from '@typeshade/radiance';
+import type { SceneName } from './scenes.ts';
 
 export interface OracleOptions {
   readonly scene: Scene;
@@ -76,16 +77,19 @@ export function renderOnCpu(o: OracleOptions): Float32Array {
   return out;
 }
 
-// `bun scripts/oracle.ts <width> <height> <samples> <seed> <outfile>`: the Cornell box on the
-// oracle, written as JSON (the mean radiance and count of every pixel), for the harness.
+// `bun scripts/oracle.ts <width> <height> <samples> <seed> <outfile> [scene]`: a scene of
+// scripts/scenes.ts (the Cornell box when none is named) on the oracle, written as JSON (the mean
+// radiance and count of every pixel), for the differential gate.
 if (import.meta.main) {
-  const [w, h, n, seed, outfile] = process.argv.slice(2);
-  if (outfile === undefined) {
-    console.error('usage: bun scripts/oracle.ts <width> <height> <samples> <seed> <outfile>');
+  const { scenes } = await import('./scenes.ts');
+  const [w, h, n, seed, outfile, name = 'cornell'] = process.argv.slice(2);
+  if (outfile === undefined || !Object.hasOwn(scenes, name)) {
+    console.error(
+      `usage: bun scripts/oracle.ts <width> <height> <samples> <seed> <outfile> [${Object.keys(scenes).join('|')}]`,
+    );
     process.exit(2);
   }
-  const { createCornellBox } = await import('@typeshade/radiance-addons');
-  const box = createCornellBox();
+  const box = scenes[name as SceneName]();
   const t0 = performance.now();
   const image = renderOnCpu({
     scene: box.scene,
