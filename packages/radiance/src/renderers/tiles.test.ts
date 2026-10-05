@@ -21,6 +21,28 @@ function coverage(tiles: readonly Tile[], w: number, h: number): Uint8Array {
   return seen;
 }
 
+/**
+ * Throws, naming the tile or the pixel, unless `tiles` cover each pixel of a `w` by `h` frame
+ * once and each tile larger than a workgroup keeps pixels x samples x `ns` under `budget` ms.
+ */
+function checkTiles(
+  tiles: readonly Tile[],
+  w: number,
+  h: number,
+  samples: number,
+  ns: number,
+  budget: number,
+): void {
+  for (const tile of tiles) {
+    const pixels = tile[2] * tile[3];
+    if (pixels > WORKGROUP && pixels * samples * ns > budget * 1e6)
+      throw new Error(`tile ${tile.join(', ')} takes ${(pixels * samples * ns) / 1e6} ms`);
+  }
+  const seen = coverage(tiles, w, h);
+  const wrong = seen.findIndex((c) => c !== 1);
+  if (wrong >= 0) throw new Error(`pixel ${wrong} is covered ${seen[wrong]} times`);
+}
+
 // Verifies: Design 0001.6
 describe('tileFrame', () => {
   it('is one tile of the whole frame before any frame is measured', () => {
@@ -29,13 +51,10 @@ describe('tileFrame', () => {
 
   it('keeps pixels x samples x nanoseconds per path under the budget', () => {
     const ns = 900;
-    for (const samples of [1, 4, 64]) {
-      const tiles = tileFrame(1920, 1080, samples, ns, 50);
-      for (const [, , tw, th] of tiles) {
-        if (tw * th > WORKGROUP) expect(tw * th * samples * ns).toBeLessThanOrEqual(50e6);
-      }
-      expect(coverage(tiles, 1920, 1080).every((c) => c === 1)).toBe(true);
-    }
+    for (const samples of [1, 4, 64])
+      expect(() =>
+        checkTiles(tileFrame(1920, 1080, samples, ns, 50), 1920, 1080, samples, ns, 50),
+      ).not.toThrow();
   });
 
   it('cuts a row into parts when a row is over the budget', () => {
@@ -51,9 +70,19 @@ describe('tileFrame', () => {
     expect(MAX_TILE_PIXELS).toBe(4_194_240);
   });
 
-  it('can fail: a budget the tiles do not keep is seen', () => {
-    const [[, , tw, th]] = tileFrame(1920, 1080, 1, undefined, 50) as [Tile];
-    expect(tw * th * 1 * 900).toBeGreaterThan(50e6);
+  it('can fail: tiles sized for a speed twice the real one are over the budget', () => {
+    const tiles = tileFrame(1920, 1080, 4, 450, 50);
+    expect(() => checkTiles(tiles, 1920, 1080, 4, 900, 50)).toThrow(/^tile 0, 0, 1920, 14 takes/);
+  });
+
+  it('can fail: tiles that leave a row out, or cover one twice, are seen', () => {
+    const tiles = tileFrame(1920, 1080, 4, 900, 50);
+    expect(() => checkTiles(tiles.slice(1), 1920, 1080, 4, 900, 50)).toThrow(
+      'pixel 0 is covered 0 times',
+    );
+    expect(() => checkTiles([...tiles, tiles[0]!], 1920, 1080, 4, 900, 50)).toThrow(
+      'pixel 0 is covered 2 times',
+    );
   });
 });
 

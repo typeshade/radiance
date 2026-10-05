@@ -182,6 +182,22 @@ describe('emission', () => {
 });
 
 // Verifies: Design 0004.2
+const TRACE = readFileSync(join(import.meta.dir, 'trace.shade.ts'), 'utf8');
+
+/** What in `source` reads a material word: an index into `materials` or a MATERIAL_ offset. The
+ *  comments are taken out first, so a comment that names one reads nothing. */
+function materialReads(source: string): string[] {
+  const code = source.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, '');
+  return [...code.matchAll(/\bmaterials\s*\[|\bMATERIAL_[A-Z_]+/g)].map((m) => m[0]);
+}
+
+/** trace.shade.ts with `line` put in the path loop, before the line that calls `sampleBsdf`. */
+function beforeSampleBsdf(line: string): string {
+  const call = TRACE.search(/^.*\bsampleBsdf\(/m);
+  expect(call).toBeGreaterThan(0);
+  return `${TRACE.slice(0, call)}${line}\n${TRACE.slice(call)}`;
+}
+
 describe('the contract, as the record states it', () => {
   it('exports Surface, BsdfSample, emission, sampleBsdf and evalBsdf', () => {
     const exported = readFileSync(PATH, 'utf8');
@@ -195,20 +211,22 @@ describe('the contract, as the record states it', () => {
   });
 
   it('leaves the path loop no material word to read: trace.shade.ts names no material binding or offset', () => {
-    const trace = readFileSync(join(import.meta.dir, 'trace.shade.ts'), 'utf8').replace(
-      /\/\/[^\n]*|\/\*[\s\S]*?\*\//g,
-      '',
-    );
-    expect(trace).not.toMatch(/\bmaterials\s*\[/);
-    expect(trace).not.toMatch(/\bMATERIAL_[A-Z_]+/);
-    expect(trace).toMatch(/\bemission\(/);
-    expect(trace).toMatch(/\bsampleBsdf\(/);
-    expect(trace).toMatch(/\bevalBsdf\(/);
+    expect(materialReads(TRACE)).toEqual([]);
+    expect(TRACE).toMatch(/\bemission\(/);
+    expect(TRACE).toMatch(/\bsampleBsdf\(/);
+    expect(TRACE).toMatch(/\bevalBsdf\(/);
   });
 
-  it('can fail: a loop that reads a material word is seen', () => {
-    const wrong = 'const albedo = materials[hit.material * 8];';
-    expect(wrong).toMatch(/\bmaterials\s*\[/);
+  it('can fail: a read of a material word put into the path loop is seen, and a comment is not', () => {
+    expect(
+      materialReads(beforeSampleBsdf('const albedo = materials[hit.material * 8u].xyz;')),
+    ).toEqual(['materials[']);
+    expect(materialReads(beforeSampleBsdf('const base = MATERIAL_BASE;'))).toEqual([
+      'MATERIAL_BASE',
+    ]);
+    expect(
+      materialReads(beforeSampleBsdf('// materials[hit.material * 8u] is the base colour.')),
+    ).toEqual([]);
   });
 });
 

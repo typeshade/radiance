@@ -376,7 +376,8 @@ describe('ScenePack: what each change writes (record 0001, "Change tracking and 
   it('writes the materials and the lights when an emission changes', () => {
     lampMaterial.emissive.multiplyScalar(2);
     expect(update()).toEqual(['materials']);
-    // The light table's cdf of one light is 1 whatever its power: only the words moved.
+    // The lamp's two triangles have one area, so their cdf is 0.5 and 1 whatever the power:
+    // only the words moved.
     lampMaterial.emissive = new Color(0, 0, 0);
     expect(update()).toEqual(['lights', 'materials']);
     expect(pack.counts.lights).toBe(0);

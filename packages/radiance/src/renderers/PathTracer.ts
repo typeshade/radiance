@@ -273,7 +273,10 @@ export class PathTracer extends Renderer {
       this.info.pathsPerSecond = ms > 0 ? (w * h * n) / (ms / 1000) : 0;
       this.info.frames++;
       this.info.dispatches = tiles.length;
-      this.info.tilePixels = Math.max(...tiles.map((t) => t[2] * t[3]));
+      // A loop, not a spread: a frame may have more tiles than an engine takes arguments.
+      let largest = 0;
+      for (const t of tiles) largest = Math.max(largest, t[2] * t[3]);
+      this.info.tilePixels = largest;
       this.info.dispatchTime = ms / tiles.length;
       if (this.targetFrameTime !== undefined && this.#scale === 1 && ms > 0)
         this.samplesPerFrame = Math.max(
