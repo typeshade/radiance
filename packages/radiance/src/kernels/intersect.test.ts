@@ -1,7 +1,7 @@
 // The traversal and the surface (design record 0001, "Traversal") on the CPU oracle
-// (`compileModuleJs`, at f32), over buffers a `ScenePack` packed: `nearest` against a test of
-// every triangle, the watertight triangle test on a shared edge, an instance hit where its matrix
-// puts it, and `surface` (record 0004's `Surface`).
+// (`compileModuleJs`, at f32), over buffers a `ScenePack` packed: `nearest` through a TLAS of
+// inner nodes and leaves against a test of every triangle, the watertight triangle test on a
+// shared edge, an instance hit where its matrix puts it, and `surface` (record 0004's `Surface`).
 
 import { beforeEach, describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
@@ -20,6 +20,8 @@ import {
   INSTANCE_FLAGS,
   INSTANCE_MATRIX,
   INSTANCE_STRIDE,
+  NODE_COUNT_MASK,
+  NODE_STRIDE,
 } from './layout.shade.ts';
 
 type Vec = [number, number, number];
@@ -147,18 +149,38 @@ describe('nearest: the two-level walk against a test of every triangle', () => {
   const floor = new Mesh(new PlaneGeometry(8, 8), new DiffuseMaterial());
   floor.position.set(0, -1.5, 0);
   floor.rotation.x = -Math.PI / 2;
+  // Four pebbles more, so the TLAS holds seven instances and its root is an inner node.
+  const pebble = new SphereGeometry(0.4, 8, 4);
+  const pebbles = [
+    [-1.8, 0.6, 1.4],
+    [0.6, 1.1, -1.5],
+    [3.6, -0.6, 1.1],
+    [1.2, 0.3, 1.7],
+  ].map(([x, y, z]) => {
+    const m = new Mesh(pebble, new DiffuseMaterial());
+    m.position.set(x!, y!, z!);
+    return m;
+  });
   const scene = new Scene();
-  scene.add(a, b, floor);
+  scene.add(a, b, floor, ...pebbles);
   let pack = bind(cpu, scene);
   beforeEach(() => {
     pack = bind(cpu, scene);
   });
+  // The geometry ids are in the order the pack first saw each geometry.
+  const counts = [ball, floor.geometry as PlaneGeometry, pebble].map((g) => g.index.length / 3);
   const triangles = (s: number): number => {
     const id = new Uint32Array(pack.arrays.instances.buffer)[
       (s * INSTANCE_STRIDE + INSTANCE_FLAGS) * 4 + 1
-    ];
-    return id === 0 ? ball.index.length / 3 : 2;
+    ]!;
+    return counts[id]!;
   };
+
+  it('walks a TLAS of seven instances, whose root is an inner node', () => {
+    expect(pack.counts.instances).toBe(7);
+    const root = pack.counts.tlasBase * NODE_STRIDE * 4;
+    expect(new Uint32Array(pack.arrays.nodes.buffer)[root + 7]! & NODE_COUNT_MASK).toBe(0);
+  });
   const next = random(5);
   const rays = Array.from({ length: 300 }, () => {
     const z = next() * 2 - 1;

@@ -311,6 +311,8 @@ describe('ScenePack: instances in the TLAS leaf order (record 0001, Amendment 1)
     for (let n = base; n < pack.counts.nodes; n++) {
       const count = words[n * 8 + 7]! & NODE_COUNT_MASK;
       if (count === 0) continue;
+      // A TLAS leaf holds up to 4 instances.
+      expect(count).toBeLessThanOrEqual(4);
       for (let s = words[n * 8 + 3]!; s < words[n * 8 + 3]! + count; s++) {
         const tx = pack.arrays.instances[s * 32 + 3]!;
         expect(tx).toBeGreaterThanOrEqual(nodes[n * 8]!);
