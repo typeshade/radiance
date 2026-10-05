@@ -67,6 +67,7 @@ of the CPU oracle's render of the same kernel. M2 brings triangle meshes, the BV
 | `site/`                      | radiance.typeshade.dev: Starlight (the guide, the search, the API reference from the packages' JSDoc), the front page and the examples (`site/examples`), built by `bun run site` into `dist/site`.                        |
 | `site/public/stills`         | One still per example, the picture a page shows before its canvas runs, with a `.sha256` the build checks. `bun run capture:stills` captures them.                                                                         |
 | `scripts/boundary.mjs`       | The check that no package imports past `typeshade/runtime` or calls WebGPU itself.                                                                                                                                         |
+| `scripts/gates/api.mjs`      | The api gate. `bun run bake:api-surface` (`scripts/bake-api-surface.ts`) writes the exports of each package to `packages/*/__api__/surface.md`. The gate fails when a fresh bake differs.                                  |
 | `scripts/gates.mjs`          | The bounds CI holds the engine to. The site prints the same numbers.                                                                                                                                                       |
 | `scripts/harness.mjs`        | The Cornell box in headless Chromium on SwiftShader, held to its gates and their probes, and the site's Cornell box example under the mouse. Writes `.harness/cornell.png` and `.harness/site.png`.                        |
 | `scripts/gates/`             | One module for each gate: `differential.mjs` and `determinism.mjs`. Each exports `run()` and `probe()`. `_browser.mjs` and `_png.mjs` are shared by the gates and the harness.                                             |
@@ -88,7 +89,9 @@ Later milestones add `packages/fit`, `packages/procedural`, `packages/sim` and
 
 ```sh
 bun install
-bun run check           # format, prose, STE, boundary, shaders, host views and typecheck, tests
+bun run check           # format, prose, STE, boundary, API surface, shaders, host views and typecheck, tests
+bun run gate:api        # the exports of each package equal packages/*/__api__/surface.md
+bun run bake:api-surface # bake the exports again after an intended change to one of them
 bun run harness         # the gates and their probes on WebGPU, and the site (needs Chromium: npx playwright install chromium)
 bun run gate:differential  # one gate alone: the Cornell box on WebGPU and on the oracle
 bun run gate:determinism   # one gate alone: two renders of one seed are bit-identical
