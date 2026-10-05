@@ -387,6 +387,24 @@ describe('ScenePack: what each change writes (record 0001, "Change tracking and 
     expect(update()).toEqual(['instances', 'lights', 'materials', 'nodes']);
   });
 
+  it('drops the BLAS of a geometry whose index is emptied in place, and draws nothing of it', () => {
+    const pebble = new SphereGeometry(1, 8, 4);
+    const pebbles = sceneOf(new Mesh(pebble, grey), new Mesh(new PlaneGeometry(1, 1), grey));
+    const own = new ScenePack();
+    own.update(pebbles);
+    expect(own.counts).toMatchObject({ instances: 2, triangles: pebble.index.length / 3 + 2 });
+    pebble.index = new Uint32Array(0);
+    expect([...own.update(pebbles)].sort()).toEqual([
+      'instances',
+      'lights',
+      'nodes',
+      'triangles',
+      'vertices',
+    ]);
+    expect(own.counts).toMatchObject({ instances: 1, triangles: 2 });
+    expect([...own.update(pebbles)]).toEqual([]);
+  });
+
   it("writes the geometry buffers again after release() drops a geometry's BLAS", () => {
     scene.remove(sphere);
     expect(update()).toEqual(['instances', 'lights', 'nodes']);

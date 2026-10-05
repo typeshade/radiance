@@ -410,7 +410,11 @@ export class ScenePack {
       const g = mesh.geometry;
       if (!(g instanceof BufferGeometry))
         throw new TypeError(`the path tracer draws a BufferGeometry, and a mesh holds a ${g.type}`);
-      if (g.index.length === 0) continue;
+      if (g.index.length === 0) {
+        // A geometry emptied in place draws nothing: its old BLAS leaves the pack.
+        if (this.#geometries.delete(g)) geometryChanged = true;
+        continue;
+      }
       if (g.normal === undefined) g.computeVertexNormals();
       const known = this.#geometries.get(g);
       if (known !== undefined && known.version === g.version) continue;
