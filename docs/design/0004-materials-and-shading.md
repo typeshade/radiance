@@ -198,6 +198,12 @@ disposition.
 - **A direction under the surface.** The path loop ends a path when `sampleBsdf` gives a
   direction on the other side of `ng`, which a shading normal can give. The record's path loop
   is silent on it. Open.
+- **The integer words of the record.** The record stores the five texture ids and the
+  type-and-flags word as the bits of an `f32`. The compiler's change 0045 says an integer word
+  belongs in a `storage<array<u32>>` binding. Measured in bun 1.3.14 at the pin e923a34: the
+  runtime's `pack` turns 0xffffffff into 0x7fc00000 on an `f32` lane and keeps it on a `u32`
+  lane. No picture moves until M3 reads a texture id. Open: an amendment moves those words to
+  a `u32` binding (`docs/typeshade-feedback.md`, the step 3 entry on the upload).
 
 **Configuration and validation record.** Step 1 is delivered with record 0001 step 3, on the
 branch `wt/W1` from bc99533, at the compiler pin e923a34. The oracle tests in
