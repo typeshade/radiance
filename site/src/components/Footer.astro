@@ -1,0 +1,113 @@
+---
+// Starlight's page footer (the edit link and previous and next), then the site map every page
+// carries: the documentation, the project and TypeShade, with the licence, the commit the page
+// was built from and the compiler it is built on.
+import Default from '@astrojs/starlight/components/Footer.astro';
+import { copyFor, localePath } from '../i18n/index.ts';
+import { API_INDEX, facts } from '../lib/facts.ts';
+
+const t = copyFor('en').footer;
+const groups = [
+  {
+    h: t.docs,
+    items: [
+      { label: t.guide, href: localePath('en', '/guide/getting-started/') },
+      { label: t.examples, href: localePath('en', '/examples/') },
+      { label: t.api, href: localePath('en', API_INDEX) },
+    ],
+  },
+  {
+    h: t.project,
+    items: [
+      { label: t.github, href: facts.repoUrl },
+      { label: t.issues, href: `${facts.repoUrl}/issues` },
+      { label: t.plan, href: `${facts.repoUrl}/blob/main/docs/plan.md` },
+      { label: t.feedback, href: `${facts.repoUrl}/blob/main/docs/typeshade-feedback.md` },
+    ],
+  },
+  {
+    h: t.typeshade,
+    items: [
+      { label: t.site, href: 'https://typeshade.dev/' },
+      { label: t.compiler, href: facts.compilerUrl },
+    ],
+  },
+];
+---
+
+<Default />
+<div class="rd-footer not-content">
+  <div class="rd-map">
+    {
+      groups.map((g) => (
+        <div>
+          <h2>{g.h}</h2>
+          <ul>
+            {g.items.map((i) => (
+              <li>
+                <a href={i.href}>{i.label}</a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))
+    }
+  </div>
+  <div class="rd-legal">
+    <p>{t.license}</p>
+    <p>
+      {t.builtFrom} <a href={`${facts.repoUrl}/commit/${facts.commit}`}>{facts.shortCommit}</a>{' '}
+      {t.compilerPin} <a href={`${facts.compilerUrl}/commit/${facts.compilerCommit}`}>{facts.compilerCommit}</a>.
+    </p>
+    <p>{t.attribution}</p>
+  </div>
+</div>
+
+<style>
+  .rd-footer {
+    margin-top: 4rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--rd-hairline);
+    font-size: 0.875rem;
+    line-height: 1.375rem;
+  }
+  .rd-map {
+    display: grid;
+    gap: 1.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  }
+  .rd-map h2 {
+    margin: 0 0 0.5rem;
+    font-size: 0.75rem;
+    line-height: 1.125rem;
+    font-weight: 500;
+    color: var(--rd-hint);
+  }
+  .rd-map ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 0.25rem;
+  }
+  .rd-map a,
+  .rd-legal a {
+    color: var(--rd-fg-2);
+    text-decoration: none;
+  }
+  .rd-map a:hover,
+  .rd-legal a:hover {
+    color: var(--rd-primary-fg);
+  }
+  .rd-legal {
+    margin-top: 2rem;
+    display: grid;
+    gap: 0.25rem;
+    font-size: 0.75rem;
+    line-height: 1.125rem;
+    color: var(--rd-hint);
+  }
+  .rd-legal p {
+    margin: 0;
+  }
+</style>

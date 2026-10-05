@@ -1,0 +1,69 @@
+---
+// The stage an example runs on: the example's build-time still in the first row, the running
+// island over it (ExampleStage.tsx), and on an example's page a toolbar row under it. The still
+// is the picture a browser with no WebGPU, a reader with no script and a social preview get.
+import ExampleStage, { type StageCopy } from '../islands/ExampleStage.tsx';
+import { copyFor } from '../i18n/index.ts';
+import { exampleById } from '../../examples/index.ts';
+
+interface Props {
+  id: string;
+  /** The front page's form: the status floats over the picture, no toolbar. */
+  compact?: boolean;
+  /** Width over height of the picture. */
+  aspect?: string;
+}
+const { id, compact = false, aspect = '16 / 10' } = Astro.props;
+const entry = exampleById(id);
+if (!entry) throw new Error(`[stage] no example called '${id}' in site/examples/index.ts`);
+const s = copyFor('en').examples.stage;
+const copy: StageCopy = { ...s, canvasLabel: s.canvasLabel(entry.title) };
+---
+
+<div class="rd-stage" data-stage data-example={id} data-compact={compact ? '' : undefined}>
+  <img
+    class="rd-still"
+    src={`/stills/${id}.webp`}
+    alt={s.stillAlt(entry.title)}
+    style={{ aspectRatio: aspect }}
+    decoding="async"
+  />
+  {!compact && <div class="rd-toolbar-slot" aria-hidden="true"></div>}
+  <ExampleStage client:only="react" id={id} copy={copy} compact={compact} />
+</div>
+
+<style>
+  .rd-stage {
+    display: grid;
+    grid-template-rows: auto auto;
+    overflow: hidden;
+    border: 1px solid var(--rd-hairline);
+    border-radius: 8px;
+    background: var(--rd-overlay);
+  }
+  .rd-still {
+    grid-row: 1;
+    grid-column: 1;
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    background: #000;
+  }
+  .rd-toolbar-slot {
+    grid-row: 2;
+    grid-column: 1;
+    min-height: 3rem;
+    border-top: 1px solid var(--rd-hairline);
+  }
+  .rd-stage:fullscreen {
+    grid-template-rows: minmax(0, 1fr) auto;
+    border: 0;
+    border-radius: 0;
+    background: #000;
+  }
+  .rd-stage:fullscreen .rd-still {
+    aspect-ratio: auto !important;
+    object-fit: contain;
+  }
+</style>

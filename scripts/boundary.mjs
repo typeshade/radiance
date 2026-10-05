@@ -19,7 +19,7 @@ import { join, relative } from 'node:path';
 
 /** What a package may import by bare name: the runtime's public subpath, and a sibling. */
 const ALLOWED = new Set(['typeshade/runtime']);
-const SIBLING = /^@typeshade\/radiance-[a-z-]+(\/|$)/;
+const SIBLING = /^@typeshade\/radiance(-[a-z-]+)?(\/|$)/;
 
 /** A WebGPU call or global a package's own code must not reach for. */
 const WEBGPU_CALL =

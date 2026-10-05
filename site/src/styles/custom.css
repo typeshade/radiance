@@ -1,0 +1,201 @@
+/* The site's styles: Starlight's layers, then Tailwind's theme and utilities on the tokens of
+   DESIGN.md (Vapor UI). Starlight reads its colours from --sl-* variables; they are set below
+   from Vapor's semantic aliases, light first and dark under [data-theme='dark'], so the docs,
+   the search and the site's own pages share one palette. A page styles itself with utilities;
+   this file holds tokens, fonts and the few rules every page shares. */
+@layer base, starlight, theme, components, utilities;
+
+@import '@astrojs/starlight-tailwind';
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+/* The faces DESIGN.md names, served with the site: Pretendard for text (Korean and Latin on one
+   metric), Inter for numbers in tables and counters, Fira Code for code. */
+@import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css';
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/fira-code';
+
+@theme {
+  --font-sans: 'Pretendard Variable', Pretendard, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'Fira Code Variable', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-num: 'Inter Variable', 'Pretendard Variable', system-ui, sans-serif;
+
+  /* Vapor's blue ramp is the accent; its gray ramp is the neutral scale. */
+  --color-accent-50: #eff8ff;
+  --color-accent-100: #c6e6ff;
+  --color-accent-200: #8dcdff;
+  --color-accent-300: #51a9f7;
+  --color-accent-400: #4198f2;
+  --color-accent-500: #2a72e5;
+  --color-accent-600: #0957c8;
+  --color-accent-700: #0043b3;
+  --color-accent-800: #002b9b;
+  --color-accent-900: #000e84;
+  --color-accent-950: #000e84;
+
+  /* The semantic aliases a page reads, through the variables below. */
+  --color-canvas: var(--rd-canvas);
+  --color-page: var(--rd-page);
+  --color-overlay: var(--rd-overlay);
+  --color-hairline: var(--rd-hairline);
+  --color-ring: var(--rd-ring);
+  --color-fg: var(--rd-fg);
+  --color-fg-2: var(--rd-fg-2);
+  --color-hint: var(--rd-hint);
+  --color-primary: var(--rd-primary);
+  --color-primary-fg: var(--rd-primary-fg);
+  --color-primary-soft: var(--rd-primary-soft);
+  --color-stage: #000000;
+
+  --radius-card: 8px;
+  --default-transition-duration: 150ms;
+  --default-transition-timing-function: ease;
+}
+
+/* Vapor's light aliases (DESIGN.md, Semantic alias). Unlayered, so they win over Starlight's
+   own --sl-* defaults whatever the layer order. */
+:root,
+::backdrop,
+:root[data-theme='light'],
+[data-theme='light'] ::backdrop {
+  --rd-canvas: #ffffff; /* color-background-canvas */
+  --rd-page: #f7f7f7; /* color-background-canvas-200 */
+  --rd-overlay: #ffffff; /* color-background-overlay-100 */
+  --rd-hairline: #e1e1e1; /* gray-100, the 1px border of cards */
+  --rd-ring: #c6c6c6; /* gray-200, a control's resting ring */
+  --rd-fg: #262626; /* color-foreground-normal-200 */
+  --rd-fg-2: #4c4c4c; /* color-foreground-normal-100 */
+  --rd-hint: #5d5d5d; /* color-foreground-hint-100 */
+  --rd-primary: #2a72e5; /* color-background-primary-200, blue-500 */
+  --rd-primary-fg: #0957c8; /* color-foreground-primary-100, blue-600 */
+  --rd-primary-soft: #c6e6ff; /* color-background-primary-100 */
+  --rd-overlay-hover: rgb(38 38 38 / 0.08);
+  --rd-overlay-press: rgb(38 38 38 / 0.16);
+
+  --sl-font: var(--font-sans);
+  --sl-font-mono: var(--font-mono);
+  --sl-color-white: #262626;
+  --sl-color-gray-1: #393939;
+  --sl-color-gray-2: #4c4c4c;
+  --sl-color-gray-3: #5d5d5d;
+  --sl-color-gray-4: #767676;
+  --sl-color-gray-5: #c6c6c6;
+  --sl-color-gray-6: #e1e1e1;
+  --sl-color-gray-7: #f7f7f7;
+  --sl-color-black: #ffffff;
+  --sl-color-accent-low: #c6e6ff;
+  --sl-color-accent: #2a72e5;
+  --sl-color-accent-high: #0957c8;
+  --sl-color-text: #262626;
+  --sl-color-text-accent: #0957c8;
+  --sl-color-bg: #ffffff;
+  --sl-color-bg-nav: #ffffff;
+  --sl-color-bg-sidebar: #ffffff;
+  --sl-color-bg-inline-code: #f7f7f7;
+  --sl-color-hairline: #e1e1e1;
+  --sl-color-hairline-light: #e1e1e1;
+  --sl-color-hairline-shade: #e1e1e1;
+  --sl-color-backdrop-overlay: rgb(0 0 0 / 0.32);
+  --sl-shadow-md: 0 4px 10px rgb(0 0 0 / 0.2);
+  --sl-shadow-lg: 0 16px 32px rgb(0 0 0 / 0.2);
+  --sl-text-h1: 2.375rem;
+  --sl-text-h2: 1.5rem;
+  --sl-text-h3: 1.25rem;
+  --sl-text-h4: 1.125rem;
+  --sl-line-height: 1.6;
+  --sl-nav-height: 3.5rem;
+  color-scheme: light;
+}
+
+/* Vapor's dark ramp (DESIGN.md, Dark palette): it is redefined, not inverted. */
+:root[data-theme='dark'],
+[data-theme='dark'] ::backdrop {
+  --rd-canvas: #232323;
+  --rd-page: #282828;
+  --rd-overlay: #363636;
+  --rd-hairline: #606060;
+  --rd-ring: #6c6c6c;
+  --rd-fg: #fafafa;
+  --rd-fg-2: #bebebe;
+  --rd-hint: #a7a7a7;
+  --rd-primary: #368aed;
+  --rd-primary-fg: #56acf9;
+  --rd-primary-soft: #001286;
+  --rd-overlay-hover: rgb(250 250 250 / 0.08);
+  --rd-overlay-press: rgb(250 250 250 / 0.16);
+
+  --sl-color-white: #fafafa;
+  --sl-color-gray-1: #dcdcdc;
+  --sl-color-gray-2: #bebebe;
+  --sl-color-gray-3: #a7a7a7;
+  --sl-color-gray-4: #898989;
+  --sl-color-gray-5: #606060;
+  --sl-color-gray-6: #363636;
+  --sl-color-gray-7: #282828;
+  --sl-color-black: #232323;
+  --sl-color-accent-low: #001286;
+  --sl-color-accent: #368aed;
+  --sl-color-accent-high: #56acf9;
+  --sl-color-text: #fafafa;
+  --sl-color-text-accent: #56acf9;
+  --sl-color-bg: #232323;
+  --sl-color-bg-nav: #232323;
+  --sl-color-bg-sidebar: #232323;
+  --sl-color-bg-inline-code: #363636;
+  --sl-color-hairline: #606060;
+  --sl-color-hairline-light: #606060;
+  --sl-color-hairline-shade: #606060;
+  color-scheme: dark;
+}
+
+/* The site's own wide pages (the front page, the examples) run in a 1200px measure. */
+:root[data-rd-wide] {
+  --sl-content-width: 75rem;
+}
+
+::selection {
+  background: var(--rd-primary-soft);
+  color: var(--rd-fg);
+}
+
+/* Focus is always visible: 2px in the foreground colour, 2px off the element (DESIGN.md). */
+:focus-visible {
+  outline: 2px solid var(--rd-fg);
+  outline-offset: 2px;
+}
+
+/* Numbers in counters and tables read in Inter with tabular figures. */
+.rd-num {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A hover or a press is a gray-900 overlay, 8% and 16%, never another fill (DESIGN.md). */
+.rd-press {
+  position: relative;
+  isolation: isolate;
+}
+.rd-press::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--rd-fg);
+  opacity: 0;
+  transition: opacity 150ms ease;
+  pointer-events: none;
+  z-index: -1;
+}
+.rd-press:hover::before {
+  opacity: 0.08;
+}
+.rd-press:active::before {
+  opacity: 0.16;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before {
+    transition-duration: 1ms !important;
+  }
+}

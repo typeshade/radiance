@@ -1,0 +1,13 @@
+{
+  "name": "@typeshade/radiance-addons",
+  "version": "0.0.0",
+  "type": "module",
+  "license": "Apache-2.0",
+  "description": "What a page builds on the engine: camera controls and ready-made scenes, as three.js keeps them in its addons.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@typeshade/radiance": "workspace:*"
+  }
+}

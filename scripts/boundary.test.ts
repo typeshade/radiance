@@ -19,8 +19,9 @@ describe('boundary', () => {
     expect(offence(`// device.createBuffer is the runtime's\nconst a = 1;`)).toBe('');
   });
   test('the package sources are read, shaders and tests left out', () => {
-    const files = sources('packages/render/src');
+    const files = sources('packages/radiance/src');
     expect(files.some((f: string) => f.endsWith('index.ts'))).toBe(true);
     expect(files.some((f: string) => f.endsWith('.test.ts'))).toBe(false);
+    expect(files.some((f: string) => f.endsWith('.shade.ts'))).toBe(false);
   });
 });

@@ -1,0 +1,57 @@
+---
+title: Camera controls
+description: 'OrbitControls turns mouse, touch, pen and keyboard input into camera moves about a target, with damping and limits, in the shape three.js uses.'
+sidebar:
+  order: 4
+---
+
+`OrbitControls` from `@typeshade/radiance-addons` moves a camera about a target. Its names
+follow three.js's OrbitControls.
+
+```ts
+import { OrbitControls } from '@typeshade/radiance-addons';
+
+const controls = new OrbitControls(camera, canvas);
+controls.target.set(0, 0.5, 0);
+controls.update();
+controls.saveState();
+
+renderer.setAnimationLoop(async () => {
+  controls.update(clock.getDelta());
+  renderer.preview = controls.moving ? 4 : 1;
+  await renderer.render(scene, camera);
+});
+```
+
+## Input
+
+| Input                                      | Move                                    |
+| ------------------------------------------ | --------------------------------------- |
+| Drag, or one finger                        | orbit about the target                  |
+| Right drag, middle drag, or Shift and drag | pan: the target slides with the pointer |
+| Wheel, or a trackpad pinch                 | dolly toward or away from the target    |
+| Two fingers                                | dolly and pan together                  |
+| Double-click, R or Home                    | back to the saved view                  |
+| Arrow keys, with Shift to pan; + and -     | a step of each move                     |
+
+A turn let go with speed keeps turning and slows down, as a turntable does, while
+`enableDamping` is on.
+
+## Limits
+
+| Property                             | What it bounds                            |
+| ------------------------------------ | ----------------------------------------- |
+| `minDistance`, `maxDistance`         | the distance from the target              |
+| `minPolarAngle`, `maxPolarAngle`     | the angle from straight up, in radians    |
+| `minAzimuthAngle`, `maxAzimuthAngle` | the turn about +y, in radians             |
+| `targetBounds`                       | a `Box3` the target stays in when panning |
+
+The Cornell box example keeps the camera on the open side of the box with the azimuth and
+polar limits, so a drag never puts the eye behind a wall.
+
+## Events and state
+
+- `update(dt)` advances a coasting turn, places the camera, and answers whether it moved.
+- `moving` is true while a pointer is down, the turn coasts, or a wheel just turned.
+- `start`, `change` and `end` fire through `addEventListener`.
+- `saveState()` remembers the view; `reset()` returns to it. `dispose()` removes the listeners.
