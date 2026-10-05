@@ -17,8 +17,8 @@ import { hash2, sample2 } from "./sampler.shade.ts";
 // Determinism (design record 0005, "The six rules"). This file leans on these rules:
 //   Rule 1: no `random`. The sampler draws every random number.
 //   Rule 2: `turn` makes a direction from sums and products. `exp2` and `pow` make the tone
-//           map's value. Its one comparison selects between two pieces of one curve. It does not
-//           choose a path.
+//           map's value. Its one comparison reads a value that `exp2` feeds. The comparison
+//           selects between two pieces of one curve. It does not choose a path.
 //   Rule 3: `sqrt`, `/`, `normalize`, `length`, `dot` and `cross` may steer. The differential
 //           gate bounds them.
 //   Rule 4: no atomics. One pixel is one invocation.
@@ -242,8 +242,7 @@ export function radiance(origin0: vec3, dir0: vec3, pixelSeed: u32, index: u32):
     const n = select(-hit.normal, hit.normal, front);
     const p = origin + dir * hit.t + n * EPSILON;
     if (albedo.w > 0.5) {
-      // The mirror's formula, written out: the lint of record 0005 does not list `reflect`.
-      dir = dir - 2. * dot(dir, n) * n;
+      dir = reflect(dir, n);
       origin = p;
       throughput *= albedo.xyz;
       specular = true;
