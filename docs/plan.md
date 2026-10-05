@@ -43,9 +43,10 @@ What the compiler is today, as read at e923a34:
   TypeShade, whose roadmap step 10 is a photoreal path trace of the shot. Its first pass exists:
   `src/shaders/trace.shade.ts` (a compute path tracer with frame accumulation) and
   `src/trace/bvh.ts` (a CPU BVH, split at the middle of the longest side, 430,000 triangles in
-  0.9 s), 65 ms a sample at 1280 x 800 on an RTX 2080. That code is the seed of M1 and M2 here,
-  and stepinside is Radiance's first consumer: what its roadmap wants next (next event
-  estimation, materials, a thin-lens camera, tiling, a denoiser) is M3 here.
+  0.9 s), 65 ms a sample at 1280 x 800 on an RTX 2080. Its design informs M1 and M2 here, but no
+  code comes from it (section 12, decision 2). stepinside is Radiance's first consumer: what its
+  roadmap wants next (next event estimation, materials, a thin-lens camera, tiling, a denoiser)
+  is M3 here.
 
 ## 2. The product
 
@@ -409,10 +410,14 @@ This engine stands on a pre-1.0 runtime, so these are likely to become proposals
 
 1. The name is `radiance`. It shares a name with the classic renderer Radiance (LBNL, 1990s), so
    the documents say "TypeShade Radiance".
-2. `stepinside` is a separate product and Radiance's first consumer; its first-pass path tracer
-   is generalised in M1 and M2.
-3. Open: whether M3's reference is Blender Cycles alone or Mitsuba 3 as well (the differentiable
-   comparison is closer to Mitsuba).
+2. `stepinside` is a separate product and Radiance's first consumer. It is private and
+   proprietary, and this repository is Apache-2.0, so Radiance takes no code from it: its path
+   tracer is read for its design only, and Radiance is written here. stepinside uses Radiance
+   later, not the other way round (the owner, 2026-10-05).
+3. M3's references are Blender Cycles and Mitsuba 3 (the owner, 2026-10-05). Cycles is the
+   reference for the image: the same scene rendered in Cycles beside Radiance's, as section 4's
+   first public demo sets out. Mitsuba 3 is the reference for derivatives: `@typeshade/radiance-fit`'s
+   gradients (L4, M5) are compared with Mitsuba 3's on the same scene and parameters.
 4. The engine is class-based, in three.js's shape: `Scene`, `Mesh`, `PerspectiveCamera` and a
    renderer with `render(scene, camera)`, on `typeshade/runtime`. The kernels, the scene and the
    renderer are one package (`@typeshade/radiance`); controls and sample scenes are
