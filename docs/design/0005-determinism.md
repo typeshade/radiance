@@ -1,7 +1,7 @@
 ---
 id: '0005'
 title: The determinism promise is stated once, every kernel is written under six rules, and a test reads the compiler's determinism report against an allowlist
-status: draft
+status: accepted
 milestones: [M2, M4]
 touches:
   - packages/radiance/src/kernels
@@ -116,7 +116,7 @@ and no lint (the status quo, which caught the divergence late).
 
 ## Record
 
-**Approval and plan record.** This record does not yet apply.
+**Approval and plan record.** Accepted on 2026-10-05 (UTC). The owner approved the merge of typeshade/radiance#6 in the conversation, which merged this record as `draft` at 9e8b479. The owner then said to implement the records with Opus 5.5 and Sonnet 5.5, and that go-ahead is the acceptance. Every entry of "Decisions for the owner" stands as proposed.
 
 **Configuration and validation record.** This record does not yet apply. Implementation will
 record the report's rows at the pin when the lint was written.

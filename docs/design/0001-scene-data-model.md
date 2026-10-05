@@ -1,7 +1,7 @@
 ---
 id: '0001'
 title: Triangle meshes, instanced through a two-level BVH, reach the kernel through seven storage buffers with layouts fixed from M2 through M3
-status: draft
+status: accepted
 milestones: [M2, M2a, M3]
 touches:
   - packages/radiance/src/core
@@ -390,8 +390,7 @@ record is implemented at step 5.
 
 ## Record
 
-**Approval and plan record.** This record does not yet apply. Acceptance requires the owner's
-review of the decisions above and the merge of this record with `status: accepted`.
+**Approval and plan record.** Accepted on 2026-10-05 (UTC). The owner approved the merge of typeshade/radiance#6 in the conversation, which merged this record as `draft` at 9e8b479. The owner then said to implement the records with Opus 5.5 and Sonnet 5.5, and that go-ahead is the acceptance. Every entry of "Decisions for the owner" stands as proposed.
 
 **Configuration and validation record.** This record does not yet apply. Implementation will
 record the commits of steps 1 to 5, the pin they were built on, the gate numbers of record 0002
