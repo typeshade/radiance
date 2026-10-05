@@ -20,6 +20,7 @@ import {
   buildRecords,
   decUid,
   decisionTexts,
+  doorstopListHazard,
   doorstopSees,
   recordFiles,
   stale,
@@ -71,6 +72,27 @@ describe('reqs/', () => {
         for (const f of d.references) expect(doorstopSees(f), f).toBe(true);
         for (const f of d.evidence) expect(doorstopSees(f), f).toBe(false);
       }
+    }
+  });
+
+  it('no item text starts an indented list, which hangs Doorstop 3.2 publish', () => {
+    // The JSDoc block that hung CI's traceability job on typeshade/radiance#14.
+    const jsdoc = [
+      '```ts',
+      '  /** uv per vertex, v = 1 at the top of a plane and at a',
+      "   *  sphere's north pole. Absent: every uv is 0. */",
+      '```',
+      '',
+    ].join('\n');
+    expect(doorstopListHazard(jsdoc)).toBe("   *  sphere's north pole. Absent: every uv is 0. */");
+    expect(doorstopListHazard('- a list at the margin\n  - nested under it\n\ntext')).toBeNull();
+    expect(doorstopListHazard('1. a step\n   - a nested bullet\n2. a step')).toBeNull();
+    expect(doorstopListHazard('text\n\n   - a list that starts indented\n')).toBe(
+      '   - a list that starts indented',
+    );
+    for (const r of records) {
+      expect(doorstopListHazard(r.text), r.uid).toBeNull();
+      for (const d of r.decisions) expect(doorstopListHazard(d.text), d.uid).toBeNull();
     }
   });
 

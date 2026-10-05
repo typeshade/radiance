@@ -215,6 +215,31 @@ export function buildRecords(files = trackedFiles()): RecordItem[] {
   });
 }
 
+/**
+ * A line of an item's text that makes Doorstop 3.2's publisher loop forever. Its HTML and LaTeX
+ * publishers read every line that matches `^\\s*[*+-]\\s` or `^\\s*\\d+\\.\\s` as a list item, inside a
+ * code fence too. A list whose first item is indented sets the list's depth to that indent and
+ * its indent step to zero, and the loop that closes the list at the next blank line subtracts
+ * zero from the depth forever (`doorstop/core/publishers/base.py`, `_check_for_list_end`). A
+ * JSDoc block whose continuation lines start with ` * ` did this to CI's traceability job
+ * (typeshade/radiance#14). Returns the offending line, or null.
+ */
+export function doorstopListHazard(text: string): string | null {
+  const bullet = /^(\s*)(?:[*+-]|\d+\.)\s/;
+  let open = false;
+  for (const line of text.split('\n')) {
+    if (line.trim() === '' || line.startsWith('<p>')) {
+      open = false;
+      continue;
+    }
+    const m = bullet.exec(line);
+    if (!m) continue;
+    if (!open && m[1]!.length > 0) return line;
+    open = true;
+  }
+  return null;
+}
+
 /** The front matter of a Doorstop item, read without a YAML library (the subset Doorstop writes). */
 export function parseFront(yaml: string): Record<string, unknown> {
   const scalar = (v: string): unknown => {
@@ -318,6 +343,17 @@ export function render(records = buildRecords()): Map<string, string> {
     "settings:\n  digits: 4\n  itemformat: markdown\n  parent: REC\n  prefix: DEC\n  sep: '-'\n",
   );
   for (const r of records) {
+    for (const [uid, text] of [
+      [r.uid, r.text] as const,
+      ...r.decisions.map((d) => [d.uid, d.text] as const),
+    ]) {
+      const line = doorstopListHazard(text);
+      if (line !== null) {
+        throw new Error(
+          `${uid} (${r.file}): the line ${JSON.stringify(line)} starts an indented list, which Doorstop's publish reads as a list without an indent step and never ends. Start the list at the margin, or write the line so that it does not begin with a bullet or a number.`,
+        );
+      }
+    }
     const path = `${REC_DIR}/${r.uid}.md`;
     const old = existing(path);
     files.set(
