@@ -278,9 +278,16 @@ function existing(path: string): { reviewed: string | null; links: Map<string, s
   return { reviewed: typeof front.reviewed === 'string' ? front.reviewed : null, links };
 }
 
-/** A YAML string as Doorstop writes it: plain when YAML reads it back as the same string. */
+/**
+ * A YAML string as Doorstop writes it: plain when YAML reads it back as the same string. A file
+ * name that starts with a digit (`0001-scene-data-model.md`) is plain too, since it holds a
+ * letter and so is neither a number nor a date. Doorstop wrote it plain, and a sync that quoted
+ * it left a diff on every run.
+ */
 const q = (s: string): string =>
-  /^[A-Za-z][\w./ -]*[\w.]$/.test(s) && !/^(true|false|null|yes|no|on|off)$/i.test(s)
+  /^[A-Za-z0-9][\w./ -]*[\w.]$/.test(s) &&
+  /[A-Za-z]/.test(s) &&
+  !/^(true|false|null|yes|no|on|off)$/i.test(s)
     ? s
     : `'${s.replace(/'/g, "''")}'`;
 
