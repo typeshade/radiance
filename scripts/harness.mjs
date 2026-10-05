@@ -13,9 +13,11 @@
 //      (scripts/oracle.ts; the tolerance is `ORACLE` in scripts/gates.mjs, which the site
 //      prints).
 //   3. The display: the tone-mapped image is the tone map of the mean radiance.
-//   4. The probes: each gate runs once wrong on purpose and must fail. A gate that does not fail
+//   4. The render gate (scripts/gates/render.mjs): each example of the site, run at 96 x 64 and
+//      64 spp, is within tolerance of its golden in scripts/__goldens__.
+//   5. The probes: each gate runs once wrong on purpose and must fail. A gate that does not fail
 //      there cannot be trusted to pass.
-//   5. The site (dist/site) runs its Cornell box example, and the camera answers the mouse.
+//   6. The site (dist/site) runs its Cornell box example, and the camera answers the mouse.
 //
 // It also writes a larger render to .harness/cornell.png, to look at; nothing holds that one.
 //
@@ -31,6 +33,7 @@ import { openRenderPage, outDir } from './gates/_browser.mjs';
 import { encodePng } from './gates/_png.mjs';
 import * as determinism from './gates/determinism.mjs';
 import * as differential from './gates/differential.mjs';
+import * as render from './gates/render.mjs';
 
 const OUT = outDir();
 
@@ -87,7 +90,10 @@ try {
     }
   }
 
-  // 4: the probes. A gate runs once wrong on purpose, and a gate that does not fail is blind.
+  // 4: the render gate. Every example of the site is held to its golden.
+  report(await render.run({ session }));
+
+  // 5: the probes. A gate runs once wrong on purpose, and a gate that does not fail is blind.
   for (const [name, gate] of [
     ['differential', differential],
     ['determinism', determinism],
@@ -101,6 +107,12 @@ try {
     }
   }
 
+  try {
+    console.log(`probe render: ${(await render.probe()).message}`);
+  } catch (e) {
+    fail(`probe render: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
   // The preview, to look at.
   const preview = await session.render(PREVIEW);
   writeFileSync(
@@ -111,7 +123,7 @@ try {
     `preview: ${PREVIEW.size.join('x')} at ${PREVIEW.samples} spp in ${(preview.ms / 1000).toFixed(1)} s, .harness/cornell.png`,
   );
 
-  // 5: the site (radiance.typeshade.dev, built to dist/site) runs the Cornell box example on its
+  // 6: the site (radiance.typeshade.dev, built to dist/site) runs the Cornell box example on its
   // page and counts samples in the stage's toolbar, and its camera answers the mouse: a drag
   // starts a preview and the render again from another view, and a wheel turn dollies without
   // scrolling the page.
@@ -176,5 +188,5 @@ if (failures > 0) {
   process.exit(1);
 }
 console.log(
-  'harness: the Cornell box is deterministic, matches the oracle, and displays, and each probe fails its gate',
+  'harness: the Cornell box is deterministic, matches the oracle, and displays, each example matches its golden, and each probe fails its gate',
 );
