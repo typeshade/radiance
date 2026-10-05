@@ -1,7 +1,7 @@
 ---
 id: '0003'
 title: The public API is a baked surface with three.js's names, versioned by SemVer with the minor as the breaking position, and released through gates
-status: draft
+status: accepted
 milestones: [M2, 0.1.0]
 touches:
   - packages/radiance/src/index.ts
@@ -193,8 +193,7 @@ Removed from the surface: `packScene`, `cameraUniforms`, `PackedScene`, `CameraU
 
 ## Record
 
-**Approval and plan record.** This record does not yet apply. Acceptance requires the owner's
-review of the decisions above and the merge of this record with `status: accepted`.
+**Approval and plan record.** Accepted on 2026-10-05 (UTC). The owner approved the merge of typeshade/radiance#6 in the conversation, which merged this record as `draft` at 9e8b479. The owner then said to implement the records with Opus 5.5 and Sonnet 5.5, and that go-ahead is the acceptance. Every entry of "Decisions for the owner" stands as proposed. Entry 6 stays open: the record's proposal, sources only at 0.1.0, applies until the owner decides.
 
 **Configuration and validation record.** This record does not yet apply. Implementation will
 record the bake's first commit, the dry run's workflow run id, and the 0.1.0 release's tag,
