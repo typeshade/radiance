@@ -23,8 +23,12 @@ runtime packs a `Float32Array` binding one number at a time through `DataView.se
 (`pack` in `src/core/host-entry.ts`). Measured in bun 1.3.14: the word 0xffffffff comes out as
 0x7fc00000. So the GPU reads another texture id than the host wrote, as the oracle does
 (typeshade/typeshade#479). M2 reads no texture id, so no picture moves today. M3's textures will
-read them. An issue on typeshade/typeshade is owed for the runtime's half: a typed array that
-matches the binding's element type could be copied as bytes.
+read them. No new issue is owed: typeshade/typeshade#479 and the compiler's change 0045 (PR
+#483, implemented on `main` after the pin) cover it. Change 0045 says to keep an integer word
+in a `storage<array<u32>>` binding. Measured in bun 1.3.14 at the pin: the runtime's `pack`
+keeps 0xffffffff on a `u32` lane (`setUint32`) and gives 0x7fc00000 on an `f32` lane. So the
+five texture ids and the type-and-flags word belong in a `u32` binding, uploaded from a
+`Uint32Array`. That is an amendment to record 0004, open for the owner.
 
 ### 2026-10-05 · language · Record 0001 step 3: the compiler and the editor disagree on an unset array
 
@@ -32,8 +36,10 @@ Pin e923a34. The traversal's stack is `let stack: array<u32, 32>;`, as WGSL writ
 array. `compile()` accepts it and emits `var stack: array<u32, 32>;`. `tshc check` refuses it
 with TypeScript's `TS2454` ("used before being assigned") at each `stack[i] = ...`. The call form
 `array<u32, 32>()` is refused too (`TS8019`: it expects 32 elements). So each walk writes 32 zeros
-out. Rule 12.7 makes the two halves one vocabulary, and here they disagree. An issue on
-typeshade/typeshade is owed.
+out. Rule 12.7 makes the two halves one vocabulary, and here they disagreed at the pin. Change
+0043 (PR #473, merged as 46f6b84 after the pin) closes that: at `main` fd39ba3, both halves
+refuse the first spelling with `TS8075`. The zero-value call stays refused at both commits.
+Filed as typeshade/typeshade#495 (https://github.com/typeshade/typeshade/issues/495).
 
 ### 2026-10-05 · host · Record 0001 step 3: the oracle pays for every aggregate it copies
 
