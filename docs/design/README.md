@@ -79,9 +79,9 @@ pull request), and these sections:
 | [0004](0004-materials-and-shading.md) | Materials and shading: the material record, the shading contract, and the texture plan   | accepted | M2, M3      |
 | [0005](0005-determinism.md)           | Determinism: the promise, the kernel rules, and the lint that holds them                 | accepted | M2, M4      |
 | [0006](0006-compiler-boundary.md)     | The compiler boundary: what the engine needs from the runtime, as proposals              | accepted | M2 to M5    |
-| [0007](0007-webgl2-tier.md)           | The WebGL2 tier: the same kernels, no WebGL call in the engine, and gates for both tiers | draft    | M2          |
+| [0007](0007-webgl2-tier.md)           | The WebGL2 tier: the same kernels, no WebGL call in the engine, and gates for both tiers | draft    | M8          |
 
 The order of implementation is 0001 and 0002 first, in parallel, because M2 is written on them.
 0003 is done before the first npm release. 0004 and 0005 are needed before M3. 0006 is a list
 of proposals the compiler's owner schedules. Each record names the item it waits on.
-0007 waits for the compiler's change 0054 and the pin that carries it.
+0007 waits for the compiler's change 0054 and the pin that carries it. It serves milestone M8, which the plan pull request proposes, and merges after that pull request.
