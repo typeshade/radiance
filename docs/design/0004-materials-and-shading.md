@@ -402,11 +402,18 @@ changes the code or this record. The dispositions:
 **Amendment 2** (2026-10-06, UTC). Two investigations of the mirror sphere in the Cornell box
 measured the loss that "A direction under the surface" left unmeasured. The loss is a dark line at
 the silhouette of the sphere. This amendment changes the rule for a mirror sample and records the
-numbers. It changes seven places. They are the rule itself, the mirror bullet of "The shading
-contract", the introduction of "The rules of the surface and of emission", "The path loop", the
-Tests bullet of "What it touches", decision 6 and the deviation "A direction under the surface". In
-"The path loop", it adds two sentences of facts and two of proposals. It adds step 7. It changes no
-code. The merge of the pull request that carries it is the owner's acceptance of the new rule.
+numbers. It changes these seven places:
+
+1. The rule itself.
+2. The mirror bullet of "The shading contract".
+3. The introduction of "The rules of the surface and of emission".
+4. "The path loop".
+5. The Tests bullet of "What it touches".
+6. Decision 6.
+7. The deviation "A direction under the surface".
+
+In "The path loop", it adds two sentences of facts and two of proposals. It adds step 7. It changes
+no code. The merge of the pull request that carries it is the owner's acceptance of the new rule.
 Decision 6 is re-stated, and the merge accepts that text. The pull request that implements step 7
 merges after it and carries a line of its own, `Design: 0004`. The fold is the smallest change that
 closes the band. The amendment proposes it, and step 7 states how the implementing pull request
@@ -429,9 +436,10 @@ observed result:
 - **The tessellation.** The investigations give the dark area at 256 pixels in pixel equivalents,
   the area measured in pixels. It is 18.8 at 32 by 16 segments, 5.56 at 64 by 32 and 0.94 at 128
   by 64.
-- **The floor caustic.** The rule does not remove it in a measurable way. The ratio is 1.0042 over
-  8,294 caustic pixels (128 by 128 pixels, 256 samples a pixel, 2 bounces, an ablation with the
-  same seed).
+- **The floor caustic.** The rule does not remove it in a measurable way. The ratio is 1.0042
+  between the two seed-matched renders, with and without the rule, over 8,294 caustic pixels (128
+  by 128 pixels, 256 samples a pixel, 2 bounces). This record does not give the direction of the
+  ratio. The scratch data of the investigation records it.
 - **The path of a caustic.** Next-event estimation cannot connect through a delta lobe, because the
   shadow ray meets the sphere. So only BSDF sampling finds the light that reaches a diffuse surface
   by way of a mirror. At 256 samples a pixel, 78 % of the caustic pixels get no caustic sample. The
@@ -495,7 +503,7 @@ which had already moved the pin, so 9f2cf1a pins the compiler at fd39ba3. The or
 `src/kernels/materials.test.ts` pass. A diffuse sample's weight is its colour, and a mirror
 sample is the reflection. `evalBsdf`'s pdf integrates to 1 within 2 % by 4,096 samples. A
 single-sided light is dark from behind. The Cornell box gate passes on the contract with the
-numbers in record 0001's record. Steps 2 to 6 are not started.
+numbers in record 0001's record. Steps 2 to 7 are not started.
 
 **Open item.** Decisions 0004.6 and 0004.7 carry no `Verifies:` tag, so DEC-0406 and DEC-0407 have
 no reference. Tests of some of their rules exist. `materials.test.ts` ('is zero on the back face
