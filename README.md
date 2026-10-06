@@ -74,6 +74,7 @@ one. Sponza and the benchmark scenes come next.
 | `scripts/gates/site.mjs`     | The site gate. `bun run gate:site` builds the site from the tree with `bun run site`, so the build checks the hash of each still. It fails when the build exits with a code other than 0.                                  |
 | `scripts/gates.mjs`          | The bounds CI holds the engine to. The site prints the same numbers.                                                                                                                                                       |
 | `scripts/harness.mjs`        | The differential scenes and every example in headless Chromium on SwiftShader, held to their gates and probes. The site's Cornell box example runs under the mouse. Writes `.harness/cornell.png` and `.harness/site.png`. |
+| `scripts/bench.mjs`          | The benchmark. It prints a row of triangles, BVH time, frame time and paths a second for each scene. `docs/benchmarks.md` holds the rows.                                                                                  |
 | `scripts/gates/`             | One module for each gate: `differential.mjs`, `determinism.mjs` and `render.mjs`. Each exports `run()` and `probe()`. `_browser.mjs` and `_png.mjs` are shared by the gates and the harness.                               |
 | `scripts/__goldens__`        | One PNG for each example, 96 x 64 at 64 samples a pixel. The render gate holds the example's picture to it. `UPDATE_GOLDENS=1 bun run gate:render` rewrites them.                                                          |
 | `site/public/assets`         | The assets the examples load, such as `bunny.glb`. `LICENSES.md` lists the source, the licence and the SHA-256 of each one.                                                                                                |
@@ -102,6 +103,7 @@ bun run gate:site       # the site builds from the tree into dist/site, with the
 bun run bake:api-surface # bake the exports again after an intended change to one of them
 bun run harness         # the gates and their probes on WebGPU, and the site (needs Chromium: npx playwright install chromium)
 bun run gate:differential  # one gate alone: the Cornell box on WebGPU and on the oracle (add `-- <scene>` for another scene)
+bun run bench           # the speed of each scene, one row each, for docs/benchmarks.md (no bound)
 bun run gate:determinism   # one gate alone: two renders of one seed are bit-identical
 bun run gate:render        # one gate alone: each example's picture is within tolerance of its golden
 UPDATE_GOLDENS=1 bun run gate:render  # rewrite the goldens after an intended change to a picture
