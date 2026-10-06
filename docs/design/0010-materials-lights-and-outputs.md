@@ -89,14 +89,14 @@ The six parts keep these invariants:
 
 Two pieces of work land before this record. Neither is in this worktree. Fact: `main` at 55bde46 has no record 0009 and no record of an analytic sphere. Fact: the analytic sphere record is in progress on another branch. Fact: record 0009, sampling quality, is in draft on the worktree `wt/Q`. The text of both may differ from the assumptions below. When one of them merges, its text replaces the assumption here, and a difference is a deviation of this record.
 
-| Source                 | The part this record assumes                                                                                                                                                                                     | What this record does if the assumption fails                                                                                     |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| Analytic sphere record | A sphere that the kernel meets analytically gives a `Surface` with `ns` equal to `ng`, a `uv` and a `dpdu`. This record needs no word of its buffer layout                                                       | The white-furnace scene and the glass-sphere scenes use `SphereGeometry` at 64 by 32 segments. They lose only the exact normal    |
-| Record 0009, light     | The solid-angle sampling of an emissive triangle. A function gives the density in solid angle of a chosen point on a chosen light. Part 3 calls that function for the multiple-importance weight                 | Part 3 step 3.4 keeps the area density of `direct` and converts it to solid angle with `dist2 / cosLight`, as `direct` does today |
-| Record 0009, sampler   | `sample2(pixelSeed, index, pair)` keeps its signature and takes any `u32` pair. The sequences change, and the pairs do not                                                                                       | Each part that adds a pair takes it from a named constant. A change of the signature is a change of that constant's users         |
-| Record 0009, filter    | The pixel jitter keeps pair 0, and the filter is applied after the draw. The camera ray keeps the form `forward + right * x + up * y`                                                                            | Part 4 changes the origin of the ray, and the direction stays what the jitter gives                                               |
-| Record 0009, G-MoN     | The accumulator may hold `K` slots of beauty for each pixel instead of one. Part 5 writes the slot count as `K`, with `K` equal to 1 until that part of 0009 lands. Whichever lands second reconciles the stride | Part 5 uses `K` equal to 1                                                                                                        |
-| Record 0008            | The panel and the controls change no kernel. This record changes `PhysicalMaterial`, so the panel gains the controls that "After the inspector" of record 0008 defers until record 0004 step 2 lands             | The panel keeps its four controls                                                                                                 |
+| Source                 | The part this record assumes                                                                                                                                                                                     | What this record does if the assumption fails                                                                                      |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Analytic sphere record | A sphere that the kernel meets analytically gives a `Surface` with `ns` equal to `ng`, a `uv` and a `dpdu`. This record needs no word of its buffer layout                                                       | The white-furnace scene and the glass-sphere scenes use `SphereGeometry` at 64 by 32 segments. They lose only the exact normal     |
+| Record 0009, light     | The solid-angle sampling of an emissive triangle. A function gives the density in solid angle of a chosen point on a chosen light. Part 1, step 1.3 calls that function for the multiple-importance weight       | Part 1, step 1.3 keeps the area density of `direct` and converts it to solid angle with `dist2 / cosLight`, as `direct` does today |
+| Record 0009, sampler   | `sample2(pixelSeed, index, pair)` keeps its signature and takes any `u32` pair. The sequences change, and the pairs do not                                                                                       | Each part that adds a pair takes it from a named constant. A change of the signature is a change of that constant's users          |
+| Record 0009, filter    | The pixel jitter keeps pair 0, and the filter is applied after the draw. The camera ray keeps the form `forward + right * x + up * y`                                                                            | Part 4 changes the origin of the ray, and the direction stays what the jitter gives                                                |
+| Record 0009, G-MoN     | The accumulator may hold `K` slots of beauty for each pixel instead of one. Part 5 writes the slot count as `K`, with `K` equal to 1 until that part of 0009 lands. Whichever lands second reconciles the stride | Part 5 uses `K` equal to 1                                                                                                         |
+| Record 0008            | The panel and the controls change no kernel. This record changes `PhysicalMaterial`, so the panel gains the controls that "After the inspector" of record 0008 defers until record 0004 step 2 lands             | The panel keeps its four controls                                                                                                  |
 
 The owner approved an image-quality change on 2026-10-06 that record 0008, decision 20, calls "the output transform". Fact: no file of the baseline says whether `tonemap` changed. Part 5 step 5.5 reads `tonemap` at its baseline first, and takes the delivered curve as its starting point.
 
@@ -252,6 +252,76 @@ WebGPU allows 256 layers in an array by default, so a class holds 256 textures. 
 
 **What waits.** The loader knows `KHR_texture_transform` and ignores it with a warning. The record has no room for a transform for each texture. Compressed textures (KTX2) and UDIM wait. Each needs a decoder, and the boundary allows no import past the runtime. Streaming and an anisotropic filter wait too. The light table uses the emissive factor alone, so a textured emitter is sampled by its factor and not by its map.
 
+### Part 3: Lights
+
+Part 3 adds the point, spot and sun lights, the environment with importance sampling, and the table of light power that chooses among them. It needs step 1.3 of Part 1 (multiple importance sampling). The HDRI texture needs steps 2.2 and later of Part 2, so it needs change 0050 too.
+
+**The light table.** Record 0001 gives the table one `vec4` for each light: `(bits(type), bits(instance), bits(triangle), cdf)`. Part 3 keeps the stride and adds four types.
+
+| Type | Light       | `y` word                   | `z` word             | `cdf`      |
+| ---- | ----------- | -------------------------- | -------------------- | ---------- |
+| 0    | Triangle    | bits of the instance       | bits of the triangle | as before  |
+| 1    | Point       | the index `k` of its block | 0                    | its chance |
+| 2    | Spot        | the index `k` of its block | 0                    | its chance |
+| 3    | Sun         | the index `k` of its block | 0                    | its chance |
+| 4    | Environment | 0                          | 0                    | its chance |
+
+The type word of a new row is the value of an `f32`, not its bits. A value of 1 as bits is a subnormal number. A device may flush it to 0, and the row would then read as a triangle. The kernel reads the type with `u32()`. A type of 0 is 0 in both forms, so a triangle row does not change. The `y` word of a new row is a value too. The words of a triangle row keep the form of record 0001.
+
+The rows come in this order: triangles, then points, spots and suns, then the environment. The `cdf` of the last row is exactly 1. Four `vec4` follow the rows for each point, spot or sun light. They are its block, and the block `k` starts at row `rows + 4 * k`. `TraceParams` gains `lights: vec4u`, which holds the number of triangle rows, the number of blocks, a flag for the environment and one reserved word. The sun's direction and the spot's axis are unit vectors.
+
+| Word  | x                      | y                   | z                   | w                            |
+| ----- | ---------------------- | ------------------- | ------------------- | ---------------------------- |
+| `[0]` | position (point, spot) | position            | position            | radius, or `cosMax` of a sun |
+| `[1]` | intensity r            | intensity g         | intensity b         | light group                  |
+| `[2]` | axis or direction x    | axis or direction y | axis or direction z | `cosOuter` of a spot         |
+| `[3]` | spot angle scale       | spot angle offset   | 0                   | 0                            |
+
+A sun's direction is the direction toward the sun. A spot's angle scale is `1 / max(0.001, cosInner - cosOuter)`, and its offset is `-cosOuter * scale`, as `KHR_lights_punctual` defines them. The host computes both, so the kernel uses no trigonometry. The spot's attenuation is `saturate(cos * scale + offset)` squared.
+
+**The classes.** Record 0003 names `PointLight`, `SpotLight`, `SunLight` and `Environment`. Each light is an `Object3D` that takes one parameters object.
+
+```ts
+new PointLight({ color, intensity, radius, group }); // radius 0: a point
+new SpotLight({ color, intensity, radius, angle, penumbra, group }); // axis: -z of matrixWorld
+new SunLight({ color, intensity, angle, group }); // shines along -z of matrixWorld
+new Environment({ texture, color, intensity, rotation, compensation, group });
+scene.environment = environment; // lights the scene
+scene.background = environment; // or a Color, or null for black
+```
+
+`intensity` of a point or spot light is a radiant intensity. A sun's `intensity` is an irradiance, measured across the direction. Both are in the engine's units, where an emissive colour is a radiance. The loader copies the candela and lux of `KHR_lights_punctual` without a factor, as three.js does. `angle` of a sun is the angular diameter in radians, 0.00918 by default (0.526 degrees). `angle` of a spot is the outer half angle, and `penumbra` is the share of it that falls off, as in three.js. `rotation` of an environment turns it about +y.
+
+**The lights see no ray.** A point, spot or sun light has no geometry. No camera ray and no BSDF sample meets it. Only next-event estimation reaches it, so it needs no multiple importance sampling. A light with a radius is a sphere that emits, and the kernel samples the cone that it subtends (Shirley and Wang 1994). For a sphere above the horizon, its irradiance on a plane equals a point's: `I * cos / d^2`. A sun is sampled the same way over its disc.
+
+**The power table.** A light's chance is its share of the emitted flux. The flux is a number that only sets the chance, so an estimate is enough. The host computes these:
+
+| Light       | Flux                                                                 |
+| ----------- | -------------------------------------------------------------------- |
+| Triangle    | `pi * area * mean(emissive)` (record 0001 has the area and the mean) |
+| Point       | `4 * pi * mean(intensity)`                                           |
+| Spot        | `2 * pi * (1 - (cosInner + cosOuter) / 2) * mean(intensity)`         |
+| Sun         | `pi * R^2 * mean(intensity)`                                         |
+| Environment | `4 * pi^2 * R^2 * mean(radiance)`                                    |
+
+`R` is the radius of the sphere that bounds the TLAS's root box. A sun or an environment sends its flux through the disc or the sphere of that radius. A one-sided emitter sends `pi * L` through each unit of its area, which explains the factors. The pack builds the table again when a light, a material or the bounds change. The record 0001 rule "the pack builds `lights` again when a geometry changed" holds.
+
+**The light tree is deferred.** Conty Estevez and Kulla (2018) sample many lights by a tree. The power table ignores the position of a light, so a scene of thousands of emissive triangles has more variance than a tree gives. The demo scenes hold one environment, a few analytic lights and no more than a handful of emitters. So Part 3 builds the table only. The tree would live in `nodes`, after the TLAS, and the rows of `lights` would become its leaves. A later record decides it, with the variance of a real scene.
+
+**The environment.** An environment holds an equirectangular image, a colour, or both. The colour alone is a constant radiance. The image is a `DataTexture` of `Float32Array` data, four floats a texel.
+
+- **The direction and the image.** `u = atan2(z, x) / (2 * pi) + 0.5` and `v = acos(y) / pi`, with `v` measured from the top row. This is three.js's equirectangular map (from memory, and step 3.3 reads the three.js source). The direction is first turned by `-rotation` about +y.
+- **No trigonometry that decides.** `atan2` and `acos` feed a texel index, which record 0005, rule 2 forbids. The kernel uses `atan2Approx`, a rational polynomial of sums, products and one division. `acos(y)` is `atan2Approx(sqrt(1 - y * y), y)`. The direction from `(u, v)` goes through `turn`: `turn(v / 2)` is `(cos(pi * v), sin(pi * v))`.
+- **The radiance.** The kernel reads four texels of a 32-bit float image with `textureLoad` and weights them with products. It wraps in `u` and clamps in `v`. It multiplies the result by `intensity`.
+- **The image.** The image is `rgba32float`. A half-float image would clamp a sun texel at 65,504, which a sunny HDRI exceeds. The loader resamples an image wider than 2,048 texels with a box filter (option `maxEnvironmentWidth`). A 2,048 by 1,024 image takes 33,554,432 bytes.
+- **The distribution.** The host builds a table at most 1,024 texels wide, from the luminance of each texel times `sin(theta)` of its row, in f64. `envDist` is `rg32float`: its `x` is the inclusive CDF along the row and its `y` is the density over the unit square. `envMarg` is `r32float` with one column: the inclusive CDF down the rows. The kernel reads both with `textureLoad`.
+- **The sample.** Two numbers pick the row by a binary search of `envMarg`, then the texel by a binary search of its row. A remap then places the point in the texel. The density in solid angle is `q / (2 * pi^2 * sin(theta))`. The same function gives it for a direction, so the BSDF side of the weight and the light side agree.
+- **The choice.** The environment row has a chance in the power table. A sample of the table that picks it uses the two numbers of `pair` and the choice number.
+- **The escape.** A ray that meets nothing adds `throughput * environment(dir)`, weighted by `pB^2 / (pB^2 + pL^2)` when the last sample was not specular. `pL` is the row's chance times the density of the direction. A camera ray adds the background in full.
+- **The background.** A `Color` shows as itself. An `Environment` shows its image, turned and scaled as for light. `null` shows black. A camera ray shows the background and never the lighting.
+
+**MIS compensation (option).** Karlik et al. (2019) lower the density of the light technique where the BSDF technique is the better one. For an environment, the host subtracts `compensation * mean` from each texel's weight and clips at 0. It builds the table from the result. `compensation` is from 0 to 1 and is 0 by default. BSDF samples alone reach a texel with a density of 0 and a radiance above 0. They count in full there, so the estimate stays unbiased. The tables are the only change.
+
 ## Why
 
 ### Part 1: The principled BSDF
@@ -289,6 +359,23 @@ Alternatives considered:
 - **Hardware mipmaps through 0050's `generateMipmaps()`.** It averages codes. It is right for data textures only.
 - **A proposal to the compiler for CPU texture reads.** It would remove `oracle-fetch.shade.ts`. It is an issue to open, and nothing blocks on it.
 
+### Part 3: Lights
+
+- **The demo is lit by an HDRI.** The M3 acceptance names HDRI, point, spot and sun lights. A product shot needs an environment and a key light.
+- **Why the lights see no ray.** A point or a sun has no surface. If no ray can meet it, only next-event estimation reaches it, and no weight is needed. A glossy surface still shows the light through its lobe, because the lobe's value at the light's direction is large.
+- **Why a power table first.** The table is the form that record 0001 already has. A light tree is a second structure with its own traversal and its own bugs. The demos hold few lights, so the tree has little to gain. Part 3 records the tree as deferred, with the place it would live.
+- **Why importance sampling of the environment.** A sunny HDRI holds most of its energy in a few texels. Uniform sampling of the sphere sends almost every shadow ray to a dark sky. Step 3.3 records the variance ratio against uniform sampling.
+- **Why a table of 1,024 texels.** The search has 10 steps along a row and 9 down the rows. The distribution may be coarser than the image. The weight of a sample uses the density of the table and the radiance of the image. A coarse table changes the variance and not the mean.
+- **Why `rgba32float`.** A sun texel can pass 65,504, which a half float clips. The cost is 16 bytes a texel.
+- **Why compensation is an option.** Karlik et al. report gains for some scenes. The gain depends on the scene, so the default is off until step 3.4 measures it.
+
+Alternatives considered:
+
+- **An alias table.** It samples in constant time. Its map from a number to a texel is not monotone, so it breaks the stratification of the Sobol pairs. The CDF map is monotone.
+- **A hierarchical warp (Clarberg et al. 2005).** It also keeps the stratification and needs no search. It needs a mip pyramid and more code. The binary search is shorter.
+- **An octahedral map.** It needs no `atan2`. The assets are equirectangular, so the host would resample every image. A resample loses detail at the poles.
+- **A sun as a bright texel.** A sun of 0.5 degrees is a fraction of one texel in a 2,048 wide image. A light of its own is exact and cheap.
+
 ## What it touches
 
 ### Part 1: The principled BSDF
@@ -310,6 +397,16 @@ Alternatives considered:
 - **Tests owed.** `mip.test.ts`, `TexturePool.test.ts`, `filter.test.ts` (new, on the oracle), `footprint.test.ts` (new, against `raydiff.ts`), `alpha.test.ts` and the loader's tests.
 - **Gates.** `gate:differential` runs `textures`. `gate:determinism` runs it too. `gate:render` changes the golden of any example that loads a texture. None does at the baseline.
 - **Site.** The guide gains a page on textures. The API reference follows the JSDoc.
+
+### Part 3: Lights
+
+- **Engine host.** `lights/PointLight.ts`, `SpotLight.ts`, `SunLight.ts` and `Environment.ts` are new. `lights/environment-table.ts` builds the distribution tables. `scenes/Scene.ts` gains `environment` and `background`. `renderers/scene-pack.ts` changes `#lightTable`, writes the blocks and makes the environment textures. `renderers/PathTracer.ts` binds them. `index.ts` and `__api__/surface.md` change.
+- **Engine kernels.** `trace.shade.ts` changes `pickLight`, `direct` and `radiance`, and gains `lightPdfEnvironment`. `layout.shade.ts` gains `TraceParams.lights`, `env` and `background`, the type constants and the block offsets. `fetch.shade.ts` gains the three reads of the environment. `environment.shade.ts` is new: `atan2Approx`, the mapping, the radiance read and the sample.
+- **Addons.** `loaders/RGBELoader.ts` is new. `loaders/GLTFLoader.ts` reads `KHR_lights_punctual`. `scenes/` gains `AnalyticScene` and `HdriScene`.
+- **Scripts.** `scripts/oracle-fetch.shade.ts` gains the three reads. `scripts/oracle.ts` binds the tables. `scripts/gates.mjs` gains the bounds of `analytic` and `hdri`.
+- **Tests owed.** `lights.test.ts` (new, on the oracle), `environment-table.test.ts`, `environment.test.ts` (new, on the oracle), `RGBELoader.test.ts` and the loader's test for `KHR_lights_punctual`. `scene-pack.test.ts` holds the rows and the blocks.
+- **Gates.** `gate:differential` runs `analytic` and `hdri`. `gate:determinism` runs them too. `gate:furnace` gains the environment row. `gate:render` changes no golden at the baseline.
+- **Site.** The guide gains a page on lights and environments.
 
 ## Amendments owed
 
@@ -402,6 +499,44 @@ Alternatives considered:
 **Record 0007.** One place changes.
 
 > "The execution model" gains: "The `trace` entry reads 4 texture arrays with `textureLoad` and no sampler. On WebGL2 each read is a `texelFetch`. Each array holds at most 256 layers, the OpenGL ES 3.0 minimum of `MAX_ARRAY_TEXTURE_LAYERS`."
+
+### Part 3: Lights
+
+**Record 0001.** Three places change.
+
+> "The light table" gains: "The rows come in this order: triangles, points, spots, suns, the environment. The type word of a row that is not a triangle is the value of an `f32`. Four `vec4` follow the rows for each point, spot or sun. The chance of each type is its share of the flux that record 0010, Part 3 gives."
+
+> The `lights` row of the table of buffers reads: "`(type, instance, triangle, cdf)`. Types 0 to 4 are a triangle, a point, a spot, a sun and an environment. The blocks of the analytic lights follow the rows."
+
+> `TraceParams` gains `lights: vec4u`, `env: vec4` and `background: vec4`. `lights` holds the triangle rows, the blocks, a flag for the environment and one reserved word. `env` holds the intensity, the cosine and the sine of the rotation, and the compensation. `background` holds a colour and a mode (0 black, 1 environment, 2 colour).
+
+**Record 0002.** Two places change.
+
+> The table of differential scenes gains two rows. `analytic` is a plane under a point, a spot, a sun and a sphere light, held to closed forms. `hdri` is a floor and a sphere under an environment with one very bright texel. The `furnace` gate gains two rows: a white diffuse sphere in a constant environment, and one in an image of 1.
+
+> The probe list gains: "`analytic`: an intensity of 1.01 times the right one fails the closed form."
+
+**Record 0003.** One place changes.
+
+> "The public surface at 0.1.0" gains `PointLight`, `SpotLight`, `SunLight`, `Environment`, `Scene.environment`, `Scene.background` and `RGBELoader`. `TextureImage` gains the data type `Float32Array`.
+
+**Record 0004.** One place changes.
+
+> "The path loop" step 1 reads: "Traverse the scene. When the ray meets nothing, add the environment and end the path."
+
+**Record 0005.** Two places change.
+
+> Rule 2 gains: "A direction that selects a texel uses `atan2Approx`, which is a rational function of sums, products and one division. A direction from an angle uses `turn`."
+
+> The allowlist note gains: "`atan2Approx` adds one `/` row, which rule 3 admits."
+
+**Record 0006.** One place changes.
+
+> The paragraph on item 4 gains: "Record 0010, Part 3 writes the environment with `Texture.write` as a `Float32Array` into `rgba32float`, `rg32float` and `r32float` textures."
+
+**Record 0007.** One place changes.
+
+> "The execution model" gains: "The `trace` entry also reads three environment textures of 32-bit floats with `textureLoad`. WebGL2 renders to such a texture only with `EXT_color_buffer_float`. The extension is present on SwiftShader."
 
 ## Implementation, in steps
 
@@ -522,6 +657,40 @@ Step 2.1 does not wait for the compiler. Steps 2.2 to 2.7 wait for the pin that 
 
 Part 2 is done when step 2.7 has merged. At that point record 0004 step 3 reads "delivered".
 
+### Part 3: Lights
+
+Steps 3.1, 3.2 and 3.4 do not need the pin of change 0050. Step 3.3 does, and it needs step 2.2 of Part 2. Each step is one pull request.
+
+**3.1 Point, spot and sun lights.**
+
+- Delivers: the three classes, the power table, the rows and the blocks, the branches of `direct`, the `lights` word of `TraceParams`, and the loader's `KHR_lights_punctual`. The `analytic` scene has a diffuse plane and one light of each kind.
+- Test: `radiance` on the oracle for one ray equals the closed form `rho / pi * I * cos / d^2` within 1e-5 for the point, the spot and the delta sun. The sphere light and the sun with an angle agree with it within 1 % over 4,096 samples. The chances of the table sum to 1 within 1e-6, and each equals its share of the flux.
+- Number: `gate:determinism` reports 0 floats that differ on `analytic`. The `ORACLE` bound is derived by the rule of record 0002.
+- Probe: the closed-form test runs once with an intensity 1.01 times the right one. The sphere light runs once with its radiance divided by 4. Both must fail.
+
+**3.2 The constant environment and the background.**
+
+- Delivers: `Environment` with a colour, `Scene.environment` and `Scene.background`, and the `env` and `background` words. It also delivers the escape in `radiance`, the row of type 4 and uniform sphere sampling with the density `1 / (4 * pi)`.
+- Test: a white diffuse sphere in a constant environment of 1 reads 1 within 0.02 over its pixels at 1,024 samples. The light sample alone, the BSDF sample alone and their combination agree within 3 standard errors.
+- Number: the pixels of the background read 1 exactly. The step records the variance ratio of the combination against each technique alone.
+- Probe: the escape weight runs once with the density `1 / (2 * pi)`. The three estimators must disagree.
+
+**3.3 The HDRI.**
+
+- Delivers: `RGBELoader`, `environment-table.ts`, the three textures and their reads, `atan2Approx`, the sample, the density, the radiance read, the rotation, and the `hdri` scene. The scene's image is built in code, 64 by 32 texels, with one texel 10,000 times the sky.
+- Test: the density of the table sums to 1 within 1e-6. A histogram of 2^20 samples matches the table within 5 standard deviations a bin. The density of a sampled direction equals the density that the direction gives, within 1e-5 relative. `atan2Approx` has an error of at most 1e-5 radian over a grid of 10^6 directions. `RGBELoader` decodes a file of 4 by 2 texels, written by hand, to the exact floats.
+- Number: the variance of the importance-sampled estimate is at most a quarter of the uniform estimate on the floor of `hdri`. The step records the ratio. A constant image of 1 passes the furnace row within 0.02.
+- Probe: the sample runs once with the table and the weight of uniform sampling. Its mean must differ from the uniform estimate by more than 3 standard errors.
+
+**3.4 MIS compensation.**
+
+- Delivers: `Environment.compensation` and its use in `environment-table.ts`. Nothing in the kernel changes.
+- Test: the means at `compensation` 0, 0.25, 0.5 and 1 agree within 3 standard errors on `hdri`. A constant image with `compensation` 1 gives an empty table, and the host falls back to uniform sampling.
+- Number: the default stays 0 unless one value meets two bounds. It lowers the variance on the floor of `hdri` by 10 %. It raises the variance by under 5 % on every other `hdri` pixel. The step records the table of ratios.
+- Probe: the bias test runs once with a table built from the compensated weights and the density of the uncompensated table. It must fail.
+
+Part 3 is done when step 3.4 has merged. The light tree has no step. A later record owns it.
+
 ## Decisions for the owner
 
 1. Default. Part 1 models the physical material on Burley's Disney BRDF (2012) and BSDF (2015), with glTF's metallic-roughness parameters and glTF's layering. It has five lobes: diffuse, reflection, transmission, clearcoat and sheen. Proposed: yes.
@@ -539,9 +708,14 @@ Part 2 is done when step 2.7 has merged. At that point record 0004 step 3 reads 
 13. Default. The oracle reads textures through `scripts/oracle-fetch.shade.ts`. The engine opens an issue for CPU texture reads on the compiler's repository. Proposed: yes.
 14. For the owner. These wait: `KHR_texture_transform`, KTX2, UDIM, alpha BLEND, a nearest magnification filter, an anisotropic filter, and the sampling of a textured emitter by its map. Proposed: this scope.
 15. Default. A scene may hold 536,870,912 bytes of texture layers, and the loader keeps images up to 2048 texels. Past the budget the pack throws a `RangeError`. Proposed: yes.
+16. Default. The light table keeps its stride. Types 0 to 4 are a triangle, a point, a spot, a sun and an environment. The type word of a new row is a value, and four `vec4` of block follow the rows for each analytic light. Proposed: yes.
+17. Default. A point, spot or sun light is invisible to rays and is reached by next-event estimation only. `intensity` is in the engine's radiometric units, with no conversion from candela or lux. A sun's default angle is 0.00918 radian. Proposed: yes.
+18. For the owner. The power table is the first step and the light tree is deferred. The demo scenes hold few lights. The tree waits for a record that has a scene of thousands of emitters to measure. Proposed: this order.
+19. Default. An environment is an equirectangular `rgba32float` image of at most 2,048 texels across. Its distribution is at most 1,024 across. The rotation is about +y only. `scene.background` takes a `Color`, an `Environment` or `null`. Proposed: yes.
+20. Default. MIS compensation is an option, `compensation`, with 0 as the default until step 3.4 measures a gain. Proposed: yes.
 
 ## Record
 
 **Approval and plan record.** This record is a draft. No approval applies yet.
 
-**Configuration and validation record.** This record does not yet apply. No step is started. This draft has Parts 1 and 2 written. Parts 3 to 6 are not written yet.
+**Configuration and validation record.** This record does not yet apply. No step is started. This draft has Parts 1 to 3 written. Parts 4 to 6 are not written yet.
