@@ -8,7 +8,7 @@
 // them. Docs/design/0002-verification.md lists the gate. Run it alone with `bun run gate:render`.
 //
 // The site's stills (site/public/stills) are not goldens. A still is the picture a page shows,
-// captured at 256 samples a pixel and hashed (scripts/capture-stills.mjs).
+// captured at 64 samples a pixel and hashed (scripts/capture-stills.mjs).
 //
 // `run(options)` renders every example and answers `{ ok, numbers, message }`. `numbers` holds
 // one entry for each example. Each entry has the values the tolerance judges, in 8-bit units:
