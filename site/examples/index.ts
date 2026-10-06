@@ -42,6 +42,14 @@ export const EXAMPLES: readonly ExampleEntry[] = [
     load: () => import('./coloured-lights.ts'),
   },
   {
+    id: 'bunny',
+    title: 'Stanford bunny',
+    description:
+      'A glTF mesh of 69,451 triangles on a floor, under one area light: the loader and the BVH.',
+    category: 'Path tracing',
+    load: () => import('./bunny.ts'),
+  },
+  {
     id: 'determinism',
     title: 'Determinism',
     description:
