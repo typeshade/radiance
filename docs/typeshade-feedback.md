@@ -16,6 +16,16 @@ editor), **docs**.
 
 ## Log
 
+### 2026-10-06 · tooling · Change 0054 answers #468, and the direction changed
+
+Pin 596c805. The entry of 2026-10-05, "a warning on every compute module", called this renderer
+WebGPU-only by design and filed typeshade/typeshade#468. The owner then set the direction that
+WebGL2 is a target too (`docs/plan.md`, section 12, decision 7). The compiler's change 0054
+(accepted at a5dcbe7, amended at 146b162) answers #468. It will run every `@compute` entry on
+WebGL2, so the `TS8015` warning is not permanent. The pin is before 0054, so `tshc check` still
+warns on the kernels. The engine's code does not change until the pin moves. The plan proposes
+milestone M8 for the work.
+
 ### 2026-10-05 · runtime · Record 0001 step 3: a NaN bit pattern does not survive the upload either
 
 Pin e923a34. Record 0004 stores "no texture" as the word 0xffffffff, the bits of a NaN. The

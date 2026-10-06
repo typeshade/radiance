@@ -47,8 +47,12 @@ Items 1 to 4 are the ones with a measured cost today. The engine opens them firs
 order. Items 5, 6 and 9 are quality of life. Items 7, 8 and 10 wait for their milestone.
 
 **What the engine does not ask for.** A scene, a camera, a material or a light in the runtime
-(#335, decision 3). WebGL2 (plan §2: no compute, no path tracer). A typed wrapper over WebGPU
-objects (0025's decision 1).
+(#335, decision 3). A typed wrapper over WebGPU objects (0025's decision 1).
+
+**What the engine waits on and does not open.** WebGL2 compute and a WebGL2 tier of the program
+runtime. The compiler's change 0054 is accepted and is not implemented at the pin. It will
+provide both, so this record opens no proposal for them. The engine waits on 0054 for milestone
+M8 (plan §4 and §9).
 
 ## Why
 
@@ -83,6 +87,12 @@ front matter (`compiler: ['0006-4']`), so an implementer sees the dependency bef
 3. Item 7 decides M5's shape. Its route is chosen in M5's own record.
 
 ## Record
+
+**Amendment 1** (2026-10-06, UTC). Plan §12, decision 7 made WebGL2 a target of the engine. "What
+the engine does not ask for" cited plan §2 for "WebGL2 (no compute, no path tracer)", and plan §2
+no longer says so. The citation is out of that paragraph. A new paragraph says that change 0054
+covers WebGL2 and that the engine waits on it. No table row, decision or step changed.
+Disposition: closed.
 
 **Approval and plan record.** Accepted on 2026-10-05 (UTC). The owner approved the merge of typeshade/radiance#6 in the conversation, which merged this record as `draft` at 9e8b479. The owner then said to implement the records with Opus 5.5 and Sonnet 5.5, and that go-ahead is the acceptance. Every entry of "Decisions for the owner" stands as proposed.
 
