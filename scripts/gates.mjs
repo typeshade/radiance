@@ -19,6 +19,10 @@ export const GATE = { size: [16, 16], samples: 1024, perFrame: 64, seed: 1 };
  * spheres of 960 triangles, through the two-level BVH): on SwiftShader the mean was 3.27e-7 and
  * the largest difference 2.86e-6, so `mean` is ten times the measured mean, and `abs` and `rel`
  * stay M1's. Before, on M1's analytic scene, they were 1e-3, 5 % and a `mean` of 1e-4.
+ *
+ * The spheres then grew to 64 by 32 segments, 3,968 triangles each (createCornellBox). On
+ * SwiftShader the mean was 3.03e-7 and the largest difference 2.86e-6, with 0 channels out of
+ * bounds. The bound holds with a margin of 10.9, and it stays at 3.3e-6.
  */
 export const ORACLE = { abs: 1e-3, rel: 0.05, mean: 3.3e-6 };
 
