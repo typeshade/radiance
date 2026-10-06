@@ -28,7 +28,9 @@ export const HALF = 2e-3;
 /**
  * The render gate's goldens (docs/design/0002-verification.md): each example is rendered at `size`
  * and `samples` a pixel with `seed`, and held to scripts/__goldens__/<example>.png within the
- * tolerance. The tolerance is in 8-bit units, because a golden is an 8-bit picture:
+ * tolerance. An example that sets its own seeds is held at the seed of the first render that
+ * reaches `samples` (`OWN_SEED` in scripts/gates/render.mjs). The tolerance is in 8-bit units,
+ * because a golden is an 8-bit picture:
  *
  * - `channel`: a pixel is within when each of its four channels differs by at most this much.
  * - `outside`: the share of pixels that may be beyond `channel`. A pixel at a light's edge may
