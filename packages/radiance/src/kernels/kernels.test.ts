@@ -15,7 +15,6 @@ import { MirrorMaterial } from '../materials/MirrorMaterial.ts';
 import { Mesh } from '../objects/Mesh.ts';
 import { PerspectiveCamera } from '../cameras/PerspectiveCamera.ts';
 import { cameraFrame, SCENE_BUFFERS, ScenePack } from '../renderers/scene-pack.ts';
-import { tileFrame } from '../renderers/tiles.ts';
 import { Scene } from '../scenes/Scene.ts';
 
 const read = (f: string): string | undefined => {
@@ -199,12 +198,12 @@ describe('trace in tiles (record 0001, "Tiles and the watchdog")', () => {
 
   it('adds the same samples to every pixel whatever the tiles, bit for bit', () => {
     const whole = render(w, h, [[0, 0, w, h]], [2, 3]);
-    // A budget so small that each tile is one workgroup of 64 pixels: rows 0 to 4, then 5 to 8.
-    const rows = tileFrame(w, h, 1, 1e6, 0.001);
-    expect(rows).toEqual([
+    // Whole rows: rows 0 to 4, then 5 to 8. `tileFrame` makes one tile of a frame this small
+    // (the smallest nominal tile is 4,096 pixels), so the tiles are written here.
+    const rows = [
       [0, 0, 12, 5],
       [0, 5, 12, 4],
-    ]);
+    ] as const;
     expect(render(w, h, rows, [2, 3])).toEqual(whole);
     // Parts of rows, in any order.
     const columns = [
