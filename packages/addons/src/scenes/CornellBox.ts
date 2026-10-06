@@ -28,9 +28,9 @@ export interface CornellBox {
  *
  * Every shape is triangles: the walls and the light are planes of two triangles each, and each
  * sphere is a `SphereGeometry` of 64 by 32 segments, 3,968 triangles. The segments are twice
- * three.js's default of 32 by 16, so that the outline of the mirror sphere has 64 sides and each
- * edge of its facets bends the reflection less. The scene holds 7,940 triangles. It is the scene
- * CI renders on the GPU and on the CPU oracle (design record 0002).
+ * three.js's default of 32 by 16. So the outline of the mirror sphere has 64 sides, and each
+ * edge of its facets bends the reflection less. The scene pack holds 7,940 triangles, each shared
+ * geometry once. It is the scene CI renders on the GPU and on the CPU oracle (design record 0002).
  */
 export function createCornellBox(): CornellBox {
   const scene = new Scene();
