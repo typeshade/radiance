@@ -507,7 +507,7 @@ Alternatives. Keep the binary BVH and add a short stack (Vaidyanathan et al. 201
 
 1. **The containment test fails on a wrong rounding.** Plant the fault of rounding each bound to the nearest unit. The test of step 6.2 must fail with the node, the child and the axis in its message.
 2. **The tie test fails without the rule.** Remove the pair comparison, so that the first triangle found wins. The test of step 6.1 must fail for at least one ray of the scene.
-3. **The equality test sees a wrong child.** Plant the fault of adding 1 to `childBase` of every node. The brute-force test of step 6.3 must fail, and `bun run gate:differential` must fail its `mean` bound on `triangles`. The pull request records both.
+3. **The equality test sees a wrong child.** Plant the fault of adding 1 to `childBase` of every node. The brute-force test of step 6.3 must fail, and `bun run gate:render` must fail against the goldens. The pull request records both. The differential gate cannot see this fault. The GPU and the oracle run the same kernel on the same packed arrays, so both decode the same wrong tree. Run `bun run gate:differential` as well, and record that it passes. A pass shows that the gate is blind to a fault that the two share.
 4. **The bench sees a traversal change.** Plant the fault of setting the octant to 0, so the order of the slots ignores the ray. The `paths/s` of `bunny` must differ from the unfaulted row by more than the spread of the three runs. If it does not, the bench cannot show the gain of this part.
 
 ## Amendments owed
