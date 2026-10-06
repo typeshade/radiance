@@ -402,14 +402,15 @@ changes the code or this record. The dispositions:
 **Amendment 2** (2026-10-06, UTC). Two investigations of the mirror sphere in the Cornell box
 measured the loss that "A direction under the surface" left unmeasured. The loss is a dark line at
 the silhouette of the sphere. This amendment changes the rule for a mirror sample and records the
-numbers. It changes six places. They are the rule itself, the mirror bullet of "The shading
-contract", "The path loop", the Tests bullet of "What it touches", decision 6 and the deviation
-"A direction under the surface". In "The path loop", it adds two sentences of facts and two of
-proposals. It adds step 7. It changes no code. The merge of the pull request that carries it is the
-owner's acceptance of the new rule. Decision 6 is re-stated, and the merge accepts that text. The
-pull request that implements step 7 merges after it and carries a line of its own,
-`Design: 0004`. The fold is the smallest change that closes the
-band. The amendment proposes it, and step 7 states how the implementing pull request measures it.
+numbers. It changes seven places. They are the rule itself, the mirror bullet of "The shading
+contract", the introduction of "The rules of the surface and of emission", "The path loop", the
+Tests bullet of "What it touches", decision 6 and the deviation "A direction under the surface". In
+"The path loop", it adds two sentences of facts and two of proposals. It adds step 7. It changes no
+code. The merge of the pull request that carries it is the owner's acceptance of the new rule.
+Decision 6 is re-stated, and the merge accepts that text. The pull request that implements step 7
+merges after it and carries a line of its own, `Design: 0004`. The fold is the smallest change that
+closes the band. The amendment proposes it, and step 7 states how the implementing pull request
+measures it.
 
 The configuration is `main` at 2f06d0e, the compiler pinned at 596c805, on 2026-10-06. This pull
 request carries no program that measured the numbers, and no test holds them. Each one is an
