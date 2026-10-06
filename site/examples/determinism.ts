@@ -1,6 +1,6 @@
 // One seed, one image (docs/design/0005-determinism.md). One renderer draws the Cornell box with
-// seed 1, again with seed 1, and once with seed 2. Each render is read back as floats, and the
-// page counts the floats that differ. Two renders of seed 1 differ in none, and seed 2 differs
+// seed 2, then with seed 1, then with seed 1 again. Each render is read back as floats, and the
+// page counts the floats that differ. The two renders of seed 1 differ in none, and seed 2 differs
 // in many.
 //
 // The size is the canvas's, and the samples and the samples a frame are fixed. Nothing moves. A
@@ -8,6 +8,12 @@
 // use the same chunks. That is why `targetFrameTime`, which changes the chunk with the time, is
 // not set here. The render gate (scripts/gates/render.mjs) sets `maxSamples` after the set-up, so
 // each render stops at the smaller of `RENDER.samples` and `maxSamples`.
+//
+// The order of the renders is the split's. The first frame that a renderer draws adds one sample.
+// So the first render has frames of 1, 16, 16, 16 and 15 samples, and every later render has
+// frames of 16. Seed 2 comes first and takes that split. The two renders of seed 1 come second and
+// third, and they have the same split. Seed 2 differs from seed 1 in many floats with any split.
+// The render gate reads the first render, so its golden shows seed 2.
 
 import { PathTracer } from '@typeshade/radiance';
 import { createCornellBox } from '@typeshade/radiance-addons';
@@ -77,7 +83,7 @@ function buildPanel(size: Size) {
   const pictures = element('div', 'rd-panel-pictures');
   const tiles = (
     [
-      ['Seed 1', 'The first render.'],
+      ['Seed 1', 'The first render of seed 1.'],
       ['Seed 1 again', 'The same seed, after a reset.'],
       ['Difference', `Times ${GAIN}. Black means no float differs.`],
     ] as const
@@ -136,15 +142,16 @@ export default async function determinism(canvas: HTMLCanvasElement): Promise<Ex
   let stopped = false;
   const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
   /**
-   * Render from zero to the sample count, one frame at a time, so that the stage's Pause stops
-   * it. The picture of the render before stays on the canvas for a moment first: the render gate
-   * reads the displayed image when the samples reach their count, and a reset at that moment
-   * would give it a picture of the next render.
+   * Render with `seed` from zero to the sample count, one frame at a time, so that the stage's
+   * Pause stops it. The picture of the render before stays on the canvas for a moment first: the
+   * render gate reads the displayed image when the samples reach their count, and a reset at that
+   * moment would give it a picture of the next render.
    */
-  async function render(message: string) {
+  async function render(seed: number, message: string) {
     status.textContent = message;
     await new Promise((resolve) => setTimeout(resolve, HOLD));
     if (stopped) throw new Error('stopped');
+    renderer.seed = seed;
     renderer.reset();
     do {
       await nextFrame();
@@ -155,19 +162,17 @@ export default async function determinism(canvas: HTMLCanvasElement): Promise<Ex
   }
 
   async function run() {
-    const first = await render(`Rendering seed ${SEED}.`);
+    // The first render takes the first frame's single sample, so seed 2 goes first. The two
+    // renders of seed 1 that follow have one split. The canvas ends on the last of them.
+    const other = await render(OTHER_SEED, `Rendering seed ${OTHER_SEED}.`);
+    const first = await render(SEED, `Rendering seed ${SEED}.`);
     tiles[0]!.putImageData(picture(first.pixels, size), 0, 0);
-    const again = await render(`Rendering seed ${SEED} again.`);
+    counts[2]!(countDifferent(first.radiance, other.radiance));
+    const again = await render(SEED, `Rendering seed ${SEED} again.`);
     tiles[1]!.putImageData(picture(again.pixels, size), 0, 0);
     tiles[2]!.putImageData(differencePicture(first.radiance, again.radiance, size), 0, 0);
     const same = countDifferent(first.radiance, again.radiance);
     counts[1]!(same);
-    renderer.seed = OTHER_SEED;
-    const other = await render(`Rendering seed ${OTHER_SEED}.`);
-    counts[2]!(countDifferent(first.radiance, other.radiance));
-    // Draw seed 1 on the canvas again, so that the canvas and its PNG show the first render.
-    renderer.seed = SEED;
-    await render(`Drawing seed ${SEED} on the canvas again.`);
     status.textContent =
       same === 0
         ? `Two renders of seed ${SEED} are bit-identical.`

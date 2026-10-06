@@ -134,6 +134,14 @@ function readGolden(file) {
 const firstLine = (compared) => compared.message.split('\n')[0];
 
 /**
+ * The seed of the picture the gate reads, for an example that sets its own seeds. The gate sets
+ * `RENDER.seed` before the example's first render, and the example replaces it. The determinism
+ * example draws seed 2 first (site/examples/determinism.ts), so its picture at `RENDER.samples` is
+ * seed 2's. Every other example draws `RENDER.seed`.
+ */
+const OWN_SEED = new Map([['determinism', 2]]);
+
+/**
  * Runs example `id` on the page and holds its picture to the golden in `dir`, or writes the
  * golden. Answers `{ numbers, line, failures }`: the numbers of the example, one line for the
  * output and the failures it found.
@@ -147,7 +155,7 @@ async function holdExample(session, id, dir, update) {
     seed: RENDER.seed,
   });
   const ran = `${rendered.size.join(' x ')} at ${rendered.samples} spp, seed ${rendered.seed}`;
-  const wanted = `${RENDER.size.join(' x ')} at ${RENDER.samples} spp, seed ${RENDER.seed}`;
+  const wanted = `${RENDER.size.join(' x ')} at ${RENDER.samples} spp, seed ${OWN_SEED.get(id) ?? RENDER.seed}`;
   if (ran !== wanted)
     return {
       numbers: {},
