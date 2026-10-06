@@ -2,14 +2,13 @@
 // three.js is not a dependency, so each number held to three.js's was worked out by hand from the
 // algorithm named beside it. A scratch script, kept out of the repository, compared these classes
 // with three.js 0.186.1 for 14 parameter sets. Every position, normal, uv and index was equal.
-// No test here verifies a decision of design record 0001 yet. Decision 7 is only half done at
-// step 1: BoxGeometry exists, and QuadGeometry still stands beside PlaneGeometry.
+// Design record 0003, decision 5: `QuadGeometry` is renamed `PlaneGeometry` without a shim, so no
+// test names `QuadGeometry`. The surface bake (`bun run gate:api`) holds that no export has it.
 
 import { describe, expect, it } from 'bun:test';
 import { BoxGeometry } from './BoxGeometry.ts';
 import { BufferGeometry } from './BufferGeometry.ts';
 import { PlaneGeometry } from './PlaneGeometry.ts';
-import { QuadGeometry } from './QuadGeometry.ts';
 import { SphereGeometry } from './SphereGeometry.ts';
 
 /** Float32 rounds 0.1 and its kin, so a number held to a literal is held to this many digits. */
@@ -307,19 +306,6 @@ describe('PlaneGeometry', () => {
     const box = new PlaneGeometry(3, 5).computeBoundingBox();
     expect(box.min.toArray()).toEqual([-1.5, -2.5, 0]);
     expect(box.max.toArray()).toEqual([1.5, 2.5, 0]);
-  });
-});
-
-describe('QuadGeometry', () => {
-  it('is a PlaneGeometry with M1 name, type and constructor', () => {
-    const quad = new QuadGeometry(2, 3);
-    const plane = new PlaneGeometry(2, 3);
-    expect(quad).toBeInstanceOf(PlaneGeometry);
-    expect(quad.type).toBe('QuadGeometry');
-    expect([quad.width, quad.height]).toEqual([2, 3]);
-    expect(quad.position).toEqual(plane.position);
-    expect(quad.index).toEqual(plane.index);
-    expect([new QuadGeometry().width, new QuadGeometry().height]).toEqual([1, 1]);
   });
 });
 

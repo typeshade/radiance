@@ -6,7 +6,7 @@ import {
   Mesh,
   MirrorMaterial,
   PerspectiveCamera,
-  QuadGeometry,
+  PlaneGeometry,
   Scene,
   SphereGeometry,
   Vector3,
@@ -36,7 +36,7 @@ export function createCornellBox(): CornellBox {
   const red = new DiffuseMaterial({ color: new Color(0.65, 0.05, 0.05) });
   const green = new DiffuseMaterial({ color: new Color(0.12, 0.45, 0.15) });
   const light = new EmissiveMaterial({ color: new Color(17, 12, 4) });
-  const wall = new QuadGeometry(2, 2);
+  const wall = new PlaneGeometry(2, 2);
 
   const floor = new Mesh(wall, white);
   floor.rotation.x = -Math.PI / 2;
@@ -52,7 +52,7 @@ export function createCornellBox(): CornellBox {
   right.position.set(1, 1, 0);
   right.rotation.y = -Math.PI / 2;
 
-  const lamp = new Mesh(new QuadGeometry(0.5, 0.4), light);
+  const lamp = new Mesh(new PlaneGeometry(0.5, 0.4), light);
   lamp.position.set(0, 1.98, 0);
   lamp.rotation.x = Math.PI / 2;
 

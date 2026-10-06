@@ -19,15 +19,15 @@ import {
   Mesh,
   PathTracer,
   PerspectiveCamera,
-  QuadGeometry,
+  PlaneGeometry,
   Scene,
   SphereGeometry,
 } from '@typeshade/radiance';
 
 const scene = new Scene();
-const floor = new Mesh(new QuadGeometry(6, 6), new DiffuseMaterial({ color: 0xbfbfbf }));
+const floor = new Mesh(new PlaneGeometry(6, 6), new DiffuseMaterial({ color: 0xbfbfbf }));
 floor.rotation.x = -Math.PI / 2;
-const lamp = new Mesh(new QuadGeometry(1.2, 1.2), new EmissiveMaterial({ intensity: 10 }));
+const lamp = new Mesh(new PlaneGeometry(1.2, 1.2), new EmissiveMaterial({ intensity: 10 }));
 lamp.position.set(0, 2.2, 0);
 lamp.rotation.x = Math.PI / 2;
 const ball = new Mesh(new SphereGeometry(0.5), new DiffuseMaterial({ color: 0xe8703a }));
