@@ -13,7 +13,7 @@ import { launchBrowser, serve } from './gates/_browser.mjs';
 import { exampleIds, sha256, stillPath } from './stills.mjs';
 
 /** The samples a pixel a still is taken at. */
-const STILL_SAMPLES = Number(process.env.STILL_SAMPLES ?? 256);
+const STILL_SAMPLES = Number(process.env.STILL_SAMPLES ?? 64);
 /** The size a still is rendered at, in CSS pixels at a device pixel ratio of 1. */
 const VIEWPORT = { width: 1280, height: 900 };
 
@@ -44,8 +44,10 @@ try {
       await page.waitForFunction(
         (n) => Number(document.querySelector('[data-stage-toolbar]')?.dataset.samples) >= n,
         STILL_SAMPLES,
-        // On SwiftShader the triangle kernel (design record 0001) traces about 30,000 paths a
-        // second, so a still of 718 x 450 pixels at 256 samples takes about 45 minutes.
+        // On SwiftShader the triangle kernel (design record 0001) traces about 15,000 paths a
+        // second (measured 2026-10-06, 4 cores), so a still of 718 x 450 pixels at 64 samples takes
+        // about 25 minutes. A still is the picture a page shows before its canvas runs, so 64
+        // samples are enough: it is hashed, not held to a golden.
         { timeout: 120 * 60_000, polling: 500 },
       );
       if (!animated) await pause.click();
