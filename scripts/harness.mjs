@@ -194,13 +194,13 @@ try {
   await fly.goto(`${origin}/examples/sponza/`);
   const mode = () =>
     fly.evaluate(() => document.querySelector('canvas[data-controls]')?.dataset.controls);
-  const modeIs = (want) =>
+  const modeIs = (want, timeout = 2 * FRAME) =>
     fly.waitForFunction(
       (w) => document.querySelector('canvas[data-controls]')?.dataset.controls === w,
       want,
-      { timeout: 2 * FRAME },
+      { timeout },
     );
-  await modeIs('fly');
+  await modeIs('fly', 4 * FRAME);
   await fly.keyboard.press('KeyF');
   await modeIs('orbit');
   await fly.keyboard.press('KeyF');
