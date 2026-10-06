@@ -621,12 +621,13 @@ Alternatives considered and not taken:
   instance is hit where its matrix puts it). `kernels.test.ts` keeps the tests of the sampler, of
   `trace.shade.ts`, of the seven bindings and of the tiles. Amendment 3 owes the tests that steps
   6 and 7 list, the scene test of step 8 and the example of step 10.
-- **Scripts and the site, from Amendment 3.** `scripts/scenes.test.ts`, `scripts/gates.mjs`
-  (`ORACLE`), `scripts/gates/differential.mjs` (the row `sphere`), `scripts/gates/render.mjs` (the
+- **Scripts and the site, from Amendment 3.** `scripts/scenes.test.ts`, `scripts/scenes.ts`,
+  `scripts/gates.mjs` (`ORACLE` and `ORACLE_SPHERES`), `scripts/gates/differential.mjs` (`SCENES` and the row `sphere`), `scripts/gates/render.mjs` (the
   radius probe) and a probe in `scripts/`. The goldens and stills of the three examples that call
   `createCornellBox`: `cornell-box`, `determinism` and `scene-graph`. `site/examples/scene-graph.ts`,
   whose test `child.geometry instanceof SphereGeometry` no longer finds the Cornell box's spheres.
-  The new example `site/examples/spheres.ts`, its golden and its still.
+  The new scene `SpheresScene.ts`, the new example `site/examples/spheres.ts`, its golden and its
+  still.
   `site/src/content/docs/guide/scene-graph.mdx` (its geometry table), the guide page on materials
   and `docs/benchmarks.md`. The `geometries` example does not change.
 - **Other records.** Records 0002, 0003, 0004 and 0005 carry an amendment of the same date. Record
@@ -779,21 +780,27 @@ Each step is one pull request with `Design: 0001` in its commit message. The gat
    kernel's `ns` and the oracle's `ns` on 1,000 of 1,000 hits, and the fold on a flat mesh sphere:
    0 of 100,000. The render gate passes with no golden changed, because no example sets the flag
    yet. The commit names `Design: 0001`, `Design: 0003` and `Design: 0004`.
-10. **The comparison example and the docs** (Amendment 3). Add the example `spheres` in
-    `site/examples/spheres.ts` and `site/examples/index.ts`. It shows three mirror balls of
-    radius 0.4 side by side, in a small room that the example builds. The left ball is a
+10. **The comparison example and the docs** (Amendment 3, record 0002, step 9). Add
+    `createSpheresScene` in `packages/addons/src/scenes/SpheresScene.ts`, and the example `spheres`
+    in `site/examples/spheres.ts` and `site/examples/index.ts`. The scene shows three mirror balls
+    of radius 0.4 side by side, in a small room that the scene builds. The left ball is a
     `SphereGeometry(0.4, 32, 16)` mesh with smooth normals. The middle ball is the same geometry
-    with a material whose `flatShading` is true. The right ball is a `Sphere`. The panel names each
-    ball. The `geometries` example keeps its mesh sphere. Add a row for `Sphere(radius, material)`
-    to the geometry table of `scene-graph.mdx`, and a row for `flatShading` to the page on
-    materials. Name the cost of each sphere kind in one sentence of the guide. Append a `cornell`
-    row to `docs/benchmarks.md` for the box on `Sphere`. Add the golden `spheres.png` and the still
-    `spheres.webp` with its `.sha256`, and no other golden or still. Done when four things hold.
-    `gate:site`, `gate:api` and `gate:render` pass. The pack of the example counts 3 instances, 960
-    triangles and 561 vertices, because the two mesh balls share one geometry. The pull request
-    shows the three balls at 768 pixels. The goldens of all other examples are unchanged in this
-    step. A plan change stays out: `docs/plan.md` (section 3.2 and the M6 row) is its own pull
-    request. The commit names `Design: 0001`.
+    with a material whose `flatShading` is true. The right ball is a `Sphere`. The panel of the
+    example names each ball. The `geometries` example keeps its mesh sphere. Add an entry in
+    `scripts/scenes.ts` and in `SCENES` in `differential.mjs`, and `ORACLE_SPHERES` in
+    `scripts/gates.mjs`. Derive it by record 0002's rule: ten times the measured mean, rounded up,
+    with `abs` and `rel` at M1's. Add a row for `Sphere(radius, material)` to the geometry table of
+    `scene-graph.mdx`, and a row for `flatShading` to the page on materials. Name the cost of each
+    sphere kind in one sentence of the guide. Append a `cornell` row to `docs/benchmarks.md` for
+    the box on `Sphere`. Add the golden `spheres.png` and the still `spheres.webp` with its
+    `.sha256`, and no other golden or still. Done when five things hold. `gate:site`, `gate:api`
+    and `gate:render` pass. The differential gate and the determinism gate pass on `spheres`: 0
+    differing floats for one seed. The three balls add 3 instances, 960 triangles and 561
+    vertices to the pack, beyond the room's own, because the two mesh balls share one geometry.
+    The pull request records the measured mean and the largest difference. It shows the three
+    balls at 768 pixels. The goldens of all other examples are unchanged in this step. A plan
+    change stays out: `docs/plan.md` (section 3.2 and the M6 row) is its own pull request. The
+    commit names `Design: 0001` and `Design: 0002`.
 
 M2a (animation) and M3 (the reserved fields) are later records that build on this layout. This
 record is implemented at step 10.
@@ -976,8 +983,10 @@ dispositions:
   GPU. Fact: no existing gate runs a kernel function alone. Inference: the public runtime can
   dispatch it from the harness page. Step 6 checks it. If it cannot, the step amends this record
   and record 0002 before it merges.
-- **The `spheres` scene of the first draft.** Dropped. The owner's list has no such scene. The
-  differential gate holds a `Sphere` through the `cornell` scene, and the probe holds its hit.
+- **The `spheres` scene of the first draft.** Replaced. The first draft's scene held a floor, an
+  ellipsoid and a mirrored ball, and the ellipsoid is refused. The new `spheres` scene is the
+  owner's comparison of three balls. It is both the example of step 10 and a differential scene,
+  so the GPU holds the flag and the `Sphere` on a picture. This is decided by default.
 - **Open: record 0008.** The cast of record 0008 finds no `Sphere`. Next action: an amendment of
   record 0008, before its step 1 starts, that adds the sphere test in `f64` and a parity test with
   the kernel.
