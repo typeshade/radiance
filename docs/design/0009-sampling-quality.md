@@ -228,3 +228,66 @@ Alternatives. Keep Sobol and pad (the status quo). Use a blue-noise sampler with
 
 1. **The net test fails on a wrong matrix.** Plant the fault of setting column 3 of dimension 2 to 0. The net test of step 2.1 must fail. The failure message names the shape of the elementary interval and the cell. The pull request names the shape.
 2. **The quality tool sees a correlated pair.** Plant the fault of using the first number of a pair as its second. The quality tool on `cornell` must give an error at 1,024 samples above the error of part 1's kernel. Inference: a pair read along its diagonal covers the square badly, so the error rises. Step 2.4 records the numbers.
+
+## Part 3: filter importance sampling with a tent filter
+
+### What changes (part 3)
+
+The pixel jitter in `trace` goes through the inverse cumulative distribution of a tent filter. A sample then lands in a wider area than its own pixel, with a density that falls off linearly. Each pixel's mean stays a plain mean. This is Filter Importance Sampling (Ernst et al. 2006).
+
+**Before.** `trace` (`trace.shade.ts`, lines 211 to 215) draws `jitter = sample2(pixelSeed, index, 0)`. It forms `ndc.x = ((px + jitter.x) / width) * 2 - 1`, and `ndc.y` likewise. The sample lies in the pixel's own square. The filter is a box of one pixel.
+
+**After.** The kernel computes an offset from the same two numbers and adds it to the pixel's centre:
+
+```ts
+/** The offset in pixels of a sample drawn from a tent filter of half-width FILTER_RADIUS, for u in [0, 1). */
+export function tentOffset(u: f32): f32 {
+  const left = sqrt(2. * u) - 1.;
+  const right = 1. - sqrt(2. * (1. - u));
+  return FILTER_RADIUS * select(left, right, u >= 0.5);
+}
+```
+
+- `ndc.x = ((f32(px) + 0.5 + tentOffset(jitter.x)) / f32(width)) * 2. - 1.`, and `ndc.y` the same with `jitter.y`.
+- `FILTER_RADIUS` is a constant of `trace.shade.ts`, `1.0`, in pixels of the traced frame. The tent is zero at distance 1 pixel and above.
+- The filter is separable: one tent in x and one in y, each from its own number.
+- The weight of a sample is 1. Fact: a filter that is positive in its whole support has a constant weight `f / pdf`. So the plain mean is the filtered pixel (survey, Top 12, item 4).
+
+**What the constants mean.** These are arithmetic, not measurements. The box filter of one pixel has a variance of 1/12 pixel squared and a standard deviation of 0.289 pixel. The tent of half-width `r` has a variance of `r^2 / 6`. At `r = 1` the standard deviation is 0.408 pixel. So the filter blurs about 1.4 times as much as the box. The default radius is a decision (decision 8).
+
+**What it adds to the code.** One function and one constant. Each draws no new random number. `sqrt` is a rule 3 row. The `select` reads `u >= 0.5`, and `u` comes from `toUnit` of an integer, so the comparison is exact on every device. Rule 2 does not apply, because no transcendental feeds the comparison. A Gaussian filter would need `log` and `cos` (Box-Muller). The survey lists this under "avoid", so this record does not use one.
+
+**The preview.** A frame at a lower resolution (`preview` above 1) traces one pixel for each block (`PathTracer.ts`, `#traced`). The kernel measures the radius in traced pixels. So a preview frame is blurred over its blocks. Inference: this is harmless, because a preview shows a moving camera. It is a decision (decision 9).
+
+**The edge of the frame.** A sample of a border pixel may land up to one pixel outside the frame. The camera ray is still defined there. The estimate at the border is a filter over a wider area. No code clamps it.
+
+### Why (part 3)
+
+A box filter of one pixel lets high frequencies alias into the pixel. A wider filter with a positive, smooth kernel removes the worst of it. The usual cure is to splat each sample into several pixels, which needs atomic adds on floats. WGSL has none (survey, "avoid", and record 0005, rule 4). Filter importance sampling moves the sample instead of the weight. Each pixel stays the only writer of its own accumulator. This is the paper's claim, from the survey: "a better filter than the implicit box costs no splatting and no atomics". The paper gives no number, because the gain is in the look. Inference: the tent removes stair-steps on edges at the price of some softness. The owner judges the look (decision 8).
+
+Alternatives. A tabulated Blackman-Harris or Mitchell inverse CDF in the uniform block. The survey lists it. It needs room in `TraceParams` and a record 0001 amendment. A Gaussian by Box-Muller. It needs `log` and `cos` to set a ray, which rule 2 forbids. A narrower tent with `r = 0.5`. It is sharper, and it gains less against the box.
+
+### What it touches (part 3)
+
+- **Files.** `trace.shade.ts` (`tentOffset`, `FILTER_RADIUS`, lines 211 to 215, the header comment). No other kernel.
+- **Records.** Record 0005: nothing. Record 0001: nothing, since no buffer and no layout changes. Record 0002: the goldens, and the reference of this part.
+- **Gates.** The render gate: every golden changes, because every image is filtered. Fact: `RENDER` holds a mean difference of 1 in 255 and a channel difference of 4 (`scripts/gates.mjs`, line 74). Inference: a blur of this size moves the pixels at edges by more than 4 levels, so the goldens must be rewritten. The differential and determinism gates stay at their bounds, because the GPU and the oracle run the same kernel.
+- **The site.** The stills (`site/public/stills`, `bun run capture:stills`) change with the goldens. No page of the site, the guide or `docs/plan.md` names the jitter or the box filter (a search of `site/src`, `docs` and `README.md` finds none).
+- **Not touched.** `sample2` and the pair numbers. The jitter is still pair 0.
+
+### Steps (part 3)
+
+1. **Step 3.1: `tentOffset` and its test.** Add the function and the constant. Tests in the new `trace.test.ts`:
+   - The offset of 65,536 stratified `u` values lies in `[-1, 1]`, has a mean of 0 within 1e-4, and a variance of `1 / 6` within 1e-3.
+   - The empirical cumulative distribution at 33 points equals the tent's `F(x)` within 1e-3. `F(x) = (1 + x)^2 / 2` for `x` in `[-1, 0]` and `1 - (1 - x)^2 / 2` for `x` in `[0, 1]`.
+   - The function is continuous at `u = 0.5`: `tentOffset(0.5)` is 0, and the difference of the two sides at `u = 0.5 -/+ 1e-6` is under 4e-3.
+   - The test runs through `compile()` on the oracle and through the language service. Verifies Design 0009.8.
+     Done when the tests pass and `determinism.test.ts` reports no new row.
+2. **Step 3.2: the kernel and its reference.** Change the jitter in `trace`. Render the new reference of each gate scene at 16,384 samples (the instrument), and keep it beside the old one under `scripts/__goldens__/reference/`. Rewrite the goldens with `UPDATE_GOLDENS=1 bun run gate:render` and show each old and new picture. Done when the render gate passes on the new goldens.
+3. **Step 3.3: the numbers.** Record the differential and determinism gates before and after. Run `bun run quality` on the four scenes against the new reference. Record two more numbers. First, the width in pixels of the 10 to 90 percent rise across the edge of the Cornell box's left wall, before and after. Measure it on a 16,384-sample reference. Second, the error against the old reference. This one gives how far the filter moves the image. It is not a gain. Done when the pull request shows the table.
+4. **Step 3.4: the stills.** Run `bun run capture:stills` as the README's checks describe. Commit the new stills in the same pull request. Done when `bun run gate:site` passes.
+
+### Prove the instrument (part 3)
+
+1. **The moment test fails on a wrong radius.** Plant the fault `FILTER_RADIUS = 1.1`. The variance test must fail with the measured variance in its message. Plant the fault of dropping the `select`, so the left branch serves all `u`. The distribution test must fail at the first check above 0.5.
+2. **The edge-width number moves.** Set `FILTER_RADIUS` to 0, a point filter. The edge width must fall below the box's width. At 1 it must rise above the box's width. The pull request records the widths at 0, 0.5 and 1.
