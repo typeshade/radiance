@@ -120,30 +120,36 @@ export function evalBsdf(s: Surface, wo: vec3, wi: vec3): vec4; // f in xyz, pdf
 - **The hit point.** `surfaceAt` moves the point along `ng` by `OFFSET` times the largest of 1
   and the point's largest absolute coordinate. `OFFSET` is 1e-4 (`intersect.shade.ts`). It keeps a
   new ray from meeting the surface it leaves. `ng` faces the ray, so the point moves to the side
-  the ray came from. Every ray that the path loop casts from a surface starts at `p`: the next
-  bounce and the shadow ray. Inference: 1e-4 times a coordinate is at least 800 times the spacing
-  of an `f32` at that coordinate.
+  the ray came from. At M2, every ray that the path loop casts from a surface starts at `p`: the
+  next bounce and the shadow ray. Both lobes of step 1 reflect, so each of these rays leaves on
+  the side the ray came from. A transmission sample leaves on the other side. Step 2 states the
+  origin of a ray that a transmission sample casts. Inference: 1e-4 times a coordinate is at
+  least 800 times the spacing of an `f32` at that coordinate.
 - **The shading normal.** `ns` is the vertices' normals, interpolated by the barycentric weights,
   moved to world space by the inverse transposed and made unit. `surfaceAt` turns it to the ray's
   side when the ray met the back face. `ns` is `ng` when the vector in world space has length 0.
   `ns` is `ng` too when its dot product with `ng` is 0 or less after the turn.
-- **A direction under the surface.** After the BSDF sample, `radiance` ends the path in two
-  cases. The `pdf` of the sample is 0 or less. Or the dot product of `wi` and `ng` is 0 or less.
-  A shading normal can give such a direction. The end of the path follows next-event estimation,
-  so the light sample of that bounce still counts. `direct` adds nothing for a light sample whose
-  direction has a dot product with `ng` of 0 or less. Inference: the rule acts only where `ns`
-  differs from `ng`. The light that such a path would carry is lost. The loss was not measured.
+- **A direction under the surface.** This rule holds for a reflection lobe, the only kind at M2.
+  After the BSDF sample, `radiance` ends the path in two cases. The `pdf` of the sample is 0 or
+  less. Or the dot product of `wi` and `ng` is 0 or less. A shading normal can give such a
+  direction. The end of the path follows next-event estimation, so the light sample of that bounce
+  still counts. `direct` adds nothing for a light sample whose direction has a dot product with
+  `ng` of 0 or less. Inference: the rule acts only where `ns` differs from `ng`. The light that
+  such a path would carry is lost. The loss was not measured. A transmission sample goes under
+  `ng` on purpose, so this rule does not hold for it. Step 2 states the end rule for a
+  transmission sample.
 
 **The path loop** (`radiance()` in `trace.shade.ts`) becomes these steps for each bounce:
 
-1. Traverse the scene.
+1. Traverse the scene. End the path when the ray meets nothing.
 2. Fill the `Surface` with `surface`.
 3. Add `emission` when the last bounce was specular or this is the camera ray.
-4. Draw the next direction with `sampleBsdf`.
-5. Add next-event estimation with `evalBsdf` toward a light from the table, unless the sample is
+4. End the path when this is the last bounce, the one that `params.path.x` sets.
+5. Draw the next direction with `sampleBsdf`.
+6. Add next-event estimation with `evalBsdf` toward a light from the table, unless the sample is
    specular.
-6. End the path when the direction goes under `ng`.
-7. Apply Russian roulette.
+7. End the path as "A direction under the surface" states.
+8. Apply Russian roulette from the bounce that `params.path.y` sets.
 
 The loop draws the BSDF sample first because a specular sample skips next-event estimation. The
 two use their own sampler dimensions, so the order changes no number. Nothing in the loop reads a
@@ -268,6 +274,8 @@ optional and `dpdu` from the triangle is exact for a triangle). Texture atlases 
   - `scripts/oracle.ts`, at the repository root: it binds each buffer of `SCENE_BUFFERS` through
     `vec4s`.
   - `scene-pack.test.ts` and `materials.test.ts`.
+  - This record's table and bullets in "The record": they put the type and flags in `[2].w`
+    and the texture ids in `[3]` and `[7].x`, the lanes that rule 3 makes reserved.
 
 ## Implementation, in steps
 
@@ -278,7 +286,10 @@ optional and `dpdu` from the triangle is exact for a triangle). Texture atlases 
    Cornell box gate passes on the contract with no change to its numbers beyond the
    tessellation's.
 2. **The principled BSDF (M3).** The diffuse and GGX lobes with Fresnel, transmission, the
-   `physical` differential scene, multiple importance sampling in the path loop.
+   `physical` differential scene, multiple importance sampling in the path loop. The rules of
+   "The rules of the surface and of emission" for the origin of a ray and for the end of a path
+   hold for a reflection lobe only. Before this step casts a transmission ray, an amendment of
+   this record states the origin of that ray and the end rule for a transmission sample.
 3. **Textures (M3)**, after record 0006 item 4 lands: the size classes, the ids, the loader's
    images, `surface`'s reads, the `textures` differential scene.
 4. **Clearcoat, sheen, anisotropy (M3)**, each its own pull request with its oracle test.
@@ -299,8 +310,9 @@ optional and `dpdu` from the triangle is exact for a triangle). Texture atlases 
 5. Tangents derived at the hit, not stored.
 6. The rules that Amendment 1 writes for the surface and for emission: a back face emits only
    for a material with bit 9, `Surface.p` is offset by `OFFSET` times the largest of 1 and the
-   point's largest absolute coordinate, `ns` falls back to `ng`, and the path loop ends a path
-   whose direction goes under `ng`.
+   point's largest absolute coordinate, and `ns` falls back to `ng`. For a reflection lobe, the
+   path loop casts each ray from `p` and ends a path whose direction goes under `ng`. Step 2
+   states the origin of a ray and the end rule for a transmission sample.
 7. `Material.type` replaces `Material.kind`, and no `kind` stays (Amendment 1).
 8. At step 6, the six integer words of the material record move to `materialBits`, a
    `storage<array<vec4u>>` binding with 2 `vec4u` for each material. That changes six words of
@@ -327,9 +339,10 @@ changes the code or this record. The dispositions:
   times the largest of 1 and the point's largest absolute coordinate.
 - **The side of the shading normal.** Proposed: made part of the record. `ns` is `ng` when the
   interpolated normal, in world space, has length 0 or faces away.
-- **A direction under the surface.** Proposed: made part of the record. The path loop ends such
-  a path. The rule loses the light that the path would carry, so the owner may ask for another
-  policy. Decision 6 holds this one.
+- **A direction under the surface.** Proposed: made part of the record, for a reflection lobe.
+  The path loop ends such a path. The rule loses the light that the path would carry, so the
+  owner may ask for another policy. Step 2 states the rule for a transmission sample. Decision 6
+  holds this one.
 - **`Material.kind`.** Proposed: made part of the record. `type` replaces `kind`, and "The
   classes" says so. The package is at version 0.0.0 with no release, so record 0003,
   "Deprecation", has no released name to protect. Decision 7 holds it.
@@ -343,7 +356,7 @@ changes the code or this record. The dispositions:
 
 **Deviations of step 1** (2026-10-05, UTC). Step 1 is typeshade/radiance#18 with record 0001
 step 3, merged as 9f2cf1a. Each entry gives the difference and its disposition. Amendment 1
-proposes a new disposition for each of the first six entries and adds the seventh.
+adds the fifth and the seventh entries and proposes a disposition for each entry.
 
 - **The back face of a light.** "The record" defines the "double sided" bit and does not say
   what it does. `emission` is zero on the back face unless the bit is set. With the bit, the
@@ -357,7 +370,7 @@ proposes a new disposition for each of the first six entries and adds the sevent
   Disposition: made part of the record by Amendment 1.
 - **A direction under the surface.** The path loop ends a path when `sampleBsdf` gives a
   direction on the other side of `ng`, which a shading normal can give. The record's path loop
-  is silent on it. Disposition: made part of the record by Amendment 1.
+  is silent on it. Disposition: made part of the record by Amendment 1, for a reflection lobe.
 - **The type of a material.** Step 1 removes M1's `Material.kind` and adds `Material.type` in
   its place. The list in #18 names it, and this record's list did not. Disposition: made part
   of the record by Amendment 1.
