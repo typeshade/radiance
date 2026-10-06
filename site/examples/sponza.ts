@@ -76,7 +76,11 @@ export default async function sponza(canvas: HTMLCanvasElement): Promise<Example
     'Drag to look, W A S D to move, Q and E to go down and up, Shift to go faster, F to switch to orbit.';
   const ORBIT_LABEL = 'Drag to orbit, scroll to zoom, right-drag to pan, F to switch to fly.';
   let label = FLY_LABEL;
+  // The canvas names the active controls in `data-controls`, for the harness and for a reader of
+  // the DOM. The swap callback keeps it current.
+  canvas.dataset.controls = 'fly';
   const swap = swapControls(camera, canvas, fly, controls, 'fly', (mode) => {
+    canvas.dataset.controls = mode;
     // The stage set the canvas label from `controlsLabel`: swap its tail for the active mode's.
     const now = mode === 'fly' ? FLY_LABEL : ORBIT_LABEL;
     const current = canvas.getAttribute('aria-label');
