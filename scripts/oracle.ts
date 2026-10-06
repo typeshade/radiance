@@ -9,17 +9,14 @@
 // The oracle binds the typed arrays and the uniform block of a `ScenePack`, the class the
 // renderer uploads from (design record 0001, "The oracle"), so the CPU and the GPU read one
 // scene. Nothing here knows the layout. It knows the pack. The pack is not public API, so this
-// script imports its file, until record 0003 gives the internals a subpath of their own.
+// script imports it from `@typeshade/radiance/internal`, the subpath of the engine's internals
+// (design record 0003, "What is public").
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { compile, compileModuleJs, type CpuValue } from 'typeshade';
 import type { Camera, Scene } from '@typeshade/radiance';
-import {
-  cameraFrame,
-  SCENE_BUFFERS,
-  ScenePack,
-} from '../packages/radiance/src/renderers/scene-pack.ts';
+import { cameraFrame, SCENE_BUFFERS, ScenePack } from '@typeshade/radiance/internal';
 import type { SceneName } from './scenes.ts';
 
 export interface OracleOptions {

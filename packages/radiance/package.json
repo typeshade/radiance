@@ -5,7 +5,8 @@
   "license": "Apache-2.0",
   "description": "TypeShade Radiance: a scene graph, cameras, materials and a progressive path tracer for WebGPU, on typeshade/runtime.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./internal": "./src/internal.ts"
   },
   "peerDependencies": {
     "typeshade": "*"

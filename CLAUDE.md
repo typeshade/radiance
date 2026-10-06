@@ -70,6 +70,10 @@ the same principles in Korean. ASD-STE100's dictionary is English and governs on
 - Deviations. Record each difference between the record and the delivered work on the pull
   request and in the record's "Record" section, with its disposition: closed, made part of the
   record by an amendment, or open.
+- Decisions by default. Decide a trivial open item by default. Record the decision on the pull
+  request. Ask the owner only in these two cases:
+  - The scope, the cost, the order or a contract changes.
+  - Two readings lead to different work, and no record decides.
 
 Each task runs in the order of a maintenance task card:
 
@@ -163,8 +167,23 @@ pull request, a Code Owner review and the required checks (the `name:` of each j
 
 - Merge only when every check is green on the pull request's current head. A red check is fixed,
   never bypassed.
-- Bypass only the review requirement, and only when the owner has said in the conversation to
-  merge that pull request.
+- Bypass only the review requirement. Bypass it only in these two cases:
+  - The owner has said in the conversation to merge that pull request.
+  - The pull request is of a kind the owner approved in advance (below).
+- Approved in advance. Merge a pull request of these two kinds as soon as an independent agent
+  review approves it. Every check must be green on its current head, with no conflict and no
+  review thread open:
+  - a pull request that implements an accepted design record, within what the record declares
+    (its commits carry the record's `Design` line)
+  - a bug fix that needs no design record
+- Everything else waits for the owner to say "merge" in the conversation:
+  - a new or amended design record
+  - a change to the plan (`docs/plan.md`)
+  - a change to a public export
+  - a layout or a contract that no accepted design record covers
+  - a move of the pin `vendor/typeshade`
+  - a change to `CLAUDE.md` itself
+- After a merge, report it to the owner.
 - Never push to `main` directly after the initial commit, and never force-push it.
 - The ruleset, the secrets and every other repository setting are the owner's to change. When one
   must change, write the owner a script for the GitHub CLI (`gh auth login`, then `gh api`), in

@@ -1,58 +1,44 @@
-// A floor, a lamp over it, a mirror ball and a matte one. This is the whole of a scene: objects
-// in a graph, a camera, a renderer and a loop. The front page draws this file.
+// The Stanford bunny, loaded from a .glb: 69,451 triangles on a floor, under one area light. The
+// loader turns the file's node into a `Mesh` with a `BufferGeometry` and a `PhysicalMaterial`, and
+// the path tracer builds one BVH over the triangles. Drag to turn the camera around it.
+// The bunny is the Stanford Computer Graphics Laboratory's (site/public/assets/LICENSES.md).
 
 import {
   Clock,
   DiffuseMaterial,
   EmissiveMaterial,
   Mesh,
-  MirrorMaterial,
   PathTracer,
   PerspectiveCamera,
   PlaneGeometry,
   Scene,
-  SphereGeometry,
 } from '@typeshade/radiance';
-import { OrbitControls } from '@typeshade/radiance-addons';
+import { GLTFLoader, OrbitControls } from '@typeshade/radiance-addons';
 import type { ExampleRun } from './types.ts';
 
-export default async function firstScene(canvas: HTMLCanvasElement): Promise<ExampleRun> {
+export default async function bunny(canvas: HTMLCanvasElement): Promise<ExampleRun> {
   const scene = new Scene();
 
-  const ground = new PlaneGeometry(6, 6);
-  const grey = new DiffuseMaterial();
-  grey.color.setHex(0xbfbfbf);
-  const floor = new Mesh(ground, grey);
+  const floor = new Mesh(new PlaneGeometry(24, 24), new DiffuseMaterial({ color: 0xbfbfbf }));
   floor.rotation.x = -Math.PI / 2;
 
-  const panel = new PlaneGeometry(1.2, 1.2);
-  const light = new EmissiveMaterial();
-  light.emissive.multiplyScalar(10);
-  const lamp = new Mesh(panel, light);
-  lamp.position.set(0, 2.2, 0);
+  // One area light, a square over the floor and to one side, facing down.
+  const lamp = new Mesh(new PlaneGeometry(1.6, 1.6), new EmissiveMaterial({ intensity: 12 }));
+  lamp.position.set(-1.6, 3.4, 1.8);
   lamp.rotation.x = Math.PI / 2;
 
-  const sphere = new SphereGeometry(0.5);
-  const chrome = new MirrorMaterial();
-  const mirror = new Mesh(sphere, chrome);
-  mirror.position.set(-0.6, 0.5, 0);
+  // The file's node scales the bunny to about 1.5 high and stands it on y = 0.
+  const gltf = await new GLTFLoader().loadAsync('/assets/bunny.glb');
+  scene.add(floor, lamp, gltf.scene);
 
-  const orange = new DiffuseMaterial();
-  orange.color.setHex(0xe8703a);
-  const ball = new Mesh(sphere, orange);
-  ball.position.set(0.6, 0.5, 0.2);
-
-  scene.add(floor, lamp, mirror, ball);
-
-  const camera = new PerspectiveCamera(40);
-  camera.position.set(0, 1.4, 3.6);
-  camera.lookAt(ball.position);
+  const camera = new PerspectiveCamera(35);
+  camera.position.set(1.4, 1.5, 3.7);
 
   const renderer = await new PathTracer({ canvas, seed: 1, targetFrameTime: 30 }).init();
   const controls = new OrbitControls(camera, canvas);
-  controls.target.set(0, 0.5, 0);
+  controls.target.set(0, 0.7, 0);
   controls.minDistance = 1.5;
-  controls.maxDistance = 8;
+  controls.maxDistance = 9;
   controls.maxPolarAngle = Math.PI / 2 - 0.05;
   controls.update();
   controls.saveState();
