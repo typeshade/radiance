@@ -11,8 +11,8 @@
 //   1. Determinism (scripts/gates/determinism.mjs): two renders of one seed are bit-identical,
 //      and another seed differs.
 //   2. The oracle (scripts/gates/differential.mjs): the GPU's render is within tolerance of the
-//      CPU oracle's render of the same kernel, seed and samples (scripts/oracle.ts; the
-//      tolerance of each scene is in scripts/gates.mjs, and the site prints the Cornell box's).
+//      CPU oracle's render of the same kernel, seed and samples (scripts/oracle.ts). The
+//      tolerance of each scene is in scripts/gates.mjs, and the site prints the Cornell box's.
 //   3. The display: the tone-mapped image is the tone map of the mean radiance.
 //   4. The render gate (scripts/gates/render.mjs): each example of the site, run at 96 x 64 and
 //      64 spp, is within tolerance of its golden in scripts/__goldens__.

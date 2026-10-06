@@ -113,9 +113,9 @@ describe('the scene instances', () => {
     const dets = Array.from({ length: s.pack.counts.instances }, (_, i) => determinant(s.pack, i));
     expect(dets.filter((d) => d < 0)).toHaveLength(1);
     expect(dets.some((d) => Math.abs(d - 1.6 * 0.7) < 1e-4)).toBe(true);
-    const sheared = s.meshes.filter((m) => m.scale.x !== m.scale.y && m.scale.x > 0);
-    expect(sheared).toHaveLength(1);
-    expect(sheared[0]!.rotation.y).not.toBe(0);
+    const stretched = s.meshes.filter((m) => m.scale.x !== m.scale.y && m.scale.x > 0);
+    expect(stretched).toHaveLength(1);
+    expect(stretched[0]!.rotation.y).not.toBe(0);
   });
   test('gives the instances of one geometry more than two materials', () => {
     const own = new Set(s.meshes.filter((m) => m.geometry === shared()[0]).map((m) => m.material));

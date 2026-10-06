@@ -39,7 +39,8 @@ function gem(): BufferGeometry {
 /**
  * One geometry, `gem()`, in four instances that share its BVH, and a floor, a back wall and a
  * lamp. The first instance is placed as it is. The second is scaled by (1.6, 0.7, 1) under a
- * turn, so its world matrix shears. The third is scaled by -1 along x, so its matrix has a
+ * turn, so its world matrix has columns of different lengths that stay at right angles (a
+ * non-uniform scale, and no shear). The third is scaled by -1 along x, so its matrix has a
  * negative determinant and it must still shade outward. The fourth is a mirror. It is the
  * `instances` scene of the differential gate (design record 0002).
  */
@@ -61,10 +62,10 @@ export function createInstancesScene(): DemoScene {
 
   const plain = new Mesh(shape, white);
   plain.position.set(-1, 0.4, 0);
-  const sheared = new Mesh(shape, red);
-  sheared.position.set(-0.15, 0.28, 0.45);
-  sheared.rotation.y = 0.6;
-  sheared.scale.set(1.6, 0.7, 1);
+  const stretched = new Mesh(shape, red);
+  stretched.position.set(-0.15, 0.28, 0.45);
+  stretched.rotation.y = 0.6;
+  stretched.scale.set(1.6, 0.7, 1);
   const mirrored = new Mesh(shape, green);
   mirrored.position.set(0.85, 0.4, 0.05);
   mirrored.scale.set(-1, 1, 1);
@@ -73,7 +74,7 @@ export function createInstancesScene(): DemoScene {
   shiny.rotation.y = -0.4;
   shiny.scale.set(1.2, 1.2, 1.2);
 
-  scene.add(floor, back, lamp, plain, sheared, mirrored, shiny);
+  scene.add(floor, back, lamp, plain, stretched, mirrored, shiny);
 
   const camera = new PerspectiveCamera(40, 1);
   const target = new Vector3(0, 0.5, 0);

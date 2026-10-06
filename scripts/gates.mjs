@@ -39,7 +39,8 @@ export const GATE_M2 = { size: [16, 16], samples: 256, perFrame: 64, seed: 1 };
 export const ORACLE_TRIANGLES = { abs: 1e-3, rel: 0.05, mean: 1.6e-6 };
 
 /**
- * The bounds of the scene `instances` (one geometry in four instances, one sheared, one mirrored).
+ * The bounds of the scene `instances` (one geometry in four instances, one scaled non-uniformly
+ * under a turn, one mirrored).
  * Derived the same way: the mean was 2.19e-7 and the largest difference 8.20e-7.
  */
 export const ORACLE_INSTANCES = { abs: 1e-3, rel: 0.05, mean: 2.2e-6 };
