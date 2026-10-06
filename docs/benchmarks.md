@@ -61,8 +61,8 @@ Run these steps on Linux or macOS from the repository root.
 5. Copy each row of the output into the SwiftShader table below.
 6. Check that `device` names SwiftShader.
 
-SwiftShader traces about 28,000 to 160,000 paths a second on four cores. At 1920 x 1080 the default
-run takes over an hour. Use the small size of step 4.
+The SwiftShader rows below show about 28,000 to 126,000 paths a second on four cores. At
+1920 x 1080 the default run takes over an hour. Use the small size of step 4.
 
 ## Procedure: a real GPU, in Windows PowerShell
 
@@ -97,22 +97,31 @@ after `bun run harness`. The step fails when a scene does not render, and it rec
 
 ### SwiftShader, this machine
 
-The command was `node scripts/bench.mjs --size 128x128 --samples 16 --per-frame 4`, and for the
-512 x 512 row `node scripts/bench.mjs --scene cornell --size 512x512 --samples 4 --per-frame 2`.
-The machine had four cores shared with other jobs, so the numbers vary from run to run. The
-compiler pin was 596c805. The `commit` column names 1dcdfaf, the commit of `scripts/bench.mjs` when
-the rows were measured. A later rebase renamed that commit e75b7f5, and the script's code is the same.
+The 11 rows at 128 x 128 come from `node scripts/bench.mjs --size 128x128 --samples 16 --per-frame 4`.
+The row at 512 x 512 comes from
+`node scripts/bench.mjs --scene cornell --size 512x512 --samples 4 --per-frame 2`. The machine had
+four cores shared with other jobs, so the numbers vary from run to run. The compiler pin was 596c805.
+The browser was Chromium 141.0.7390.37 on SwiftShader.
+
+The rows were measured on 2026-10-06 at commit 85cce4f of the branch `wt/B3`, in a clean tree: the
+`commit` column has no `-dirty` suffix. Commit 85cce4f is the parent of the commit that records the
+rows here, and that commit changes no script. The squash merge of the pull request gives `main`
+another hash, so `main` does not hold 85cce4f.
 
 | date       | commit  | scene           | size    | spp | triangles | BVH ms | frame ms | paths/s | spp/s | device             | browser                |
 | ---------- | ------- | --------------- | ------- | --- | --------- | ------ | -------- | ------- | ----- | ------------------ | ---------------------- |
-| 2026-10-06 | 1dcdfaf | cornell         | 128x128 | 16  | 1932      | 5.2    | 1218.0   | 50444   | 3.08  | google swiftshader | Chromium 141.0.7390.37 |
-| 2026-10-06 | 1dcdfaf | first-scene     | 128x128 | 16  | 1924      | 1.6    | 388.5    | 158147  | 9.65  | google swiftshader | Chromium 141.0.7390.37 |
-| 2026-10-06 | 1dcdfaf | cornell-box     | 128x128 | 16  | 1932      | 5.1    | 1117.2   | 54997   | 3.36  | google swiftshader | Chromium 141.0.7390.37 |
-| 2026-10-06 | 1dcdfaf | materials       | 128x128 | 16  | 4806      | 7.7    | 849.9    | 77113   | 4.71  | google swiftshader | Chromium 141.0.7390.37 |
-| 2026-10-06 | 1dcdfaf | coloured-lights | 128x128 | 16  | 2888      | 4.5    | 566.1    | 108537  | 6.62  | google swiftshader | Chromium 141.0.7390.37 |
-| 2026-10-06 | 1dcdfaf | determinism     | 128x128 | 16  | 1932      | 2.9    | 1344.4   | 48747   | 2.98  | google swiftshader | Chromium 141.0.7390.37 |
-| 2026-10-06 | 1dcdfaf | scene-graph     | 128x128 | 16  | 2892      | 8.3    | 1127.0   | 58149   | 3.55  | google swiftshader | Chromium 141.0.7390.37 |
-| 2026-10-06 | 1dcdfaf | cornell         | 512x512 | 4   | 1932      | 6.0    | 13756.5  | 28584   | 0.11  | google swiftshader | Chromium 141.0.7390.37 |
+| 2026-10-06 | 85cce4f | cornell         | 128x128 | 16  | 1932      | 5.2    | 2141.6   | 28689   | 1.75  | google swiftshader | Chromium 141.0.7390.37 |
+| 2026-10-06 | 85cce4f | first-scene     | 128x128 | 16  | 1924      | 1.7    | 520.0    | 126039  | 7.69  | google swiftshader | Chromium 141.0.7390.37 |
+| 2026-10-06 | 85cce4f | cornell-box     | 128x128 | 16  | 1932      | 3.5    | 2062.6   | 31774   | 1.94  | google swiftshader | Chromium 141.0.7390.37 |
+| 2026-10-06 | 85cce4f | materials       | 128x128 | 16  | 4806      | 9.3    | 1378.3   | 47550   | 2.90  | google swiftshader | Chromium 141.0.7390.37 |
+| 2026-10-06 | 85cce4f | coloured-lights | 128x128 | 16  | 2888      | 4.9    | 730.2    | 89751   | 5.48  | google swiftshader | Chromium 141.0.7390.37 |
+| 2026-10-06 | 85cce4f | lights          | 128x128 | 16  | 2890      | 1.6    | 892.9    | 73400   | 4.48  | google swiftshader | Chromium 141.0.7390.37 |
+| 2026-10-06 | 85cce4f | bunny           | 128x128 | 16  | 69455     | 161.4  | 643.3    | 101869  | 6.22  | google swiftshader | Chromium 141.0.7390.37 |
+| 2026-10-06 | 85cce4f | determinism     | 128x128 | 16  | 1932      | 3.3    | 1891.8   | 34643   | 2.11  | google swiftshader | Chromium 141.0.7390.37 |
+| 2026-10-06 | 85cce4f | geometries      | 128x128 | 16  | 986       | 5.6    | 922.0    | 66636   | 4.07  | google swiftshader | Chromium 141.0.7390.37 |
+| 2026-10-06 | 85cce4f | scene-graph     | 128x128 | 16  | 2892      | 5.9    | 1524.8   | 40294   | 2.46  | google swiftshader | Chromium 141.0.7390.37 |
+| 2026-10-06 | 85cce4f | instances       | 128x128 | 16  | 148       | 0.0    | 762.0    | 80633   | 4.92  | google swiftshader | Chromium 141.0.7390.37 |
+| 2026-10-06 | 85cce4f | cornell         | 512x512 | 4   | 1932      | 5.7    | 8137.8   | 48320   | 0.18  | google swiftshader | Chromium 141.0.7390.37 |
 
 ### Real GPU, the owner's machine
 
