@@ -80,7 +80,9 @@ export class OrbitControls extends EventDispatcher<OrbitControlsEvents> {
     this.#listen('wheel', (e) => this.#onWheel(e as WheelEvent), { passive: false });
     this.#listen('keydown', (e) => this.#onKeyDown(e as KeyboardEvent));
     this.#listen('contextmenu', (e) => e.preventDefault());
-    this.#listen('dblclick', () => this.reset());
+    this.#listen('dblclick', () => {
+      if (this.enabled) this.reset();
+    });
     if (domElement.tabIndex < 0) domElement.tabIndex = 0;
     domElement.style.touchAction = 'none';
   }
