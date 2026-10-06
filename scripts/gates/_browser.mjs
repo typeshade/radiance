@@ -12,7 +12,7 @@
 //      it, and the browser that runs the page.
 //
 // Env: RADIANCE_CHROMIUM names a Chromium executable (the browsers Playwright installs are used
-// otherwise); RADIANCE_HEADED=1 shows the window.
+// otherwise). RADIANCE_HEADED=1 shows the window.
 
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, statSync } from 'node:fs';
@@ -67,19 +67,27 @@ export async function serve(root, extra = () => undefined) {
   return { server, origin: `http://127.0.0.1:${server.address().port}` };
 }
 
-/** Chromium with a WebGPU device on SwiftShader, as the compiler's user journeys run it.
- *  RADIANCE_CHROMIUM names the executable; RADIANCE_HEADED=1 shows the window. */
-export function launchBrowser() {
+/** The flags that give headless Chromium a WebGPU device on SwiftShader, as the compiler's user
+ *  journeys run it. */
+const SWIFTSHADER_ARGS = [
+  '--enable-unsafe-webgpu',
+  '--enable-unsafe-swiftshader',
+  '--use-angle=swiftshader',
+  '--use-vulkan=swiftshader',
+  '--enable-features=Vulkan',
+];
+
+/** The flags of `gpu: true`: no SwiftShader flag, so the browser picks the machine's own GPU. */
+const GPU_ARGS = ['--enable-unsafe-webgpu', '--ignore-gpu-blocklist'];
+
+/** Chromium with a WebGPU device on SwiftShader, as the compiler's user journeys run it. With
+ *  `gpu: true` (scripts/bench.mjs, `--gpu`) it drops the SwiftShader flags. RADIANCE_CHROMIUM
+ *  names the executable. RADIANCE_HEADED=1 shows the window. */
+export function launchBrowser({ gpu = false } = {}) {
   return chromium.launch({
     executablePath: process.env.RADIANCE_CHROMIUM || undefined,
     headless: process.env.RADIANCE_HEADED !== '1',
-    args: [
-      '--enable-unsafe-webgpu',
-      '--enable-unsafe-swiftshader',
-      '--use-angle=swiftshader',
-      '--use-vulkan=swiftshader',
-      '--enable-features=Vulkan',
-    ],
+    args: gpu ? GPU_ARGS : SWIFTSHADER_ARGS,
   });
 }
 
