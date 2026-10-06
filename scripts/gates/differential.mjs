@@ -26,12 +26,24 @@
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { GATE, ORACLE } from '../gates.mjs';
+import {
+  GATE,
+  GATE_M2,
+  ORACLE,
+  ORACLE_INSTANCES,
+  ORACLE_LIGHTS,
+  ORACLE_TRIANGLES,
+} from '../gates.mjs';
 import { outDir, withRenderPage } from './_browser.mjs';
 
 /** The scenes the differential and determinism gates render: each one's gated render and its
  *  bounds. The names are the keys of scripts/scenes.ts. */
-export const SCENES = { cornell: { gate: GATE, oracle: ORACLE } };
+export const SCENES = {
+  cornell: { gate: GATE, oracle: ORACLE },
+  triangles: { gate: GATE_M2, oracle: ORACLE_TRIANGLES },
+  instances: { gate: GATE_M2, oracle: ORACLE_INSTANCES },
+  lights: { gate: GATE_M2, oracle: ORACLE_LIGHTS },
+};
 
 /** The gated scene called `name`, or an error that lists the names. */
 export function gatedScene(name) {
