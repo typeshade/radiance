@@ -379,6 +379,74 @@ In `trace`, for each sample, when `lens.z` is above 0:
 
 **The camera's footprint and the AOVs.** The texture footprint of Part 2 uses the pinhole's spread. The geometry AOVs of Part 5 use the pinhole ray too, so they stay sharp.
 
+### Part 5: AOVs, EXR output and the ACES transform
+
+Part 5 adds the outputs a compositor wants. They are the albedo, normal, depth, object id and light groups of a render, and an EXR file that holds them. It also adds an ACES output transform for the screen. The light groups need Part 1 (the `lightGroup` word of a material) and Part 3 (the light classes). The rest needs neither.
+
+**Before.** Fact, from the code at the baseline: `accum` holds one `vec4` for each pixel, the sum of the samples and their count. `PathTracer.readRadiance()` reads it back and `readPixels()` reads the image on the screen. `tonemap` is a function of `trace.shade.ts` that applies the exposure, a per-channel fit of the ACES curve and the sRGB curve. No file writes EXR and no decoder reads it. The record 0008 decision 20 names an owner-approved change to the "output transform" on 2026-10-06. Fact: no file of the baseline says whether it changed `tonemap`. Step 5.5 reads `tonemap` first.
+
+**The AOVs.** Each AOV is defined at the first hit of the camera ray, after any delta bounces.
+
+| AOV    | Value                                                                         | Miss                   | Channels                        |
+| ------ | ----------------------------------------------------------------------------- | ---------------------- | ------------------------------- |
+| albedo | `baseColor` times the map, at the first hit that has a lobe that is not delta | the background colour  | `Albedo.R`, `.G`, `.B`          |
+| normal | the shading normal `ns` at the same hit, in world space, unit length          | (0, 0, 0)              | `Normal.X`, `.Y`, `.Z`          |
+| depth  | the distance along the camera's forward axis to the first hit                 | 1e10, as Cycles has it | `Depth.Z`                       |
+| id     | the object of the first hit, kept as coverage by id (Cryptomatte, below)      | none                   | `CryptoObject00.R` and the rest |
+| groups | the radiance of the lights of one group, for each group                       | 0                      | `Group<k>.R`, `.G`, `.B`        |
+
+A delta bounce is a mirror or a smooth refraction. The albedo of a hit that follows delta bounces takes the product of their weights. The AOVs use the pinhole ray, whatever the lens (Part 4). The names of the channels are the proposal of step 5.6, which opens the file in Blender and records the names that the compositor lists.
+
+**Where the AOVs accumulate.** Record 0001 rule 1 allows seven storage buffers in the `trace` pipeline. Part 5 keeps it.
+
+- **The geometry AOVs** have their own entry, `aov`, in `trace.shade.ts`. It binds `nodes`, `triangles`, `vertices`, `instances`, `materials` and a new buffer, `aovAccum`. That is six storage buffers. The entry traces the same pixel samples as `trace`, with the same jitter of pair 0, so the edges agree. It follows delta bounces and stops at the first hit that has a lobe that is not delta.
+- **The record of a pixel in `aovAccum`** is four `vec4`. Word 0 holds the albedo sum and the count of hits. Word 1 holds the normal sum and the depth sum. Words 2 and 3 hold four pairs `(id, count)`. The host reads the sample count of the whole frame from the renderer. Each pixel is one invocation, so the entry reads and writes its own record with no atomic.
+- **The light groups** go into `accum`. `ACCUM_STRIDE` becomes a runtime value, `params.path.w`. Slot 0 of a pixel is the beauty. With `G` groups above 1, slots 1 to `G` hold the group sums. Record 0009 may widen slot 0 into `K` slots for the median of means. Part 5 uses `K` equal to 1 until then.
+- **The cost.** A buffer of `pixels * stride * 16` bytes must stay under the binding limit. At 1,024 by 1,024 pixels each slot is 16,777,216 bytes, so a stride of 8 fits 128 MiB. At 1920 by 1080 each slot is 33,177,600 bytes and a stride of 4 fits. The pack throws a `RangeError` that names the buffer and the limit, as record 0001 has it.
+- **The group of a light.** A triangle light takes it from `[7].w` of its material. A point, spot or sun light takes it from `[1].w` of its block. The environment takes it from `Environment.group`. The default is group 0. `radiance` adds each contribution to the sum of its light's group and to the total.
+
+**The renderer.** `PathTracerParameters` gains `aovs` (a list of `'albedo'`, `'normal'`, `'depth'` and `'id'`, empty by default) and `lightGroups` (1 by default). A renderer with no AOV allocates no `aovAccum` and dispatches no `aov` entry. `PathTracer` gains `readAov(name)`, `readLightGroup(k)` and `readCryptomatte()`. `readAov` returns the mean for albedo, the normalised sum for normal, the mean over the hits for depth and the share of hits as `coverage`.
+
+**Object ids and Cryptomatte.** Each instance takes an object index from the name of its mesh. The index is the value of an `f32` in `[7].z` of its instance (a word that record 0001 left at 0). The pack numbers the distinct names in order of first use, with `mesh.name`, or `object<n>` for an unnamed one. The entry keeps up to four `(index, count)` pairs for each pixel. When a fifth appears, it drops the pair of the lowest count. A hash must not pass through an `f32` lane, because the runtime changes a NaN there (record 0004, "The integer words"). So the kernel carries the index, and the host makes the hash.
+
+- **The hash.** The host hashes the UTF-8 bytes of the name with MurmurHash3, 32 bits, seed 0. It turns the result into a float32 by the Cryptomatte rule. The bits are kept, and bit 23 is flipped when the exponent is 0 or 255. This is from memory of the specification (version 1.2.0), and step 5.4 reads it.
+- **The layers.** `CryptoObject00` holds in `R` the first id, in `G` its coverage, in `B` the second id and in `A` its coverage. `CryptoObject01` holds the third and fourth. The pairs are in order of falling coverage. Coverage is the count over the number of samples.
+- **The metadata.** The EXR header holds `cryptomatte/<key>/name`, `/hash` (`MurmurHash3_32`), `/conversion` (`uint32_to_float32`) and `/manifest`. The manifest is a JSON object from each name to the eight hex digits of its float. `<key>` is the first seven hex digits of the hash of the layer name.
+
+**The EXR file.** `@typeshade/radiance-addons` gains `EXRExporter` (three.js has a class of this name) and `EXRLoader`. Both are written in the package. The boundary allows no library.
+
+```ts
+interface ExrImage {
+  width: number;
+  height: number;
+  channels: { name: string; data: Float32Array }[]; // row 0 is the top row
+  attributes?: Record<string, number | string | number[]>;
+}
+class EXRExporter {
+  parse(image: ExrImage, options?: { compression?: 'none' | 'zip'; type?: 'half' | 'float' }): Promise<Uint8Array>;
+  fromRenderer(renderer: PathTracer, options?: ExrOptions): Promise<Uint8Array>;
+}
+class EXRLoader {
+  parse(bytes: Uint8Array): Promise<ExrImage>;
+}
+```
+
+- **The format.** It is a single-part scanline file. The magic is `76 2f 31 01`. The version word is 2 with no flags. The header holds `channels`, `compression`, `dataWindow`, `displayWindow`, `lineOrder` (increasing y), `pixelAspectRatio`, `screenWindowCenter` and `screenWindowWidth`. The channels are in alphabetical order, each with a pixel type (half 1, float 2). The offset table holds one 64-bit offset for each block. A block holds a y, a size and the data. One scanline is a block for `none`, and 16 scanlines are a block for `zip`. This is from memory of the OpenEXR file layout, and step 5.3 reads the specification.
+- **The `zip` form.** The bytes of a block are reordered: the even bytes first, then the odd ones. A predictor stores each byte as its difference from the byte before, plus 128. Then `CompressionStream('deflate')` makes a zlib stream. `EXRLoader` reverses it with `DecompressionStream`. `none` needs neither. A file with another compression (PIZ, DWA) is refused, and the error names it.
+- **The pixel type.** The default is `float`. A half float is a bit operation with round to nearest even, written in the package.
+- **The attributes.** The exporter writes `chromaticities` for the Rec. 709 primaries, and the standard attributes `expTime`, `isoSpeed`, `aperture`, `focus` and `focalLength` of a `PhysicalCamera`. This is from memory of the standard attribute names, and step 5.3 checks them.
+- **The content.** The beauty is scene-linear in Rec. 709 primaries, with no exposure and no output transform, in `R`, `G`, `B` and `A` (the share of hits). The EXR is for a compositor, which applies its own view transform.
+
+**The ACES output transform.** The screen shows the beauty through an output transform. The transform is Hill's fit of the ACES RRT and ODT (Stephen Hill, 2016). It has a matrix into the AP1 space, a rational curve for each channel, a matrix back, a clamp and the sRGB curve. It uses products and divisions.
+
+```
+v' = M_in * (exposure * v)
+c  = (v' * (v' + 0.0245786) - 0.000090537) / (v' * (0.983729 * v' + 0.4329510) + 0.238081)
+out = clamp(M_out * c, 0, 1), then the sRGB curve
+```
+
+`M_in` has the rows `(0.59719, 0.35458, 0.04823)`, `(0.07600, 0.90834, 0.01566)` and `(0.02840, 0.13383, 0.83777)`. `M_out` has the rows `(1.60475, -0.53108, -0.07367)`, `(-0.10208, 1.10813, -0.00605)` and `(-0.00327, -0.07276, 1.07602)`. This is from memory of the published fit, and step 5.5 compares each number with the source. The sRGB curve keeps its `pow`, as record 0005 allows for a value (`tonemap` is in `VALUE_ONLY`). The curve changes the picture of every example, so the pull request of step 5.5 lists every golden.
+
 ## Why
 
 ### Part 1: The principled BSDF
@@ -446,6 +514,24 @@ Alternatives considered:
 - **A lens model with several elements.** It gives cat-eye bokeh and vignetting. It needs a lens prescription and a ray trace through it. It is out of M3.
 - **Autofocus by a ray cast.** Record 0008's `Raycaster` could set `focusDistance` from a click. The viewer of Part 6 may do it when that record has merged. The camera itself needs no ray cast.
 
+### Part 5: AOVs, EXR output and the ACES transform
+
+- **The acceptance names them.** Plan section 4 lists AOVs (albedo, normal, depth, cryptomatte, light groups), EXR output and an ACES output transform. The EXR must open in a compositor.
+- **Why a second entry for the geometry AOVs.** The albedo, normal, depth and id of the first hit need one ray, not a path. A separate entry costs one traversal a sample, and a renderer with no AOV pays nothing. The buffer for them stays out of the `trace` pipeline, so that pipeline keeps its seven storage buffers.
+- **Why the light groups ride in `accum`.** A group needs the paths that the beauty traces. Its sum is a part of the beauty. A second render for each group would multiply the time by the number of groups.
+- **Why the index and not the hash in the kernel.** The runtime writes an `f32` lane through a `DataView`. A NaN pattern does not survive it (record 0004, "The integer words"). A hash has an exponent of 255 for 1 id in 256. An index below 2^24 is exact.
+- **Why a writer in the package.** The boundary allows no library. A scanline EXR with two compressions is about 300 lines.
+- **Why float by default.** The geometry AOVs carry data. A half float rounds a depth of 1,000 to 0.5. The beauty may use half, and the option says so.
+- **Why the beauty has no exposure and no transform.** A compositor applies its own. An EXR that carried the screen's exposure would not be scene-referred.
+- **Why Hill's fit.** It keeps the ACES look, the hue shifts included. It is products and divisions, so it adds no row to the determinism lint. Narkowicz's fit works per channel and has no matrices.
+
+Alternatives considered:
+
+- **All AOVs in `trace`.** It needs more storage slots than the `trace` pipeline has, or a larger `accum` for every render.
+- **A multi-part EXR.** It is cleaner for layers. Blender reads both. A single-part file is simpler to write and to read.
+- **PIZ compression.** It compresses image data better than ZIP. It needs a wavelet and a Huffman coder, which is far more code.
+- **OCIO and a full ACES view.** It needs a library and a config. The fit is enough for the screen, and the EXR carries the scene-linear data.
+
 ## What it touches
 
 ### Part 1: The principled BSDF
@@ -486,6 +572,16 @@ Alternatives considered:
 - **Tests owed.** `PhysicalCamera.test.ts`, `aperture.test.ts` (new, on the oracle) and `lens.test.ts` (new, on the oracle, for the blur radius).
 - **Gates.** `gate:differential` runs `lens`. `gate:determinism` runs it too. `gate:render` changes no golden, because no example uses a `PhysicalCamera`.
 - **Site.** The guide gains a page on the camera.
+
+### Part 5: AOVs, EXR output and the ACES transform
+
+- **Engine host.** `renderers/PathTracer.ts` gains `aovs`, `lightGroups`, `readAov`, `readLightGroup` and `readCryptomatte`. `renderers/scene-pack.ts` writes `[7].z` of an instance and the group words. `lights/` and `materials/` gain `group` and `lightGroup`. `renderers/limits.ts` checks the stride.
+- **Engine kernels.** `trace.shade.ts` changes `radiance` (group sums), `trace` (the stride) and `tonemap` (the transform), and gains the entry `aov`. `layout.shade.ts` makes `ACCUM_STRIDE` a parameter and declares `aovAccum`.
+- **Addons.** `exporters/EXRExporter.ts`, `exporters/half.ts` and `loaders/EXRLoader.ts` are new. `exporters/cryptomatte.ts` holds the hash. `scenes/` gains `AovScene`.
+- **Scripts.** `scripts/gates/aov.mjs` is new. `scripts/gates.mjs` gains the `AOV` tolerances. `scripts/__goldens__/aov/` holds the goldens. `scripts/oracle.ts` binds `aovAccum`.
+- **Tests owed.** `exr.test.ts`, `half.test.ts`, `cryptomatte.test.ts`, `aov.test.ts` (new, on the oracle) and `tonemap` tests in `kernels.test.ts`.
+- **Gates.** `gate:aov` is new. `gate:render` changes every golden at step 5.5. `gate:determinism` runs the `aov` scene.
+- **Site.** The guide gains a page on outputs. The site's stills are captured again after step 5.5.
 
 ## Amendments owed
 
@@ -529,7 +625,7 @@ Alternatives considered:
 
 > Rule 2 gains: "A BSDF value may use `pow` or `exp2` when it names its function in `VALUE_ONLY`. Russian roulette reads the throughput, which carries such a value. The differential gate bounds a roulette decision that a driver moves. The Fresnel term and `expNeg` use products, so they use no such row."
 
-> `VALUE_ONLY` gains `sheenD: ['pow']`.
+> `VALUE_ONLY` gains `sheenD: ['pow']`. `ALLOWED` admits `pow` today, so the entry matters when the compiler reports an `absolute` row.
 
 **Record 0007.** One place changes.
 
@@ -639,6 +735,44 @@ Alternatives considered:
 
 > Rule 2 gains: "The aperture point of a thin lens is made from `sqrt` and `turn`."
 
+### Part 5: AOVs, EXR output and the ACES transform
+
+**Record 0001.** Four places change.
+
+> The table of buffers gains: "The `aov` entry binds `nodes`, `triangles`, `vertices`, `instances`, `materials` and `aovAccum`, a `storage<array<vec4>, "read_write">` of four `vec4` for each pixel (record 0010, Part 5). The `trace` pipeline keeps seven."
+
+> The `accum` row reads: "A pixel's samples added up: rgb, and how many in w. With `G` light groups above 1, a pixel has `1 + G` consecutive elements. `ACCUM_STRIDE` is `params.path.w`."
+
+> The `instances` row reads: "`[7] = (bits(flags), bits(geometryId), objectId, 0)`. `objectId` is the value of an `f32`."
+
+> "Limits" gains: "The pack checks `pixels * stride * 16` bytes of `accum`, and the bytes of `aovAccum`, against the binding limit."
+
+**Record 0002.** Three places change.
+
+> The gate table gains a row for `aov`. What it proves: each AOV of a render equals its golden within its tolerance, and the EXR round trip loses nothing. Scene: `aov`, 96 x 64, 64 spp. Number: per AOV, as record 0010 step 5.6 derives. It runs in the `harness` job.
+
+> The probe list gains: "`aov`: a golden with one channel moved by twice its tolerance fails. A file with a wrong magic fails to load."
+
+> "The render gate's goldens" gains this sentence. "Step 5.5 of record 0010 changes the tone map. Every golden and every still changes in that pull request."
+
+**Record 0003.** One place changes.
+
+> "The public surface at 0.1.0" gains `EXRExporter`, `EXRLoader` and `ExrImage`. It gains the renderer parameters `aovs` and `lightGroups`, and the methods `readAov`, `readLightGroup` and `readCryptomatte`. It gains the parameter `group` of the lights and the parameter `lightGroup` of the materials.
+
+**Record 0005.** Two places change.
+
+> `VALUE_ONLY` keeps `tonemap: ['exp2', 'pow']`. The output transform adds only products and divisions.
+
+> The rules gain: "The EXR hash and the half-float conversion run on the host. No kernel reads either."
+
+**Record 0006.** One place changes.
+
+> Item 8, "Reading a texture array's layer", reads: "Needed by: not M3. Record 0010, Part 5 reads each AOV from a storage buffer."
+
+**Record 0007.** One place changes.
+
+> "Limits" gains: "A frame with AOVs or light groups needs `pixels * stride * 16` bytes in one binding. At 16 MiB, a WebGL2 binding holds 1,048,576 pixels at a stride of 1. AOVs and light groups wait for a larger limit (record 0010, Part 5)."
+
 ## Implementation, in steps
 
 ### Part 1: The principled BSDF
@@ -698,8 +832,8 @@ Each step is one pull request. The figures are proposals, and each step records 
 
 - Delivers: the Charlie lobe, the sheen table in `AlbedoTables`, the base scaling, and the loader's `KHR_materials_sheen`.
 - Test: the sheen table agrees with a Monte Carlo estimate within 1.5 % at eight grid points. A sheen sphere on a black base reads at most 1.02 in the furnace.
-- Number: `sheenD` is the one row that the determinism lint admits for `pow`. The lint reports no other new row.
-- Probe: the lint runs once with `sheenD` removed from `VALUE_ONLY`. It must report the row.
+- Number: `sheenD` adds a `pow` row, which `ALLOWED` admits. The lint reports no other new row.
+- Probe: the lint runs once on a copy of `materials.shade.ts` with one `sin` call added. It must report the row.
 
 Part 1 is done when step 1.8 has merged. At that point `bun run check` and `bun run harness` pass, and record 0004 steps 2 and 4 read "delivered".
 
@@ -819,6 +953,54 @@ Part 4 has no dependency. Each step is one pull request.
 
 Part 4 is done when step 4.3 has merged.
 
+### Part 5: AOVs, EXR output and the ACES transform
+
+Steps 5.2 to 5.6 do not need a compiler change. Step 5.1 needs steps 1.1 and 3.1. Each step is one pull request.
+
+**5.1 The accumulator stride and the light groups.**
+
+- Delivers: `params.path.w` as the stride, `group` on the lights and `lightGroup` on the materials, the group sums in `radiance`, `lightGroups` and `readLightGroup`. The step checks the form of `radiance` for registers.
+- Test: the group images add up to the beauty within 1e-5 of each float. A scene has two lamps in two groups. The image of the first group has the same mean as a render with that lamp alone, within 3 standard errors. A stride that passes the binding limit throws a `RangeError` that names `accum`.
+- Number: a render with one group costs at most 5 % more frame time than the baseline on `physical`, labelled SwiftShader. If it costs more, the entry splits and the step says so.
+- Probe: the per-group test runs once with a lamp in the wrong group. It must fail.
+
+**5.2 The geometry AOVs.**
+
+- Delivers: the entry `aov`, `aovAccum`, `aovs`, `readAov` and the `aov` scene of a sphere, a plane and a glass sphere.
+- Test: at the centre of a sphere the normal is `(0, 0, 1)` and the depth is the distance to its surface, within 1e-4. The albedo equals its colour. A pixel on the glass shows the albedo of the surface behind it, times the delta weight. A miss reads depth 1e10, normal 0 and the background colour. An edge pixel has a coverage that equals its geometric share within 0.02 at 256 samples.
+- Number: the step records the frame time of `aov` against `trace` on `cornell`.
+- Probe: the normal test runs once with the normal negated. It must fail.
+
+**5.3 The EXR writer and reader.**
+
+- Delivers: `EXRExporter`, `EXRLoader` and `half.ts`, with the `none` and `zip` compressions and the half and float types.
+- Test: every half code, read as a float and written back, returns itself. 10^6 random floats convert to the half that a reference rounding gives. A float image of 10^6 values returns bit for bit. The magic, the channel order, the offset table and the file size agree with the layout above. When `exrheader` is on the PATH the test runs it and compares the channel list. If it is not, the test reports not run.
+- Number: the step records the size of a 1,024 by 1,024 file of four float channels, for `none` and `zip`.
+- Probe: a file with one byte of the magic changed must be refused. A truncated file must be refused with the length named.
+
+**5.4 Object ids and Cryptomatte.**
+
+- Delivers: `[7].z` of the instances, the pairs in `aovAccum`, `readCryptomatte`, `cryptomatte.ts` and the layers with their metadata in the exporter.
+- Test: the 32-bit MurmurHash3 of the empty name is 0. Two test vectors come from memory: `hello` gives 0x248bfa47 and `The quick brown fox jumps over the lazy dog` gives 0x2e4ff723. The step checks both against an independent implementation. The float rule flips bit 23 for a hash with exponent 0 or 255. Three named meshes have coverage within 0.02 of their geometric shares. Two instances of one name share an id. A pixel with five ids keeps the four of the highest coverage.
+- Number: the step records the manifest of the `aov` scene.
+- Probe: the coverage test runs once with two meshes' ids swapped. It must fail.
+
+**5.5 The ACES output transform.**
+
+- Delivers: the transform in `tonemap`. The step reads `tonemap` first. If it is a per-channel fit, the step replaces it. If an earlier change delivered another ACES form, the step keeps that form, lists its matrices and adds the tests only.
+- Test: the kernel equals a host reference of the same published numbers, in f64, within 1e-5 for 1,000 random inputs. The output lies in 0 to 1, rises with each channel of a grey ramp from 0 to 1,000, and is 0 for input 0. The step records the output for a grey of 0.18 and of 1.
+- Number: the pull request lists every golden and every still that changes. It shows the old and the new picture and the mean change of each.
+- Probe: the reference test runs once with `M_in` transposed. It must fail.
+
+**5.6 The AOV gate and the compositor.**
+
+- Delivers: `gate:aov`, the `aov` goldens, and a page `docs/aov-compositor.md` with the procedure to open the EXR in Blender.
+- Test: each AOV of the `aov` scene equals its golden. The albedo is within 2/255 of each channel. The normal is within 0.02 of each component. The depth is within 1e-3 relative on the hit pixels. The id is equal where the coverage passes 0.999. A light group is within the rule of the render gate. The step derives each tolerance by the rule of record 0002 and records it.
+- Number: the compositor check opens the EXR in Blender 4.5 LTS and records the channel names that the Image node lists. If a name differs from the table of Part 5, an amendment fixes the table.
+- Probe: each AOV runs once with a channel moved by twice its tolerance. The gate must fail each one.
+
+Part 5 is done when step 5.6 has merged.
+
 ## Decisions for the owner
 
 1. Default. Part 1 models the physical material on Burley's Disney BRDF (2012) and BSDF (2015), with glTF's metallic-roughness parameters and glTF's layering. It has five lobes: diffuse, reflection, transmission, clearcoat and sheen. Proposed: yes.
@@ -843,9 +1025,15 @@ Part 4 is done when step 4.3 has merged.
 20. Default. MIS compensation is an option, `compensation`, with 0 as the default until step 3.4 measures a gain. Proposed: yes.
 21. Default. `PhysicalCamera` extends `PerspectiveCamera`. The exposure is a number of stops, added on the host. Its default `relative` mode adds 0 stops at the defaults, and the `absolute` mode follows Lagarde and de Rousiers. Proposed: yes.
 22. Default. The aperture is a disc, or a polygon of 3 or more blades. The thin lens takes its numbers from the sampler pair 65,536. The geometry AOVs use the pinhole ray. Proposed: yes.
+23. Default. The AOVs are albedo, normal, depth, the object id and the light groups. They take the pinhole ray and the first hit that has a lobe that is not delta. Proposed: yes.
+24. For the owner. The geometry AOVs have an entry, `aov`, and a buffer, `aovAccum`, with six storage bindings. The light groups use a larger `accum` stride. The `trace` pipeline keeps seven. At 1920 by 1080 the stride is at most 4. Proposed: yes.
+25. Default. The package has an EXR writer and a reader of its own. The compressions are `none` and `zip`, and the default type is `float`. The beauty is scene-linear in Rec. 709 primaries with no exposure. Proposed: yes.
+26. Default. Cryptomatte is object-level, with two layers of two pairs. The kernel keeps an object index in `[7].z` of an instance, and the host makes the hash. Proposed: yes.
+27. For the owner. The screen's output transform is Hill's fit of the ACES RRT and ODT. It changes every golden and every still. The owner approved an output-transform change on 2026-10-06, and step 5.5 reads what that change delivered. Proposed: yes.
+28. Default. The `aov` gate holds each AOV to a golden in an uncompressed EXR. Its tolerances are derived by the rule of record 0002. Proposed: yes.
 
 ## Record
 
 **Approval and plan record.** This record is a draft. No approval applies yet.
 
-**Configuration and validation record.** This record does not yet apply. No step is started. This draft has Parts 1 to 4 written. Parts 5 and 6 are not written yet.
+**Configuration and validation record.** This record does not yet apply. No step is started. This draft has Parts 1 to 5 written. Part 6 is not written yet.
