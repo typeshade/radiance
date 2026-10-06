@@ -86,7 +86,7 @@ describe('reqs/', () => {
     ].join('\n');
     expect(doorstopListHazard(jsdoc)).toBe("   *  sphere's north pole. Absent: every uv is 0. */");
     expect(doorstopListHazard('- a list at the margin\n  - nested under it\n\ntext')).toBeNull();
-    expect(doorstopListHazard('1. a step\n   - a nested bullet\n2. a step')).toBeNull();
+    expect(doorstopListHazard('1. a step\n   1. a nested step\n2. a step')).toBeNull();
     expect(doorstopListHazard('text\n\n   - a list that starts indented\n')).toBe(
       '   - a list that starts indented',
     );
@@ -94,6 +94,61 @@ describe('reqs/', () => {
       expect(doorstopListHazard(r.text), r.uid).toBeNull();
       for (const d of r.decisions) expect(doorstopListHazard(d.text), d.uid).toBeNull();
     }
+  });
+
+  it('a list of the other kind does not open an indented list (typeshade/radiance#29)', () => {
+    // The TLAS bullet of record 0001 at 387c520, word for word. Its four steps, indented two
+    // spaces under a bullet with no blank line between, hung `doorstop publish all` in CI: the
+    // publisher keeps the state of bullets and of steps apart, so the bullet opened nothing for
+    // the steps. The probe that showed this ran Doorstop 3.2's HTML and LaTeX publishers.
+    const lead = [
+      '- The TLAS uses the same builder over instance boxes, one primitive per instance, with the',
+      '  same leaf size, so a TLAS of 4 or fewer instances is one leaf. It differs in one rule: no TLAS',
+      '  leaf holds more than 4 instances, so it splits every node of more than 4 (`buildTlas` in',
+      '  `bvh.ts`). It splits such a node as follows:',
+    ];
+    const steps = [
+      '  1. Bin the instances on the longest axis of their centroid box, as for a BLAS. Find the split',
+      "     of least cost. The leaf's cost does not count.",
+      '  2. Take that split when its larger side can reach leaves of 4 by depth 30. A side of m',
+      "     instances can when the child's depth, plus the halvings from m down to 4 or fewer, is at",
+      '     most 30. Each halving rounds up.',
+      '  3. Otherwise split at the median. Do the same when the centroids lie at one point, or when no',
+      '     bin split separates the instances.',
+      "  4. The median split sorts the node's instances by centroid on the longest axis, ties by",
+      '     instance index. The first half, rounded down, goes to the left child. A median split halves',
+      '     the count, so the depth stays at 30 or under.',
+    ];
+    const after = [
+      '- `bvh.test.ts` holds it: every primitive in exactly one leaf. Every box contains its',
+      "  primitives' boxes.",
+    ];
+    const hung = [...lead, ...steps, ...after].join('\n');
+    expect(doorstopListHazard(hung)).toBe(steps[0]!);
+
+    // The near miss: the same words, as the fix wrote them. A blank line closes the bullet, and the
+    // steps start at the margin. Doorstop publishes this in under a second.
+    const flat = [...lead, '', ...steps.map((l) => l.slice(2)), '', ...after].join('\n');
+    expect(doorstopListHazard(flat)).toBeNull();
+    // A bullet nested under a bullet, and a step under a step, stay one kind and pass.
+    expect(doorstopListHazard([...lead, '  - a nested bullet', ...after].join('\n'))).toBeNull();
+    // A list at the margin opens nothing for the steps even when no blank line comes between.
+    expect(
+      doorstopListHazard([...lead, ...steps.map((l) => l.slice(2)), ...after].join('\n')),
+    ).toBeNull();
+  });
+
+  it('steps hold no bullet at an indent, and a fence does not hide one', () => {
+    // The other order of #29: Doorstop 3.2 hangs on it too, and the first guard let it pass.
+    expect(doorstopListHazard('1. a step\n   - a nested bullet\n2. a step')).toBe(
+      '   - a nested bullet',
+    );
+    // A bullet at the margin does not open the code inside a fence that follows it.
+    expect(doorstopListHazard('- a bullet\n```ts\n/** a\n * b */\n```')).toBe(' * b */');
+    // A marker with no text opens nothing, because Markdown reads no list item there.
+    expect(doorstopListHazard('- \n  - a bullet')).toBe('  - a bullet');
+    // A blank line closes both kinds, so a list that starts again at the margin is fine.
+    expect(doorstopListHazard('- a bullet\n\n1. a step\n2. a step\n\n- a bullet')).toBeNull();
   });
 
   it('doorstopSees hides hidden paths and ignored words', () => {
