@@ -77,6 +77,7 @@ jobs:
             .harness/site.png
             .harness/render-*.png
           if-no-files-found: ignore
+          include-hidden-files: true
 
   traceability:
     # Doorstop over reqs/ (reqs/README.md): fails on a design record changed without review, a
