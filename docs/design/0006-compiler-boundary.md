@@ -87,7 +87,9 @@ front matter (`compiler: ['0006-4']`), so an implementer sees the dependency bef
 **Approval and plan record.** Accepted on 2026-10-05 (UTC). The owner approved the merge of typeshade/radiance#6 in the conversation, which merged this record as `draft` at 9e8b479. The owner then said to implement the records with Opus 5.5 and Sonnet 5.5, and that go-ahead is the acceptance. Every entry of "Decisions for the owner" stands as proposed.
 
 **Configuration and validation record.** Step 1 is done on 2026-10-05 (UTC). Items 1 to 4 are
-open as draft proposals on typeshade/typeshade: item 1 is 0047 (pull request #489), item 2 is 0048
+open as draft proposals on typeshade/typeshade: item 1 is 0051 (pull request #489), item 2 is 0048
 (#493), item 3 is 0049 (#494), and item 4 is 0050 (#490). Each is written in the compiler's
-procedure and reviewed against its tree at 3f6f46b. Their acceptance, their implementation and
-the pin at which the engine takes each up are not recorded yet.
+procedure and reviewed against its tree at 3f6f46b. Item 1 was first numbered 0047. The
+compiler's `main` took 0047 for the array zero value (its pull request #496, 2026-10-05), so
+the draft moved to 0051 on 2026-10-06 (#489 at 56a46578). Their acceptance, their
+implementation and the pin at which the engine takes each up are not recorded yet.
