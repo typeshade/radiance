@@ -404,6 +404,7 @@ Alternatives considered:
 
 - **Engine.** `packages/radiance/src/core/Raycaster.ts` (new), `src/core/Group.ts` (new), `src/accel/cast.ts` (new), `src/index.ts`. `scene-pack.ts` exports `cameraFrame` already. Step 1 moves `inverseAffine` from it into `src/math/affine.ts` (new), unchanged, so the pack and the cast share it.
 - **Addons.** `packages/addons/src/controls/TransformControls.ts`, `InteractionControls.ts` and `transform-math.ts` (new), `src/index.ts`, `src/loaders/GLTFLoader.ts` and its test (a `Group` for the primitives of a node of two or more), `src/scenes/CornellBox.ts` (names).
+- **Fly mode (Amendment 2).** `packages/addons/src/controls/FlyControls.ts` and its test (new), `packages/addons/src/index.ts`, `site/examples/sponza.ts`, a swap helper in `site/examples` (new), `site/src/content/docs/guide/controls.mdx`, `README.md` and `packages/addons/__api__`. Record 0003's list gains `FlyControls`, as Amendment 2 says.
 - **Record 0003.** This record amends it. Its list "The public surface at 0.1.0" gains eight names: `Raycaster`, `Intersection` and the six names of the addons rows of the table above. The list has `Group` already, and step 1 only exports it. Steps 1, 3 and 4 each add their names to that list in the pull request that re-bakes the surface (`bun run bake:api-surface`). If 0.1.0 is tagged before a step merges, that step's names belong to the list of the release that carries them. The Amendment entry says which. `scripts/gates/api.mjs` fails when a bake and the tree differ. Record 0003's Record section gains an Amendment entry that cites this record.
 - **Site.** `site/src/islands/ExampleStage.tsx`, `site/examples/types.ts`, the ten examples that have controls, `site/src/i18n/en.ts`, `site/src/styles/custom.css` (the gizmo's colours and cursors), `site/src/content/docs/guide/object-controls.mdx` (new).
 - **Scripts.** `scripts/harness.mjs` (the interaction check of section 6).
@@ -476,6 +477,8 @@ Each step is one pull request with `Design: 0008` in its commit message. Each te
 
    Record the cost of the restart after a field edit and after a type change on SwiftShader, labelled as such. Record the host time and the written bytes of both, from the pack with no device. Record the panel's width and height at 1440 and at 390 CSS pixels, open and collapsed. Done when `bun run check` and `bun run harness` pass in CI, `bun run gate:site` and `bun run gate:render` pass, no golden changed and `bun run gate:api` shows no new export.
 
+9. **The fly mode.** Add `FlyControls`, the swap helper and the `KeyF` toggle in `sponza`. Add the guide section and the README rows. Re-bake the addons' surface. Record 0003's bake is regenerated as its procedure says. The two tests are those of Amendment 2. Done when `bun run check` and `bun run harness` pass and `bun run gate:api` passes with the new bake. The other examples keep orbit only, and a later step adds the toggle to them.
+
 ## Decisions for the owner
 
 1. The controls have four modes, `orbit`, `select`, `translate` and `rotate`. One is active. `orbit` is the default and never changes the scene. Proposed: yes.
@@ -504,6 +507,7 @@ Each step is one pull request with `Design: 0008` in its commit message. Each te
 24. A type change replaces `mesh.material` with a new instance of the chosen class. The instance takes `name`, `color`, the emission and `doubleSided` from the old instance, hidden fields too, and omits the fields that its class lacks. The path costs as a transform change does, and the old table entry stays. `PhysicalMaterial` is no option before step 2 of record 0004. Proposed: yes.
 25. An edit applies to every mesh that shares the material instance, and the panel shows how many. The alternative is a clone on the first edit, for the selected mesh alone. Proposed: share.
 26. The panel does not set `run.editing`. Each edit restarts the accumulation at the full frame size. Step 8 measures the restart. Proposed: yes.
+27. The camera has two control classes, `OrbitControls` and `FlyControls`. Only the Sponza example offers both, and `KeyF` swaps them. Fly is independent of select, translate and rotate. A later step adds the toggle to the other examples. Decided by the orchestrator on the owner's request of 2026-10-06. Proposed: yes.
 
 ## Record
 
@@ -543,3 +547,21 @@ The sentence of "Before" that lists eight examples stays. It states the baseline
 
 - **The fact.** Measured on 2026-10-06 at `main` 8f52997, by a search of `site/examples/*.ts` for `controls`. Nine examples create controls: `bunny`, `coloured-lights`, `cornell-box`, `first-scene`, `geometries`, `instances`, `lights`, `materials` and `scene-graph`. `determinism.ts` creates none. Only `scene-graph.ts` defines `playing`.
 - **Not run.** No browser check ran for this amendment. The open item "Pause and a moved object" keeps its disposition: open.
+
+**Amendment 2** (2026-10-06, UTC). The owner asked on 2026-10-06 for first-person free movement in the Sponza example, and asked for it quickly. This amendment adds a fifth mode, `fly`, and a class `FlyControls`. It changes no code and none of the work of steps 1 to 8. The decisions keep their numbers and their text. The orchestrator of the session decided every entry below, so each is recorded as decided. The merge of the pull request that carries this amendment is the owner's acceptance. The pull request that implements it merges after this one.
+
+- **The mode.** Fly is a camera mode, as orbit is. It uses `KeyF` as its key, which matches `KeyboardEvent.code`. In the Sponza example `KeyF` toggles between fly and orbit. The pointer drag, `KeyW`, `KeyA`, `KeyS`, `KeyD`, `KeyQ`, `KeyE` and the shift keys belong to `FlyControls` while it is active. Decisions 1 and 2 keep their text for the four modes of `InteractionControls`. They govern the keys `KeyO`, `KeyQ`, `KeyW` and `KeyE` of that class. The two key sets do not run together in one example in this change.
+- **The independence.** Fly is independent of select, translate and rotate. Those three stay available while the camera flies, as they stay under orbit. The mode of `InteractionControls` does not change when the camera control changes.
+- **The exclusion.** The `determinism` example gets no fly controls. It has no controls at all (decision 19).
+- **The class.** `FlyControls` is a public name of `@typeshade/radiance-addons`, next to `OrbitControls`. It has the contract of `OrbitControls`. It extends `EventDispatcher` with the events `start`, `change` and `end`. `update(dt)` moves the camera and returns whether it moved. `moving` says whether the view still changes, so the path tracer traces a preview. `dispose()` removes every listener. `saveState()` and `reset()` store and restore the camera pose.
+- **The input.** A pointer drag on the canvas turns the view, with the pointer events of `OrbitControls` for mouse and touch. The yaw turns about world up. The pitch is clamped to plus and minus 89 degrees. The view has no roll. Keys act while the canvas or its document has focus. `KeyW` and `KeyS` move forward and back along the view direction. `KeyA` and `KeyD` strafe. `KeyQ` and `KeyE` move down and up along world up. `ShiftLeft` and `ShiftRight` multiply the speed by 4.
+- **The properties.** `movementSpeed` is in scene units a second, and its default is 1. The Sponza example sets it to 3. `rotationSpeed` is in radians a pixel, and its default is 0.0025. Movement integrates with `dt`, so it does not depend on the frame rate.
+- **The limits.** No collision test runs, so the camera may pass through a wall. No pointer lock is used in this change. The page works without a click to capture the pointer. Pointer lock is a later option.
+- **The Sponza example.** It starts in fly mode at its present start pose and looks down the nave. `KeyF` swaps the active controls object. A small helper in `site/examples` does the swap. The helper disposes the inactive controls object. It builds the new one from the camera's present pose. The orbit target is the point that lies the start distance ahead of the camera. A disposed object keeps no listener, so two controls never compete for one pointer event. The other examples keep orbit only in this change.
+- **The record 0003 list.** Record 0003's list "The public surface at 0.1.0" gains `FlyControls`, by reference to this amendment. The pull request that implements it regenerates record 0003's bake (`bun run bake:api-surface`) as its procedure says. `bun run gate:api` then passes.
+- **Step 9.** The new step 9 carries this work. Its tests are two.
+  1. A unit test of the camera motion. For a fixed key state and a fixed `dt`, it reads the camera's position and view direction. The test carries `Verifies: Design 0008.27`.
+  2. A check in `scripts/harness.mjs`, or a Playwright check, that `KeyF` swaps the controls in the Sponza example.
+- **The number that proves it.** The camera's position after 1 s of `KeyW` at `movementSpeed` 3 is 3 units along the view direction, to 1e-6. The test integrates 1 s as 60 steps of `dt` 1/60, and also as one step of 1 s.
+- **Not run.** No code and no browser check ran for this amendment. The two readings of the harness check are not measured. The step 9 pull request records them.
+- **Decision 27.** Added to "Decisions for the owner" by this amendment. The owner's merge of this pull request accepts it.
