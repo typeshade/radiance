@@ -132,7 +132,9 @@ the pull request that implements step 7. The rules follow:
 - **The shading normal.** `ns` is the vertices' normals, interpolated by the barycentric weights,
   moved to world space by the inverse transposed and made unit. `surfaceAt` turns it to the ray's
   side when the ray met the back face. `ns` is `ng` when the vector in world space has length 0.
-  `ns` is `ng` too when its dot product with `ng` is 0 or less after the turn.
+  `ns` is `ng` too when its dot product with `ng` is 0 or less after the turn. On an analytic
+  sphere (record 0001, "The analytic sphere") `ns` is `ng`, the same vector. No interpolated
+  normal exists there, so none of these fallbacks applies.
 - **A direction under the surface.** This rule holds for a reflection lobe, the only kind at M2. The
   reflection of `-wo` about `ns` can go under `ng`. For a mirror sample, let
   `wi = reflect(-wo, ns)`. When `dot(wi, ng)` is less than 0, `sampleBsdf` returns
@@ -156,6 +158,55 @@ the pull request that implements step 7. The rules follow:
   convex surface always reflects into the half-space of the viewer. So the band comes from the
   shading normal and not from physics. A transmission sample goes under `ng` on purpose, so this
   rule does not hold for it. Step 2 states the end rule for a transmission sample.
+- **The fold on an analytic sphere.** The fold does nothing there. On an analytic sphere `ns` is
+  `ng`, and `ng` faces the ray, so `dot(wo, ng)` is above 0. For `wi = reflect(-wo, ng)`, the value
+  `dot(wi, ng)` equals `dot(wo, ng)` in exact arithmetic. So it is above 0, and no reflection goes
+  under `ng`. The band of Amendment 2 needs an `ns` that differs from `ng`, so a sphere has no
+  band. Fact: a throwaway script took 4,000,000 points spread evenly over the disc that a sphere
+  covers from far away. Each point gave one mirror reflection in `f32`. It gave 0 reflections with
+  `dot(wi, ng)` of 0 or less. The end rule of the path loop stays as it is. Inference: it can end
+  a path only where `dot(wo, ng)` is within the rounding of 0, at the exact silhouette.
+- **The texture coordinates of an analytic sphere.** The uv is the spherical parameterisation of
+  three.js's `SphereGeometry`, in the sphere's own space (the unit sphere of record 0001). The
+  texture turns and mirrors with the mesh. The point `q` is a unit vector, and `rho` is
+  `sqrt(q.x * q.x + q.z * q.z)`:
+  - `phi = atan2(q.z, -q.x)`, from -pi to pi. `u` is `phi / (2 * pi)`, plus 1 when that is
+    below 0. The seam is the half-axis of -x, where `u` is 0 and 1. `u` is 0 at a pole.
+  - `theta = atan2(rho, q.y)`, from 0 to pi. `v` is `1 - theta / pi`. `v` is 1 at the north pole
+    (+y), as in three.js.
+  - `dpdu` is `2 * pi * (q.z, 0, -q.x)` in the sphere's space, moved to world space as a
+    direction. It is 0 at a pole, and the fallback frame about `ns` then applies. `dpdv` is not
+    stored. Step 3 states the footprint of a texture read, and it may need `dpdv`.
+
+  The kernel computes the two angles with `sphereUv` in `intersect.shade.ts`. It calls neither
+  `atan2` nor `acos` of the language, because their error on a GPU is large (record 0005 gives the
+  numbers). `sphereUv` calls `atan2p`, which uses `+`, `-`, `*`, `/`, `sqrt` and comparisons only:
+
+  ```ts
+  function atan2p(y: f32, x: f32): f32 {
+    const ay = abs(y);
+    const ax = abs(x);
+    const big = max(ay, ax);
+    if (big === 0) return 0;
+    const r = min(ay, ax) / big; // from 0 to 1
+    const r1 = r / (1 + sqrt(1 + r * r)); // the angle halved
+    const h = r1 / (1 + sqrt(1 + r1 * r1)); // halved again: at most 0.1989
+    const h2 = h * h;
+    const s = h * (1 + h2 * (-1 / 3 + h2 * (1 / 5 + h2 * (-1 / 7 + h2 * (1 / 9 + h2 * (-1 / 11 + h2 * (1 / 13 - h2 / 15)))))));
+    let a = 4 * s;
+    if (ay > ax) a = PI / 2 - a;
+    if (x < 0) a = PI - a;
+    return y < 0 ? -a : a;
+  }
+  ```
+
+  The comparisons choose between pieces of one continuous curve, as record 0005, rule 2, allows.
+  Fact: a throwaway script computed this form with every operation rounded to `f32`, at 300,000
+  points. Against `atan2` and `acos` in `f64`, the worst angle error was 3.81e-7 rad. The worst
+  error of `u` was 8.93e-8 and of `v` was 1.23e-7. Inference: `sphereUv` costs about 4 `sqrt`, 6
+  `/` and 60 other operations for each sphere hit. Step 7 of record 0001 measures the frame time
+  of `cornell`. If `sphereUv` raises it by more than 3 %, the kernel computes the uv only for a
+  material with a texture id, which M3 adds.
 
 **The path loop** (`radiance()` in `trace.shade.ts`) becomes these steps for each bounce:
 
@@ -277,6 +328,10 @@ optional and `dpdu` from the triangle is exact for a triangle). Texture atlases 
 - `src/kernels/materials.shade.ts` (new), `trace.shade.ts`, `intersect.shade.ts` (`surface`).
 - `src/renderers/scene-pack.ts` (the record's packer).
 - `packages/addons/src/loaders/GLTFLoader.ts` (`pbrMetallicRoughness` to `PhysicalMaterial`).
+- Amendment 3 adds `src/kernels/intersect.shade.ts` (`sphereSurfaceAt` and `sphereUv`, record
+  0001, step 7) and a test in `materials.test.ts`. The test takes a mirror sample at the hit of
+  100,000 primary rays across the silhouette of an analytic sphere. None has `dot(wi, ng)` of 0 or
+  less: the count is 0 of 100,000.
 - Tests: `materials.test.ts` on the oracle (a diffuse sample's weight equals its colour, a mirror
   sample is the reflection above `ng`. `evalBsdf`'s pdf integrates to 1 over the hemisphere, within
   2 % by a 4,096-sample estimate. `emission` is zero on the back face). `scene-pack.test.ts` (the
@@ -328,20 +383,22 @@ optional and `dpdu` from the triangle is exact for a triangle). Texture atlases 
    `wo` and an `ns` tilted away from `ng`. It asserts that `dot(wi, ng)` is above 0. A second
    assertion covers a mirror sample whose reflection is above `ng`. That sample keeps
    `reflect(-wo, ns)`. The test carries `Verifies: Design 0004.6`. The pull request measures the
-   fold at the edge of the band on the Cornell box sphere. It measures at 256 and 768 pixels. It
-   shows that the radiance has no step there. It measures the alternative too, which reflects about
-   `ng` in that case. If it delivers the alternative, it amends this record first. The golden of an
-   example that uses `MirrorMaterial` can change. The candidates are `cornell-box`, `determinism`,
-   `scene-graph`, `materials` and `first-scene`. The pull request runs the render gate. It lists
-   each golden that changes, with the old and the new picture.
-   `UPDATE_GOLDENS=1 bun run gate:render` rewrites every golden, so the pull request commits only
-   the goldens that change. `bun run capture:stills` recaptures the stills of every example, so the
-   pull request commits only the stills whose picture changes. The pull request commits the
-   `.sha256` file of each changed still too. The pull request measures the floor caustic again and
-   compares it with the ratio of Amendment 2. It names this record on a line of its own,
-   `Design: 0004`. Done when four things hold. The test passes. The render gate passes on the
-   goldens that the pull request commits. The differential gate passes. The stills match their
-   hashes.
+   fold at the edge of the band on a mirror ball of `SphereGeometry` (radius 0.4, 32 by 16
+   segments) in a Cornell box that the test builds itself. After record 0001, step 9, the shipped
+   Cornell box has analytic spheres and no band. The measure is at 256 and 768 pixels. It shows
+   that the radiance has no step there. It measures the alternative too, which reflects about `ng`
+   in that case. If it delivers the alternative, it amends this record first. The golden of an
+   example whose mirror is a mesh can change. After step 9 of record 0001, `cornell-box` and
+   `determinism` are not candidates, because their mirror is analytic. The pull request finds the
+   candidates by running the render gate, and it lists each golden that changes, with the old and
+   the new picture. `UPDATE_GOLDENS=1 bun run gate:render` rewrites every golden, so the pull
+   request commits only the goldens that change. `bun run capture:stills` recaptures the stills of
+   every example, so the pull request commits only the stills whose picture changes. The pull
+   request commits the `.sha256` file of each changed still too. The pull request measures the
+   floor caustic again on the same test scene and compares it with the ratio of Amendment 2. It
+   names this record on a line of its own, `Design: 0004`. Done when four things hold. The test
+   passes. The render gate passes on the goldens that the pull request commits. The differential
+   gate passes. The stills match their hashes.
 
 ## Decisions for the owner
 
@@ -364,6 +421,9 @@ optional and `dpdu` from the triangle is exact for a triangle). Texture atlases 
    decision 1's record. It is also an eighth storage buffer, against record 0001, rule 1. It keeps
    rule 2 of record 0001. The owner chooses: amend record 0001 rule 1 first, or keep seven buffers
    and store each word as the value of an `f32`.
+9. On an analytic sphere `ns` is `ng`, and the fold of decision 6 does nothing. The uv is
+   three.js's spherical layout, computed by `sphereUv` from sums, products, divisions and square
+   roots. Decided by default. Amendment 3 adds this decision.
 
 ## Record
 
@@ -462,6 +522,46 @@ of the band. Step 7 measures that edge. The dispositions:
   a sample that is not specular is not measured.
 - **The caustic through a delta lobe.** Proposed: made part of the record as a statement of fact in
   "The path loop". The techniques it names are proposals. No decision adds one.
+
+**Amendment 3** (2026-10-06, UTC). The owner decided on 2026-10-06 that the engine gains an
+analytic sphere. Record 0001, Amendment 3, states the primitive. This amendment states what it
+means for shading. On an analytic sphere `ns` is `ng`, so the fold of Amendment 2 does nothing
+there. It also states the texture coordinates of the sphere. It changes these five places:
+
+1. "The shading normal", in "The rules of the surface and of emission".
+2. Two new rules after "A direction under the surface": "The fold on an analytic sphere" and
+   "The texture coordinates of an analytic sphere".
+3. "What it touches".
+4. Step 7, which no longer measures on the shipped Cornell box.
+5. Decision 9.
+
+The merge of the pull request that carries it is the owner's acceptance of each rule and of
+decision 9. The code is not changed here. Record 0001, step 7, delivers `sphereSurfaceAt` and
+`sphereUv`. The configuration is `main` at 55bde46, the compiler pinned at 596c805, bun 1.3.14
+and node v22.22.0, on 2026-10-06. The numbers come from throwaway scripts that this pull request
+does not keep. Each is an observed result:
+
+- **The fold.** A script took 4,000,000 points spread evenly over the disc that a sphere covers
+  from far away. Each gave one mirror reflection about `ng` in `f32`. It gave 0 with `dot(wi, ng)`
+  of 0 or less. Amendment 2 measured 0.416 % of the area for a mesh sphere of 32 by 16 segments.
+- **The uv.** The error of `sphereUv` against `f64` was at most 3.81e-7 rad in an angle, 8.93e-8
+  in `u` and 1.23e-7 in `v`, at 300,000 points.
+- **The cost.** The record gives no measure of the cost of `sphereUv`. It gives an estimate and a
+  rule for the case that the estimate is wrong.
+
+The dispositions:
+
+- **The shading normal.** Decided by default: `ns` is `ng` on an analytic sphere, the same vector.
+- **The fold.** Decided by default: the fold stays in `sampleBsdf` for every mesh. It does
+  nothing on a sphere. The record adds no code for the sphere.
+- **The uv.** Decided by default: three.js's layout, with `u` from `phi` and `v` from `theta`, and
+  `sphereUv` built from `+`, `-`, `*`, `/` and `sqrt`. The footprint of a texture read, and
+  `dpdv`, stay with step 3.
+- **Step 7.** Proposed: the fold is measured on a mesh sphere that the test builds, because the
+  shipped Cornell box no longer has one after record 0001, step 9. The step's goldens are the
+  examples whose mirror is a mesh.
+- **Open: the measure of the fold on a mesh.** Amendment 2's numbers hold for a mesh sphere only.
+  Next action: step 7, as before.
 
 **Deviations of step 1** (2026-10-05, UTC). Step 1 is typeshade/radiance#18 with record 0001
 step 3, merged as 9f2cf1a. Each entry gives the difference and its disposition. Amendment 1

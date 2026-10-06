@@ -101,6 +101,41 @@ comment names the rules it leans on.
    variant that uses one is a separate pipeline, behind an option that names it, and the
    determinism promise is stated for the gated kernel only.
 
+**The analytic sphere's arithmetic** (Amendment 3). Record 0001, "The analytic sphere", adds a
+quadratic to `intersect.shade.ts`. Record 0004 adds `sphereUv`. Both stay under the six rules, and
+neither adds a row to the lists:
+
+1. **Which rules.** The quadratic uses `+`, `-`, `*`, `/`, `sqrt`, `dot`, `normalize` and
+   comparisons. Rule 3 admits all of them. `sphereUv` uses `+`, `-`, `*`, `/`, `sqrt` and
+   comparisons. It calls neither `atan2` nor `acos`. Rule 2 does not list `sqrt`. It lists `sin`,
+   `cos`, `exp`, `exp2`, `log`, `log2`, `pow`, `fract`, `tan`, `atan`, `atan2`, `asin` and `acos`.
+2. **What `sqrt` is.** Fact: the compiler's report gives `sqrt` the kind `inherited`, from
+   `1 / inverseSqrt(x)`. It gives `inverseSqrt` the kind `ulp`, at 2 ULP, and `/` the kind `ulp`,
+   at 2.5 ULP (`vendor/typeshade/src/core/passes/determinism.ts`, at the pin 596c805). So two
+   WebGPU implementations may give two answers for one `sqrt`. It is not a rule 2 function. It
+   is a rule 3 function: bounded or inherited, and it may steer. On one device and one driver,
+   one input gives one answer, so the promise of "The promise" holds. Across devices, the gate
+   bounds the difference. Inference: the oracle's `sqrt` is the correctly rounded one, because
+   the oracle rounds each `f32` operation as the target does (`scripts/oracle.ts`).
+3. **The order of operations.** The order is the one in "The ray and the sphere" of record 0001,
+   written in the source as shown there. The oracle evaluates it as written, with each operation
+   rounded to `f32` and none fused. WGSL lets a driver regroup a chain of operations and fuse
+   `a * b + c` (§15.7.5, quoted in the header of the compiler's `determinism.ts`). The report lists
+   no chain. So the same source can give another last bit on another device. The record holds the
+   order in the source and holds the difference by the gate.
+4. **What steers.** The sign of the discriminant, the sign of `b`, the comparison of each root
+   with 0 and with `limit`, and the choice of the nearer root steer the path. A ray within a few
+   ULP of the silhouette can hit on one device and miss on another. That moves one sample of one
+   pixel by one sample's share. The gate's `rel` and `mean` bound it. Record 0001 states the
+   rays that have no bound at all, those within 1e-4 of the silhouette.
+5. **The comparisons of `sphereUv`.** They choose between pieces of one continuous curve, as rule
+   2 allows: the quarter of the circle, and the reduced angle. The pieces agree at their seams,
+   within the error of the series (3.81e-7 rad). So a different rounding moves the value by
+   that error and does not move a path.
+6. **The lint.** The report of `intersect.shade.ts` gains no row outside `ALLOWED`. Its `/` and
+   `sqrt` rows name `hitSphere` and `sphereUv` among their functions. `ALLOWED` and `VALUE_ONLY`
+   do not change.
+
 **The lint.** `packages/radiance/src/kernels/determinism.test.ts` (record 0002, step 3)
 compiles every kernel file and reads `compile().determinism`. Each row's `op` must be in the
 allowlist, and each `absolute`-kind row must have every function in its `where` in the
@@ -143,6 +178,12 @@ the generated page: the rows of every kernel, each with its reason.
   tracer needs `random`.
 - Rule 3 is honest about what cannot be made exact: an intersection divides. The gate's
   tolerance is written for it, and M1 measured 1.44e-6 under it.
+- **Why the sphere uses no `atan2` and no `acos`.** Fact: the compiler's report gives `acos` the
+  kind `absolute`, at 6.77e-5, and `atan2` the kind `ulp`, at 4096 ULP. Neither is in `ALLOWED`.
+  The uv of a sphere feeds a texture read at M3, and a texture read picks a texel. An error of
+  6.77e-5 in a coordinate is 0.14 of a texel of a 2,048 pixel texture, so a driver could pick
+  another texel. Inference: that is a decision and not a value, against rule 2. `sphereUv` is built
+  from sums, products and `sqrt` instead, as `turn` is. Its error is 3.81e-7 rad.
 - Rule 5 follows from the compiler's own determinism report (`order` rows) and from plan
   §3.6's FLIP decision (sorted gather, not atomic scatter).
 
@@ -166,6 +207,13 @@ and no lint (the status quo, which caught the divergence late).
    by hand, and typeshade/radiance#21 delivers it with the determinism example.
 3. **The generated report** at M4: a page of the guide, generated from the lint's output. It has
    the rows of every kernel and the reason for each row.
+4. **The sphere's rows** (Amendment 3), with record 0001, step 7. The header of
+   `intersect.shade.ts` names rules 2 and 3 for `hitSphere` and `sphereUv`. A new case in
+   `determinism.test.ts` asserts that the `sqrt` row and the `/` row of that file name `hitSphere`
+   among their functions, and that the file has 0 rows outside the lists. A second new case
+   asserts that the report of the file has no row for `atan2`, `acos`, `sin` or `cos`. Done when
+   `bun run test` passes with `determinism-lists.ts` unchanged. The `spheres` scene of record
+   0002 shows 0 differing floats for one seed in `gate:determinism`.
 
 ## Decisions for the owner
 
@@ -176,6 +224,8 @@ and no lint (the status quo, which caught the divergence late).
    splits are the same. This record does not change the kernel to remove the condition.
    Proposal, not made here: the kernel starts each frame's sum from the pixel's entry in `accum`.
 5. An author writes the guide's determinism page by hand, and the generated report is M4's.
+6. The analytic sphere's quadratic is written under rule 3, and its uv under rule 2. `ALLOWED` and
+   `VALUE_ONLY` do not change. Decided by default. Amendment 3 adds this decision.
 
 ## Record
 
@@ -252,6 +302,36 @@ entry in `accum` and not at zero. It wrote that sum back with the count raised b
 samples. With it, the first render, the render of 7 samples a frame and the render of 1 sample a
 frame each gave 0 differing floats against the reference render. Seed 2 still gave 765. This is an
 observed result and not a design. Decision 4 does not choose it.
+
+**Amendment 3** (2026-10-06, UTC). The owner decided on 2026-10-06 that the engine gains an
+analytic sphere. Its quadratic uses `sqrt` and `/` on the path of every ray that meets a sphere.
+Two questions follow. Is `sqrt` deterministic across WebGPU implementations under this record's
+rules? In what order does the quadratic run? This amendment answers both. It changes these four
+places:
+
+1. "What changes": the new paragraph "The analytic sphere's arithmetic".
+2. "Why": the bullet "Why the sphere uses no `atan2` and no `acos`".
+3. Step 4.
+4. Decision 6.
+
+The six rules and the two lists do not change. The merge of the pull request that carries it is
+the owner's acceptance. The code is not changed here. Record 0001, step 7, delivers it. The
+configuration is `main` at 55bde46, the compiler pinned at 596c805, on 2026-10-06. The facts come
+from `vendor/typeshade/src/core/passes/determinism.ts` at that pin, and from the throwaway scripts
+that record 0001, Amendment 3, describes. The dispositions:
+
+- **`sqrt`.** Fact: it is an `inherited` row, from `1 / inverseSqrt(x)`. Decided by default: under
+  rule 3 it may steer, and the gate bounds the difference between devices. It is bit for bit
+  the same on one device and one driver. It is not bit for bit the same across implementations.
+- **The order.** Decided by default: the source fixes the order, and the oracle runs it as
+  written. A driver may regroup it. The report lists no chain, so no lint holds the order.
+  Record 0001, "The ray and the sphere", gives the order.
+- **The uv.** Decided by default: no `atan2` and no `acos`. Rule 2 and the numbers of the
+  report give the reason.
+- **Open: a hardware measure.** Fact: no measure of the sphere test on a hardware GPU exists. The
+  precision rule of record 0001 comes from an emulation of `f32`, and the gate runs on SwiftShader.
+  Next action: record 0001, step 7, measures the kernel on the oracle. The pull request of step 8
+  asks for one `gate:differential` row of the `spheres` scene from a hardware GPU, run by hand.
 
 **Approval and plan record.** Accepted on 2026-10-05 (UTC). The owner approved the merge of typeshade/radiance#6 in the conversation, which merged this record as `draft` at 9e8b479. The owner then said to implement the records with Opus 5.5 and Sonnet 5.5, and that go-ahead is the acceptance. Entries 1 to 3 of "Decisions for the owner" stand as proposed. Entries 4 and 5 come with Amendment 2.
 

@@ -69,7 +69,8 @@ that changes the surface commits the re-bake, and the diff is the review.
    `color`, `emissive`, `emissiveIntensity`, `roughness`, `metalness`, `ior`, `transmission`,
    `map`, `normalMap`, `roughnessMap`, `metalnessMap`, `emissiveMap`, `specularIntensity`.
 3. A thing neither has takes the name the plan uses: `PathTracer`, `samplesPerFrame`,
-   `maxSamples`, `watchdogBudget`, `readRadiance`.
+   `maxSamples`, `watchdogBudget`, `readRadiance`. Amendment 1 adds `AnalyticSphereGeometry`,
+   because three.js has no analytic sphere.
 
 So `QuadGeometry` becomes `PlaneGeometry` (record 0001), and nothing else is renamed at 0.1.0.
 
@@ -150,7 +151,8 @@ pre-1.0 and its minor is the breaking position).
 - math: `Vector3`, `Color`, `Euler`, `Matrix4`, `Box3`.
 - core: `Object3D`, `Group` (new: an `Object3D` with nothing added, as three.js has it), `EventDispatcher`, `Clock`.
 - cameras: `Camera`, `PerspectiveCamera`.
-- geometries: `Geometry`, `BufferGeometry`, `SphereGeometry`, `PlaneGeometry`, `BoxGeometry`.
+- geometries: `Geometry`, `BufferGeometry`, `SphereGeometry`, `PlaneGeometry`, `BoxGeometry`,
+  `AnalyticSphereGeometry(radius = 1)` (Amendment 1).
 - materials: `Material`, `MaterialParameters`, `DiffuseMaterial`, `MirrorMaterial`,
   `EmissiveMaterial`, `PhysicalMaterial`, `PhysicalMaterialParameters`.
 - objects: `Mesh`, `Scene`.
@@ -194,6 +196,21 @@ Removed from the surface: `packScene`, `cameraUniforms`, `PackedScene`, `CameraU
 ## Record
 
 **Approval and plan record.** Accepted on 2026-10-05 (UTC). The owner approved the merge of typeshade/radiance#6 in the conversation, which merged this record as `draft` at 9e8b479. The owner then said to implement the records with Opus 5.5 and Sonnet 5.5, and that go-ahead is the acceptance. Every entry of "Decisions for the owner" stands as proposed. Entry 6 stays open: the record's proposal, sources only at 0.1.0, applies until the owner decides.
+
+**Amendment 1** (2026-10-06, UTC). Record 0001, Amendment 3, adds one geometry class, the analytic
+sphere. A new export is a change to this surface (`docs/design/README.md`, the criterion
+"exports"), so this record lists it. The merge of the pull request that carries this amendment is
+the owner's acceptance. It changes two places: the naming rule 3, and the list of geometries under
+"The public surface at 0.1.0". The decisions keep their numbers and their text.
+
+- **The name.** Decided by default: `AnalyticSphereGeometry`. Rule 1 does not apply, because
+  three.js has no analytic sphere. Rule 3 applies, and the suffix `Geometry` keeps the name next
+  to `SphereGeometry`, which stays a mesh.
+- **The shape.** Decided by default: `new AnalyticSphereGeometry(radius = 1)` with a `readonly`
+  `radius`, a positional number with a default, as "Constructor shapes" says for a geometry. The
+  class has no `version`. Record 0001, "The analytic sphere", states the rest.
+- **The surface bake.** The pull request of record 0001, step 6, commits the bake with this one
+  class added. `gate:api` fails on any other change.
 
 **Configuration and validation record.** This record does not yet apply. Implementation will
 record the bake's first commit, the dry run's workflow run id, and the 0.1.0 release's tag,
