@@ -56,8 +56,9 @@ Milestone **M1** is done: a compute megakernel path tracer renders the Cornell b
 progressively, and CI holds it to M1's acceptance. Two renders of one seed are bit-identical,
 and a 1024 spp render on WebGPU is within tolerance of the CPU oracle's render of the same
 kernel. Milestone **M2** is in progress. The kernel draws triangle meshes through a two-level
-BVH, behind the material record and the shading contract (design records 0001 and 0004). glTF
-and the benchmark scenes come next.
+BVH, behind the material record and the shading contract (design records 0001 and 0004). The
+`GLTFLoader` reads `.gltf` and `.glb` files, and the `bunny` example draws the Stanford bunny from
+one. Sponza and the benchmark scenes come next.
 
 ## Layout
 
@@ -65,7 +66,7 @@ and the benchmark scenes come next.
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `vendor/typeshade`           | The compiler, pinned as a git submodule. Every package is built on its public `typeshade/runtime` exports and nothing else.                                                                                                |
 | `packages/radiance`          | `@typeshade/radiance`: the engine. The math, the scene graph, cameras, geometries, materials, `Scene`, and the `PathTracer` renderer. Its kernels in TypeShade under `src/kernels` (`trace.shade.ts`, `sampler.shade.ts`). |
-| `packages/addons`            | `@typeshade/radiance-addons`: `OrbitControls` and the Cornell box scene.                                                                                                                                                   |
+| `packages/addons`            | `@typeshade/radiance-addons`: `OrbitControls`, `GLTFLoader` and the Cornell box scene.                                                                                                                                     |
 | `site/`                      | radiance.typeshade.dev: Starlight (the guide, the search, the API reference from the packages' JSDoc), the front page and the examples (`site/examples`), built by `bun run site` into `dist/site`.                        |
 | `site/public/stills`         | One still per example, the picture a page shows before its canvas runs, with a `.sha256` the build checks. `bun run capture:stills` captures them.                                                                         |
 | `scripts/boundary.mjs`       | The check that no package imports past `typeshade/runtime` or calls WebGPU itself.                                                                                                                                         |
@@ -75,6 +76,8 @@ and the benchmark scenes come next.
 | `scripts/harness.mjs`        | The Cornell box and every example in headless Chromium on SwiftShader, held to their gates and probes. The site's Cornell box example runs under the mouse. Writes `.harness/cornell.png` and `.harness/site.png`.         |
 | `scripts/gates/`             | One module for each gate: `differential.mjs`, `determinism.mjs` and `render.mjs`. Each exports `run()` and `probe()`. `_browser.mjs` and `_png.mjs` are shared by the gates and the harness.                               |
 | `scripts/__goldens__`        | One PNG for each example, 96 x 64 at 64 samples a pixel. The render gate holds the example's picture to it. `UPDATE_GOLDENS=1 bun run gate:render` rewrites them.                                                          |
+| `site/public/assets`         | The assets the examples load, such as `bunny.glb`. `LICENSES.md` lists the source, the licence and the SHA-256 of each one.                                                                                                |
+| `scripts/assets`             | One script for each asset. The script builds the file again from its public source (`node scripts/assets/bunny.mjs --check`).                                                                                              |
 | `scripts/scenes.ts`          | The scene table. The harness page and the oracle build each scene from it. The Cornell box is its one entry.                                                                                                               |
 | `scripts/oracle.ts`          | The path tracer's kernel on the compiler's CPU oracle, over the same scene pack the renderer uploads. It splits the frame over up to four processes (`RADIANCE_ORACLE_JOBS`).                                              |
 | `scripts/shade-plugin.ts`    | The `*.shade.ts` loader for `bun build` and `bun test`, from the compiler's Vite plugin.                                                                                                                                   |
