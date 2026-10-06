@@ -42,6 +42,14 @@ export const EXAMPLES: readonly ExampleEntry[] = [
     load: () => import('./coloured-lights.ts'),
   },
   {
+    id: 'lights',
+    title: 'Lights',
+    description:
+      'Three lights of one size, with powers 1, 4 and 16: each bounce picks a light in proportion to its power.',
+    category: 'Path tracing',
+    load: () => import('./lights.ts'),
+  },
+  {
     id: 'bunny',
     title: 'Stanford bunny',
     description:
@@ -58,11 +66,27 @@ export const EXAMPLES: readonly ExampleEntry[] = [
     load: () => import('./determinism.ts'),
   },
   {
+    id: 'geometries',
+    title: 'Geometries',
+    description:
+      'A box, a sphere, a pyramid built by hand and a plane: every geometry the engine has, in one scene.',
+    category: 'Geometry',
+    load: () => import('./geometries.ts'),
+  },
+  {
     id: 'scene-graph',
     title: 'Scene graph',
     description: 'A turning group of spheres: the path tracer starts again every frame.',
     category: 'Scene graph',
     load: () => import('./scene-graph.ts'),
+  },
+  {
+    id: 'instances',
+    title: 'Instances',
+    description:
+      'One pyramid drawn 24 times, the right half mirrored: the path tracer builds one BLAS, and the TLAS holds 24 instances of it.',
+    category: 'Scene graph',
+    load: () => import('./instances.ts'),
   },
 ];
 
