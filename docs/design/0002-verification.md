@@ -80,10 +80,30 @@ row fails the test with the operation, its kind and the functions it is in.
 
 **The render gate's goldens** live in `scripts/__goldens__/<example>.png`, 96 x 64, 64 samples
 a pixel, seed 1, rendered on SwiftShader through `readPixels()` and written as PNG by the
-harness's own encoder. `UPDATE_GOLDENS=1 bun run gate:render` rewrites them, and the pull
-request that does so shows each old and new picture. The site's stills (`site/public/stills`)
-stay what they are: the picture a page shows, captured at 64 samples a pixel and hashed. They
-are not goldens.
+harness's own encoder. The gate holds one golden for each example the site lists (`exampleIds`
+in `scripts/stills.mjs`). It fails an example that has no golden. It fails a golden that no
+example owns. It runs each example on a canvas of 96 x 64 CSS pixels. It stops the motion of an
+animated example. It sets `seed` to 1, `samplesPerFrame` to 16 and `maxSamples` to 64
+(`window.runExample` in `scripts/gates/_browser.mjs`). `UPDATE_GOLDENS=1 bun run gate:render`
+rewrites the goldens and removes a golden that no example owns. The pull request that does so
+shows each old and new picture. The site's stills (`site/public/stills`) stay what they are:
+the picture a page shows, captured at 64 samples a pixel and hashed. They are not goldens.
+
+**The render gate's tolerance** is `RENDER` in `scripts/gates.mjs`, in 8-bit units, and
+`comparePictures` in `scripts/gates/render.mjs` applies it. A render and its golden are 8-bit
+RGBA pictures. A pixel is within when each of its four channels, alpha included, differs from
+the golden by at most `RENDER.channel`, which is 4. A picture passes when both bounds hold:
+
+- **The share.** The pixels that are not within are at most `RENDER.outside` of all pixels,
+  which is 0.1 %. At 96 x 64 that is 6 of 6,144 pixels.
+- **The mean.** The mean absolute difference over the red, green and blue channels of all
+  pixels is at most `RENDER.mean`, which is 1. Alpha is not in the mean.
+
+A picture of another size, or without pixels, fails. The two bounds act together. A shift of
+4/255 in the three colour channels of every pixel keeps every pixel within. The share holds,
+and the mean of 4/255 breaks the mean bound. The same shift passes when it moves at most a
+quarter of the pixels. The mean is then 4/255 times the share of pixels it moves. The gate
+admits a render with up to 6 pixels beyond 4/255 at 96 x 64.
 
 **The benchmark** is `scripts/bench.mjs`. It renders each benchmark scene for ten seconds at
 each size on the device it finds, and prints one row per scene and size:
@@ -99,8 +119,14 @@ gate reports it:
 
 - `differential`: the oracle's image shifted by one pixel fails the `mean` bound.
 - `determinism`: a render with seed 2 compared with seed 1 fails the bit-identity.
-- `render`: a golden with one channel of one pixel moved by 8/255 fails. The probe is the
-  PNG decoder's own, so the decoder is proved too.
+- `render`: a golden with one channel of one pixel moved by 8/255 fails the per-channel rule
+  alone. The tolerance admits 6 such pixels at 96 x 64, so the probe sets the share to 0 and
+  the mean to no bound (`channelBoundOnly` in `scripts/gates/render.mjs`). The same fault on
+  13 pixels fails the whole tolerance. Thirteen is twice the share of 6,144 pixels, rounded up.
+  A control comes first: a golden written by the encoder and read by the decoder equals the
+  golden byte for byte. The probe reads the golden with the PNG decoder, so the decoder is
+  proved too. It needs no browser. `scripts/gates/render.test.ts` runs it on the committed
+  goldens, and the harness runs it after the gate.
 - `site`: a still with a wrong `.sha256` fails the build (this probe exists: `scripts/stills.mjs`).
 - `api`: a surface bake with one line removed is a diff.
 - `bundle`: a floor above the measured size fails, so an empty bundle cannot pass.
@@ -151,11 +177,14 @@ M3).
   plus a decoder). `scripts/harness.mjs` becomes the runner of the harness job's gates.
 - `scripts/gates.mjs`: `ORACLE` becomes per scene. `GATE` names each scene's size and samples.
   `RENDER` the golden size, samples and tolerance.
+- `scripts/harness-entry.ts`: exports `EXAMPLES` from `site/examples/index.ts`, so the page the
+  harness serves can run a site example (step 4).
 - `scripts/bench.mjs`, `docs/benchmarks.md` (new).
 - `scripts/bundle-budget.json` (new), `scripts/bake-api-surface.ts` (record 0003).
 - `packages/radiance/src/kernels/determinism.test.ts` (new).
 - `packages/addons/src/scenes/`: the differential scenes.
-- `.github/workflows/ci.yml`: the steps. `README.md` (Checks). `docs/plan.md` §11 points here.
+- `.github/workflows/ci.yml`: the steps, and the artifact step of the `harness` job, which names
+  `.harness/render-*.png` (step 4). `README.md` (Checks). `docs/plan.md` §11 points here.
 - `CLAUDE.md`: "Before pushing" names `bun run check` and `bun run harness` as today. Nothing
   changes there.
 
@@ -170,8 +199,8 @@ M3).
    tessellated spheres by the rule above and record the measurement in that pull request.
 3. **The determinism lint.** `determinism.test.ts` with record 0005's allowlist, and its probe
    (a module with a `sin` in a function fails).
-4. **The render gate.** The goldens of the five examples, the decoder, the probe, the update
-   procedure, `gate:render` in the harness job.
+4. **The render gate.** One golden for each example (five at 37168ce, six since 6ad088d), the
+   decoder, the probe, the update procedure, `gate:render` in the harness job.
 5. **The API and bundle gates.** With record 0003's bake: `gate:api`, `gate:bundle` with the
    budgets set at the landed sizes, their probes, both in `check`.
 6. **The differential scenes of M2.** `triangles`, `instances`, `lights`, each with its
@@ -184,7 +213,8 @@ M3).
 
 1. CI's job names stay. The gates are steps. (Renaming a job changes the ruleset.)
 2. Goldens at 96 x 64 and 64 samples a pixel, compared within tolerance, updated by hand with
-   both pictures in the pull request.
+   both pictures in the pull request. A test holds the size, the samples and the tolerance. No
+   test holds the update by hand. It is a procedure (`README.md`, Checks).
 3. Speed is a recorded row, not a gate, until a real GPU runner exists.
 4. A scene per feature in the differential, with its thresholds derived by the rule above.
 5. The stills stay the site's pictures and are not goldens.
@@ -199,6 +229,72 @@ are enough. Measured on 2026-10-06 (SwiftShader, 4 cores, pin 596c805): the tria
 about 15,000 paths a second, so one still of 718 x 450 pixels took about 45 minutes at 256 samples
 and takes about 11 minutes at 64. The three sentences of "What changes" and "Why" that named 256
 now name 64. The decisions do not change.
+
+**Amendment 2** (2026-10-06, UTC). Step 4 (typeshade/radiance#20, merged as 37168ce) delivered
+the render gate with differences from this record. This amendment settles items 1 to 6 of the
+"Deviations" section of that pull request, and the number of goldens. Each entry below gives the
+difference, the proposed disposition and the text of this record that holds it. The owner has not
+decided any of them. The merge of the pull request that carries this amendment is the owner's
+acceptance of each entry marked "made part of the record" or "closed". An entry marked "open"
+waits for the owner's answer. This amendment changes the rule text in "The render gate's
+goldens", "The probes", "What it touches", step 4 and decision 2. It adds "The render gate's
+tolerance". The decisions keep their numbers. The facts below come from `main` at 7521318 and
+from the CI runs named in them.
+
+- **The probe and the tolerance** (item 1). This record said that a golden with one channel of
+  one pixel moved by 8/255 fails. The tolerance admits 6 such pixels at 96 x 64, so the gate does
+  not fail that golden. The probe judges the fault by the per-channel rule alone (`channelBoundOnly`
+  and `plant` in `scripts/gates/render.mjs`). It also holds that 13 such pixels fail the whole
+  tolerance. Proposed: made part of the record. "The probes" and "The render gate's tolerance"
+  now say it. The gate itself admits a render with one such pixel, as the 99.9 % of the tolerance
+  says.
+- **The share and the mean** (item 2). The table cell "per channel at most 4/255 on 99.9 % of
+  pixels, and a mean absolute difference at most 1/255" cannot mean that a shift of 4/255 on
+  99.9 % of the pixels passes. That shift has a mean of 4/255 and fails the mean bound. The tests
+  hold a shift on a fifth of the pixels (mean 0.8/255, passes) and on every pixel (mean 4/255,
+  fails) in `scripts/gates/render.test.ts`, in the group "the tolerance rule". Proposed: made part
+  of the record. "The render gate's tolerance" says that both bounds hold together.
+- **Alpha** (item 3). This record names no channel for the mean. The mean covers red, green and
+  blue (`comparePictures` in `scripts/gates/render.mjs`). The per-channel rule judges all four
+  channels, alpha included. Measured on 2026-10-06 by decoding each golden: in each of the six,
+  every alpha is 255. A mean over four channels would be lower and would loosen the bound.
+  Proposed: made part of the record. "The render gate's tolerance" says it.
+- **The files of step 4** (item 4). Step 4 does not list `scripts/harness-entry.ts`. The entry
+  of `.github/workflows/ci.yml` in "What it touches" said "the steps" and did not name the
+  artifact step. Proposed: made part of the record. "What it touches" now lists both. Open: the
+  artifact step uploads no file. In CI runs 37387420208 (head 9a1efdc of #20) and 37398596640 (`main` at 6ad088d), the
+  step reported "No files were found with the provided path" and uploaded nothing. Inference:
+  `.harness` is a hidden directory, and the step sets `include-hidden-files: false`. The failure
+  message of the gate names `.harness/render-<example>.png`, so a failure in CI keeps no picture.
+  Next action, after the owner agrees: a pull request that sets `include-hidden-files: true` on
+  the step.
+- **The procedure of decision 2** (item 5). Decision 2 says "updated by hand with both pictures
+  in the pull request". DEC-0202 has `verification: test`, and no test holds that clause.
+  `scripts/gates/render.test.ts` holds the size, the samples and the tolerance. Its header
+  comment says that the update rule is a procedure. `README.md` (Checks) states the procedure.
+  After a rewrite, `scripts/gates/render.mjs` prints "the goldens are rewritten: look at the old
+  and the new picture of each one before you commit them". Proposed: made part of the record.
+  Decision 2 now says which part a test holds and which part a procedure holds. The review of
+  the pull request is then the check of the procedure. This amendment adds no test. If the owner
+  wants one, the next action is a test that reads `README.md`.
+- **The renderer build** (item 6). The goldens and the tolerance were tested on one SwiftShader
+  build, the Chromium that `RADIANCE_CHROMIUM=/opt/pw-browsers/chromium` named in the
+  verification of #20. That pull request does not record its version. CI installs its own
+  Chromium with `npx playwright install --with-deps chromium`. In run 37387420208 that step
+  downloaded Chrome for Testing 153.0.8010.12 (Playwright chromium v1243) and its headless shell
+  of the same version. The job `harness (headless WebGPU)` succeeded. Each of the five examples
+  matched its golden with a mean of 0.000/255, a worst channel of 0/255 and 0 of 6,144 pixels
+  beyond 4/255. In run 37398596640 the six examples matched the same way. In these two runs the
+  tolerance absorbed no difference. Proposed: closed. A later build may miss. The numbers of the
+  gate (`mean`, `worst`, `outside`) then say by how much. A change to `RENDER` is a change to a
+  threshold in `scripts/gates.mjs`, so it needs an amendment to this record
+  (`docs/design/README.md`, "When a change needs one").
+- **Six examples** (no item of #20). Step 4 named five examples. The gate holds one golden for
+  each example the site lists (`exampleIds` in `scripts/stills.mjs`). #21 (6ad088d) added the
+  sixth example, `determinism`, with `scripts/__goldens__/determinism.png`.
+  `scripts/gates/render.test.ts` fails when an example has no golden or a golden has no example.
+  Proposed: made part of the record. Step 4 and "The render gate's goldens" now say "one golden
+  for each example".
 
 **Configuration and validation record.** This record does not yet apply. Implementation will
 record each gate's first measured numbers, the pin, and the CI run that first ran it.
