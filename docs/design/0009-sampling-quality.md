@@ -158,3 +158,73 @@ An instrument shows that it can fail before it is trusted to pass (record 0002, 
 
 1. **The quality tool sees a bias.** Plant a fault in a scratch branch. Multiply `omega` by 1.1 in `direct`. Run `bun run quality` on `lights`. The error at 1,024 samples of the faulted kernel must stay at or above half of the floor that step 1.4 measures. The error of the unfaulted kernel must fall below that half. Inference: the direct light is most of `lights`, so a 10 % error in it gives an error floor of about 0.05 relative. Step 1.4 measures the floor and records it. Verifies Design 0009.4.
 2. **The uniformity test sees a wrong sampler.** Plant the fault of using `r.x` for both numbers in `sampleSolidAngle`. The mean-equality test of step 1.2 must fail. It is a test of a test: the pull request names the planted fault and the failing message.
+
+## Part 2: SZ sequences in place of the padded Sobol sequence
+
+### What changes (part 2)
+
+`sample2` in `sampler.shade.ts` stops reading two Sobol dimensions. It reads two of the four dimensions of an SZ sequence (Ahmed et al. 2025). The hash-based Owen scrambling and the shuffle of the sample index stay. Only the matrices change, and the way pairs share a shuffle.
+
+**Before.** `sample2(pixelSeed, index, pair)` (lines 71 to 77) makes `key = hash2(pixelSeed, pair)`. It shuffles the index with `owen(index, key)`. The first number is `owen(reverseBits(shuffled), hash(key ^ 1))`. The second is `owen(sobol1(shuffled), hash(key ^ 2))`. Each pair has its own key. So each pair is a Sobol `(0, 2)`-sequence, and two pairs are independent of each other.
+
+**After.** Four dimensions share one shuffled index. A pair of dimensions is half of a group.
+
+- The group of pair `p` is `p >> 1`. The half is `p & 1`.
+- `key = hash2(pixelSeed, p >> 1)`, and `shuffled = owen(index, key)`.
+- Dimension `d` of the group is `sz(shuffled, d)`: the XOR of the column words of the matrix of dimension `d` for each set bit of `shuffled`. This is the loop of `sobol1` with a table in place of the recurrence `v ^ (v >> 1)`.
+- The pair's first number is `owen(sz(shuffled, 2 * half), hash(key ^ (1 + 2 * half)))`. The second is `owen(sz(shuffled, 2 * half + 1), hash(key ^ (2 + 2 * half)))`. The hash constants are new, so no number equals an old one.
+
+A pair keeps its two-dimensional stratification. Two pairs of one group are stratified together in four dimensions. This is the paper's claim, from the survey: every group of four dimensions and its pairs are "fully multi-stratified".
+
+**The pair numbers move.** `radiance` takes pair `1 + bounce * 4` (line 167). That puts the light's point in the second half of a group and the BSDF's direction in the first half of the next group. The two would not share a shuffle. So the numbering becomes `pair = 2 + bounce * PAIRS_PER_BOUNCE`. Then, for a bounce:
+
+| Pair of the bounce | Group half | Dimensions it holds                                          | Line today |
+| ------------------ | ---------- | ------------------------------------------------------------ | ---------- |
+| `pair + 0`         | first      | the light's point `r` for `direct`                           | 171        |
+| `pair + 1`         | second     | the BSDF's direction (two numbers)                           | 169        |
+| `pair + 2`         | first      | the light pick (`choice.x`) and the lobe choice (`choice.y`) | 168        |
+| `pair + 3`         | second     | Russian roulette (`.x`). `.y` is spare                       | 183        |
+
+Pair 0 is the pixel's jitter, as now. Pair 1 is free. Inference: the thin lens of milestone M3 (`lens.z` and `lens.w` of `TraceParams`, unused today) takes pair 1. Then the jitter and the lens point share a group. The light point and the BSDF direction of one bounce are in one four-dimensional group. This is the pairing that next-event estimation with multiple importance sampling needs.
+
+**The matrices' storage.** One table holds the four dimensions. It is a module-level constant of `sampler.shade.ts`:
+
+```ts
+const SZ: array<u32, 128> = array<u32, 128>(/* 4 dimensions x 32 column words */);
+```
+
+- Word `32 * d + k` is column `k` of dimension `d`, as a 32-bit word whose top bit is the first output bit. It is 512 bytes.
+- One group's table serves every group, as Burley's padding serves every pair. The shuffle and the scrambles make the groups independent.
+- A table in the code needs no buffer, no uniform and no change to record 0001. Fact: the surface document (§12, "Module constants") says that an array constant "carries its value as an expression every backend emits and evaluates". This record has not read the emitted code.
+- Inference, from memory of WGSL and not checked here: WGSL may refuse a runtime index into a module-scope `const` array in some implementations. Tint copies it to a `var`. The probe of step 2.2 settles this.
+
+**The fallback if the table does not compile.** Take this path when one output refuses the table or reads another word. The outputs are WGSL, GLSL and the CPU oracle.
+
+1. Open an item in record 0006, "a module constant array indexed by a runtime value", with the failing output as its evidence. A compiler proposal follows by the compiler's procedure.
+2. Until that proposal lands, write `szColumn(d, k)` as a `select` tree over the 32 words of the dimension. The tree has no table and no index. The hit on speed is measured at step 2.4.
+3. If the tree is too slow, put the 128 words in the uniform block as `array<vec4u, 32>`. That is an amendment of record 0001 (the block grows by 512 bytes). Amendment C of "Amendments owed" is its text.
+
+### Why (part 2)
+
+The Sobol sequence gives `(0, 2)` stratification in each pair and nothing across pairs. A path's light point and BSDF direction are then strata of two separate pairs, and their product is not stratified. The SZ construction gives a four-dimensional group a joint stratification, at the same integer cost. The paper's claim, from the survey: error up to 1.93 times lower than a Sobol sequence of the same size. The survey does not say for which integrands. Inference: the gain on a path tracer is below the best case, because few integrands are smooth in all four dimensions. Step 2.4 measures it. The paper was not re-read for this record, and step 2.1 reads it.
+
+Alternatives. Keep Sobol and pad (the status quo). Use a blue-noise sampler with tables (Heitz et al. 2019): it covers eight dimensions and needs a binding, and no storage binding is free (record 0001, rule 1). Use base-3 sequences (Ostromoukhov et al. 2024): they do not fit the power-of-two caps (survey, "rest").
+
+### What it touches (part 2)
+
+- **Files.** `sampler.shade.ts` (`sample2`, the table, a new `sz`, the header comment). `trace.shade.ts` (`PAIRS_PER_BOUNCE`, `radiance` lines 167 to 183). A new script, `scripts/sz-matrices.ts`, that builds the table.
+- **Records.** Record 0005: the header comments only, because rule 1 is unchanged. Record 0001: nothing, unless the last fallback runs (Amendment C). Record 0006: one new item if the table does not compile.
+- **Gates.** The differential and determinism gates at their bounds. The render gate's goldens, all of them: every random number changes.
+- **Not touched.** `hash`, `hash2`, `laineKarras`, `owen`, `toUnit`. They are exact and they stay.
+
+### Steps (part 2)
+
+1. **Step 2.1: the matrices and the net test.** Read the paper (arXiv 2505.20434) and the construction of its matrices from 2 by 2 block symbols. Write `scripts/sz-matrices.ts`. It prints the 128 words as a TypeScript array literal. Add the literal to `sampler.shade.ts`. State the licence of any code or table taken from the paper in the pull request. Add the test "the first 4^m points of the four dimensions form a net". Take the property exactly as the paper defines it. Test `m` from 1 to 4. For each shape of the elementary intervals, check that each cell holds one point. Test each of the six pairs for `m` up to 12 in base 2. Verifies Design 0009.6. Done when the test passes. The pull request records the number of shapes and cells checked.
+2. **Step 2.2: the compile probe.** Compile a probe module with the table and a loop that reads `SZ[32 * d + k]` for a runtime `k`. Compile it for WGSL and for GLSL. Run it on the CPU oracle. Draw 256 values of `(index, d)` from the hash. The three outputs must give the same words. Record the three outputs and the diagnostics in the pull request. Run `bun run check:shaders` and the language service's `getDiagnostics` on `sampler.shade.ts`. Done when the three agree and there is no diagnostic. If they do not, take the fallback above and stop this step.
+3. **Step 2.3: `sample2` and the call sites.** Change `sample2` and `radiance` as "What changes" says. Update the comment of `PAIRS_PER_BOUNCE`. Test: for 4,096 indices, the pair `(0, 1)` of the group has the `(0, 2)` property for each aligned block of 2^m indices, `m` up to 10. The test reads the sampler through `compile()` on the CPU oracle and through the language service. Done when it passes and `determinism.test.ts` reports no new row.
+4. **Step 2.4: the numbers.** Record `bun run gate:differential` before and after for the four scenes. Run `bun run gate:determinism`. Rewrite the goldens with `UPDATE_GOLDENS=1 bun run gate:render` and show each pair of pictures. Run `bun run quality` on `cornell`, `triangles`, `instances` and `lights` at 16, 64, 256 and 1,024 samples, before and after. Record the samples to reach `E`, as step 1.4 defines it. Run `bun run bench` on `cornell` and add a row before and after, for the sampler's cost in `frame ms`. Done when the pull request shows these numbers.
+
+### Prove the instrument (part 2)
+
+1. **The net test fails on a wrong matrix.** Plant the fault of setting column 3 of dimension 2 to 0. The net test of step 2.1 must fail. The failure message names the shape of the elementary interval and the cell. The pull request names the shape.
+2. **The quality tool sees a correlated pair.** Plant the fault of using the first number of a pair as its second. The quality tool on `cornell` must give an error at 1,024 samples above the error of part 1's kernel. Inference: a pair read along its diagonal covers the square badly, so the error rises. Step 2.4 records the numbers.
