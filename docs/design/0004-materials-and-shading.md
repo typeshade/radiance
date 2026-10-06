@@ -112,7 +112,9 @@ export function evalBsdf(s: Surface, wo: vec3, wi: vec3): vec4; // f in xyz, pdf
 
 **The rules of the surface and of emission.** These rules state what the code of step 1 does
 (`emission` in `materials.shade.ts`, `surfaceAt` in `intersect.shade.ts` and `radiance` in
-`trace.shade.ts`):
+`trace.shade.ts`). One rule is the exception: the fold of a mirror sample in "A direction under
+the surface". The code of step 1 does not fold. Step 7 delivers the fold. That rule applies from
+the pull request that implements step 7. The rules follow:
 
 - **Which face emits.** `emission` returns 0 when bit 8 is not set. It returns 0 on the back
   face (`front` is false) when bit 9 is not set. Otherwise it returns `[1].xyz`, the same on both
@@ -144,12 +146,13 @@ export function evalBsdf(s: Surface, wo: vec3, wi: vec3): vec4; // f in xyz, pdf
   with `ng` of 0 or less.
   Inference: for a sample that is not specular, the second case acts only where `ns` differs from
   `ng`. The light that such a path would carry is lost. The loss of a sample that is not specular is
-  not measured. Amendment 2 measured the loss of a mirror sample, before the fold, on `main` 2f06d0e
-  with the pin 596c805. The mirror was the sphere of the Cornell box (`SphereGeometry`, 32 by 16
-  segments). The rule ended the path for 0.416 % of the area that the sphere covers. All of it lay
-  within about 5 degrees of the silhouette. The band is about 0.2 % of the radius. At 256 pixels,
-  the rim pixels were 6.4 % darker. At 768 pixels, and in the committed still `cornell-box.webp`,
-  the band was a line of 1 to 2 pixels, about 42 % dark. Inference: a perfect mirror on a closed
+  not measured. The investigations recorded in Amendment 2 measured the loss of a mirror sample,
+  before the fold, on `main` 2f06d0e with the pin 596c805. The mirror was the sphere of the
+  Cornell box (`SphereGeometry`, 32 by 16 segments). The rule ended the path for 0.416 % of the
+  area that the sphere covers. All of it lay within about 5 degrees of the silhouette. On that
+  configuration the band was about 0.2 % of the radius. At 256 pixels, the rim pixels were 6.4 %
+  darker. At 768 pixels, and in the committed still `cornell-box.webp` at eafc2e1, the band was a
+  line of 1 to 2 pixels, about 42 % dark. Inference: a perfect mirror on a closed
   convex surface always reflects into the half-space of the viewer. So the band comes from the
   shading normal and not from physics. A transmission sample goes under `ng` on purpose, so this
   rule does not hold for it. Step 2 states the end rule for a transmission sample.
@@ -275,8 +278,8 @@ optional and `dpdu` from the triangle is exact for a triangle). Texture atlases 
 - `src/renderers/scene-pack.ts` (the record's packer).
 - `packages/addons/src/loaders/GLTFLoader.ts` (`pbrMetallicRoughness` to `PhysicalMaterial`).
 - Tests: `materials.test.ts` on the oracle (a diffuse sample's weight equals its colour, a mirror
-  sample is the reflection above `ng`. `evalBsdf`'s pdf integrates to 1 over the hemisphere within 2
-  % by a 4,096-sample estimate. `emission` is zero on the back face). `scene-pack.test.ts` (the
+  sample is the reflection above `ng`. `evalBsdf`'s pdf integrates to 1 over the hemisphere, within
+  2 % by a 4,096-sample estimate. `emission` is zero on the back face). `scene-pack.test.ts` (the
   record's words). The `physical` differential scene (record 0002).
 - The site's guide page on materials. The API reference follows the JSDoc.
 - Step 6 touches the files below. It waits for an amendment of record 0001 if the owner chooses
@@ -351,10 +354,10 @@ optional and `dpdu` from the triangle is exact for a triangle). Texture atlases 
 6. The rules that Amendment 1 writes for the surface and for emission: a back face emits only
    for a material with bit 9, `Surface.p` is offset by `OFFSET` times the largest of 1 and the
    point's largest absolute coordinate, and `ns` falls back to `ng`. For a reflection lobe, the
-   path loop casts each ray from `p`. It ends a path whose sample is not specular and goes under
-   `ng`. Amendment 2 folds a mirror sample under `ng` back across `ng`. Only a mirror direction that
-   lies exactly in the surface still ends the path. Step 2 states the origin of a ray and the end
-   rule for a transmission sample.
+   path loop casts each ray from `p`. It ends a path whose sample is not specular and goes under or
+   into `ng`. Amendment 2 folds a mirror sample under `ng` back across `ng`. Of the mirror samples,
+   only one whose direction lies exactly in the surface still ends the path. Step 2 states the
+   origin of a ray and the end rule for a transmission sample.
 7. `Material.type` replaces `Material.kind`, and no `kind` stays (Amendment 1).
 8. At step 6, the six integer words of the material record move to `materialBits`, a
    `storage<array<vec4u>>` binding with 2 `vec4u` for each material. That changes six words of
@@ -399,12 +402,13 @@ changes the code or this record. The dispositions:
 **Amendment 2** (2026-10-06, UTC). Two investigations of the mirror sphere in the Cornell box
 measured the loss that "A direction under the surface" left unmeasured. The loss is a dark line at
 the silhouette of the sphere. This amendment changes the rule for a mirror sample and records the
-numbers. It changes five places. They are the rule itself, the mirror bullet of "The shading
-contract", "The path loop", decision 6 and the deviation "A direction under the surface". In "The
-path loop", it adds two sentences of facts and two of proposals. It adds step 7. It changes no code.
-The merge of the pull request that carries it is the owner's acceptance of the new rule. Decision 6
-is re-stated, and the merge accepts that text. The pull request that implements step 7 merges after
-it and carries a line of its own, `Design: 0004`. The fold is the smallest change that closes the
+numbers. It changes six places. They are the rule itself, the mirror bullet of "The shading
+contract", "The path loop", the Tests bullet of "What it touches", decision 6 and the deviation
+"A direction under the surface". In "The path loop", it adds two sentences of facts and two of
+proposals. It adds step 7. It changes no code. The merge of the pull request that carries it is the
+owner's acceptance of the new rule. Decision 6 is re-stated, and the merge accepts that text. The
+pull request that implements step 7 merges after it and carries a line of its own,
+`Design: 0004`. The fold is the smallest change that closes the
 band. The amendment proposes it, and step 7 states how the implementing pull request measures it.
 
 The configuration is `main` at 2f06d0e, the compiler pinned at 596c805, on 2026-10-06. This pull
@@ -417,10 +421,10 @@ observed result:
   degrees, 60 % at 1 degree and 49 % at 2 degrees. It is 27 % at 3 degrees, 9 % at 4 degrees and
   1.6 % at 5 degrees. It is 0 % at 6 degrees. An independent model
   (orthographic, 400,000 rays) gave 0.467 % at 0.9906 of the radius or more.
-- **What a reader sees.** The band is about 0.2 % of the radius. At 256 pixels it is under one
-  pixel, and the rim pixels are 6.4 % darker (ratio 0.936). At 768 pixels it is a line of 1 to 2
-  pixels, about 42 % dark. The committed still `site/public/stills/cornell-box.webp` shows the same
-  line.
+- **What a reader saw.** On the configuration above, the band was about 0.2 % of the radius. At
+  256 pixels it was under one pixel, and the rim pixels were 6.4 % darker (ratio 0.936). At 768
+  pixels it was a line of 1 to 2 pixels, about 42 % dark. The committed still
+  `site/public/stills/cornell-box.webp` at eafc2e1 showed the same line.
 - **The tessellation.** The investigations give the dark area at 256 pixels in pixel equivalents,
   the area measured in pixels. It is 18.8 at 32 by 16 segments, 5.56 at 64 by 32 and 0.94 at 128
   by 64.
@@ -431,8 +435,9 @@ observed result:
   shadow ray meets the sphere. So only BSDF sampling finds the light that reaches a diffuse surface
   by way of a mirror. At 256 samples a pixel, 78 % of the caustic pixels get no caustic sample. The
   estimate is unbiased: it is within 2 to 3 % of an independent photon estimate. No kernel clamps
-  it. The only clamps are the survival bound of Russian roulette, [0.05, 0.95], and the output tone
-  map. Multiple importance sampling at step 2 does not change this.
+  it. The only clamps on a throughput or a radiance value are the survival bound of Russian
+  roulette, [0.05, 0.95], and the output tone map. Multiple importance sampling at step 2 does not
+  change this.
 - **The size of the caustic.** The caustic of a convex mirror is faint and broad. The mirror adds
   15 to 21 % over a black sphere, about as much as a white diffuse sphere does. A focused caustic
   needs transmission (step 2, M3).
