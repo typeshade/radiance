@@ -84,6 +84,7 @@ export const en = {
       stillAlt: (title: string) => `${title}, rendered by the engine`,
       canvasLabel: (title: string) =>
         `${title}. Drag to orbit, right-drag to pan, scroll to zoom, double-click to reset.`,
+      canvasLabelFixed: (title: string) => `${title}. The picture the renderer draws.`,
     },
   },
   footer: {
