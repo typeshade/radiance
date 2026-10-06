@@ -93,6 +93,8 @@ export default async function sponza(canvas: HTMLCanvasElement): Promise<Example
 
   return {
     renderer,
+    controlsLabel:
+      'Drag to look, W A S D to move, Q and E to go down and up, Shift to go faster, F to switch to orbit.',
     get controls() {
       return swap.active;
     },

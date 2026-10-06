@@ -2,7 +2,7 @@
 //
 // | Input                          | Move                                           |
 // | ------------------------------ | ---------------------------------------------- |
-// | Drag; one-finger drag          | look around: yaw about world up, pitch clamped |
+// | Drag, one-finger drag          | look around: yaw about world up, pitch clamped |
 // | W and S                        | forward and back along the view direction      |
 // | A and D                        | strafe left and right                          |
 // | Q and E                        | down and up along world up                     |

@@ -11,6 +11,9 @@ export interface ExampleRun {
    *  false, and the path tracer goes on refining the frame the motion stopped on. When the canvas
    *  is off screen, the stage also stops the motion and pauses the tracer. */
   playing?: boolean;
+  /** What the controls do, when the stage's default sentence (orbit, pan, zoom, reset) is false for
+   *  this example. The stage puts the title before it and sets the result as the canvas label. */
+  readonly controlsLabel?: string;
   /** An element the example fills, for an example that has more to show than its canvas. The
    *  stage puts it under the canvas and over the toolbar, once the example runs. An example
    *  that sets the attribute `data-done` on the panel tells the stage, which then shows Done, and

@@ -35,17 +35,12 @@ function setup(): { camera: PerspectiveCamera; el: FakeElement; controls: FlyCon
   return { camera, el, controls };
 }
 
-const forward = (camera: PerspectiveCamera): Vector3 => {
-  const { x: p, y: w } = camera.rotation;
-  return new Vector3(-Math.sin(w) * Math.cos(p), Math.sin(p), -Math.cos(w) * Math.cos(p));
-};
-
 describe('FlyControls', () => {
   it('moves 3 units along the view direction after 1 s of KeyW at speed 3', () => {
     const { camera, el, controls } = setup();
     camera.position.set(1, 2, 3);
     camera.lookAt(new Vector3(4, 4, -3));
-    const dir = forward(camera);
+    const dir = new Vector3(4, 4, -3).sub(new Vector3(1, 2, 3)).normalize();
     controls.saveState();
     controls.movementSpeed = 3;
     key(el, 'keydown', 'KeyW');
