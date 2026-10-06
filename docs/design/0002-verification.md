@@ -82,7 +82,7 @@ row fails the test with the operation, its kind and the functions it is in.
 a pixel, seed 1, rendered on SwiftShader through `readPixels()` and written as PNG by the
 harness's own encoder. `UPDATE_GOLDENS=1 bun run gate:render` rewrites them, and the pull
 request that does so shows each old and new picture. The site's stills (`site/public/stills`)
-stay what they are: the picture a page shows, captured at 256 samples a pixel and hashed. They
+stay what they are: the picture a page shows, captured at 64 samples a pixel and hashed. They
 are not goldens.
 
 **The benchmark** is `scripts/bench.mjs`. It renders each benchmark scene for ten seconds at
@@ -119,7 +119,7 @@ job's. `bun run gate:<name>` runs one gate. `RADIANCE_CHROMIUM` names the browse
 - **The deploy failure.** Pull request #5: the site's build depended on a file another job had
   generated. A gate that runs the build from a clean state in `check` would have failed the
   pull request that introduced the dependency.
-- **A golden per example.** The stills are 256-sample pictures captured from the site, and a
+- **A golden per example.** The stills are 64-sample pictures captured from the site, and a
   change that shifts a picture by a bounce shows in the hash and not in the picture. A small
   golden compared within tolerance says what changed. The tolerance absorbs a SwiftShader
   update, and the update procedure shows the owner both pictures.
@@ -136,7 +136,7 @@ job's. `bun run gate:<name>` runs one gate. `RADIANCE_CHROMIUM` names the browse
   installed package is not the checked-out tree. The engine will be published. The gate exists
   before the first release, not after the first bad one.
 
-Alternatives considered: holding the stills themselves as goldens (too large, and 256 samples
+Alternatives considered: holding the stills themselves as goldens (too large, and 64 samples
 on SwiftShader take minutes per example). An exact golden comparison as the compiler's
 `gate:render` does (the compiler's scene is 48 x 48 of a closed-form SDF, a path tracer's
 picture moves by a bounce when the driver regroups an `inherited` operation, so a tolerance is
@@ -192,6 +192,13 @@ M3).
 ## Record
 
 **Approval and plan record.** Accepted on 2026-10-05 (UTC). The owner approved the merge of typeshade/radiance#6 in the conversation, which merged this record as `draft` at 9e8b479. The owner then said to implement the records with Opus 5.5 and Sonnet 5.5, and that go-ahead is the acceptance. Every entry of "Decisions for the owner" stands as proposed.
+
+**Amendment 1** (2026-10-06, UTC). The stills are captured at 64 samples a pixel, not 256. A still
+is the picture a page shows before its canvas runs, hashed and not held to a golden, so 64 samples
+are enough. Measured on 2026-10-06 (SwiftShader, 4 cores, pin 596c805): the triangle kernel traces
+about 15,000 paths a second, so one still of 718 x 450 pixels took about 45 minutes at 256 samples
+and takes about 11 minutes at 64. The three sentences of "What changes" and "Why" that named 256
+now name 64. The decisions do not change.
 
 **Configuration and validation record.** This record does not yet apply. Implementation will
 record each gate's first measured numbers, the pin, and the CI run that first ran it.
