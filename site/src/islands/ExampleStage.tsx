@@ -5,6 +5,13 @@
 // picture. An example that has more to show than its canvas hands the island a panel
 // (`ExampleRun.panel`), which the island puts between the canvas and the toolbar. `compact` is
 // the front page's form: the status floats over the canvas, no toolbar, no panel.
+//
+// The stage bounds the work a page does. An example that sets no `maxSamples` of its own gets
+// MAX_SAMPLES (MAX_SAMPLES_COMPACT on the front page). The frame converges, the status reads Done,
+// and the tracer dispatches nothing until the camera or the size changes. A canvas scrolled out of
+// view pauses its tracer and its motion until it is back (an IntersectionObserver), and a hidden
+// tab gets no animation frames from the browser. Pause on the toolbar is the viewer's and stays as
+// set through both.
 
 import { useEffect, useRef, useState } from 'react';
 import { Button, ConfigProvider, Tag, Tooltip, theme as antd } from 'antd';
@@ -41,6 +48,13 @@ interface Stats {
 }
 
 const ICON = { size: 16, strokeWidth: 1.5 } as const;
+
+/** The samples a pixel an example's page traces before its tracer idles. */
+const MAX_SAMPLES = 1024;
+/** The same on the front page, where the stage is a preview. */
+const MAX_SAMPLES_COMPACT = 256;
+/** The share of the canvas that must be in view for its tracer to run. */
+const IN_VIEW = 0.1;
 
 /** Whether the page is dark now, following Starlight's theme switch. */
 function useDark(): boolean {
@@ -124,6 +138,7 @@ export default function ExampleStage(props: { id: string; copy: StageCopy; compa
   const [animated, setAnimated] = useState(false);
   const [drawn, setDrawn] = useState(false);
   const [hasPanel, setHasPanel] = useState(false);
+  const [offscreen, setOffscreen] = useState(false);
 
   useEffect(() => {
     let stopped = false;
@@ -151,6 +166,8 @@ export default function ExampleStage(props: { id: string; copy: StageCopy; compa
           return;
         }
         run.current = r;
+        if (!Number.isFinite(r.renderer.maxSamples))
+          r.renderer.maxSamples = compact ? MAX_SAMPLES_COMPACT : MAX_SAMPLES;
         if (r.controls === undefined) canvas.setAttribute('aria-label', copy.canvasLabelFixed);
         if (r.panel !== undefined && panel.current !== null) {
           panel.current.replaceChildren(r.panel);
@@ -161,12 +178,26 @@ export default function ExampleStage(props: { id: string; copy: StageCopy; compa
         timer = window.setInterval(() => {
           const t = r.renderer;
           if (t.samples > 0) setDrawn(true);
-          setStats({
+          const next: Stats = {
             samples: t.samples,
             frameTime: t.info.frames > 0 ? t.info.frameTime : undefined,
             preview: t.scale !== 1,
-            done: r.panel?.hasAttribute('data-done') ?? false,
-          });
+            // An example with a panel says itself when its work is finished. Any other is
+            // finished when its tracer has reached its cap on a full frame.
+            done:
+              r.panel !== undefined
+                ? r.panel.hasAttribute('data-done')
+                : t.scale === 1 && t.samples >= t.maxSamples,
+          };
+          // The same numbers keep the same state, so a converged tracer does not render the toolbar.
+          setStats((s) =>
+            s.samples === next.samples &&
+            s.frameTime === next.frameTime &&
+            s.preview === next.preview &&
+            s.done === next.done
+              ? s
+              : next,
+          );
         }, 200);
       })
       .catch((e: unknown) => {
@@ -177,18 +208,35 @@ export default function ExampleStage(props: { id: string; copy: StageCopy; compa
       clearInterval(timer);
       run.current?.dispose();
       run.current = undefined;
+      // The next example sets `running` again, which applies Pause and the view to its renderer.
+      setRunning(false);
       panel.current?.replaceChildren();
     };
   }, [id]);
 
   // Pause stops what moves: an example's motion when it has one (the frame then refines), the
-  // path tracer's samples otherwise.
+  // path tracer's samples otherwise. Out of view, both stop.
   useEffect(() => {
     const r = run.current;
     if (!r) return;
-    if (r.playing !== undefined) r.playing = !paused;
-    else r.renderer.paused = paused;
-  }, [paused]);
+    if (r.playing !== undefined) {
+      r.playing = !paused && !offscreen;
+      r.renderer.paused = offscreen;
+    } else r.renderer.paused = paused || offscreen;
+  }, [paused, offscreen, running]);
+
+  useEffect(() => {
+    const el = holder.current;
+    if (el === null || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) setOffscreen(entry.intersectionRatio < IN_VIEW);
+      },
+      { threshold: [0, IN_VIEW] },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const onChange = (): void =>
@@ -206,7 +254,7 @@ export default function ExampleStage(props: { id: string; copy: StageCopy; compa
       ? copy.done
       : stats.preview
         ? copy.preview
-        : paused
+        : paused || offscreen
           ? copy.paused
           : copy.rendering;
   const colour = error ? 'error' : status === copy.rendering ? 'processing' : 'default';
