@@ -54,6 +54,26 @@ its `reqs/` included, into `node_modules/typeshade`, so `bun run reqs:sync` writ
 `.doorstop.skip-all` marker into each installed `node_modules`. `vendor/.doorstop.skip-all` is
 committed for the submodule.
 
+## Text that hangs the publisher
+
+`doorstop publish all` never ends on some item text. Doorstop 3.2 reads each line that starts with a bullet (`-`, `*` or `+`) or with a number and a period (`1.`) as a list line. It does so inside a code fence too. It keeps the state of bullets and of steps apart.
+
+An indented list line that no list line of its own kind has opened sets the list's indent step to zero. The publisher then loops at the end of the list. CI's `traceability (Doorstop)` job ran until the runner stopped on this (typeshade/radiance#14 and #29).
+
+`bun run reqs:sync` refuses such text, names the item and the line, and writes nothing (`doorstopListHazard` in `scripts/reqs-sync.ts`). The rule is as follows:
+
+- A list line at the margin always passes.
+- An indented list line passes only when the nearest list line above it has the same kind. A bullet nests under a bullet, and a step nests under a step.
+- A blank line, a code fence line or a line that starts with `<p>` ends the nearest list line. The first line inside a fence does not start one.
+
+The shapes the rule refuses, and the fix:
+
+1. Steps indented under a bullet, with no blank line between (`- text`, then `  1. step`). Write the steps at the margin, after a blank line.
+2. A bullet indented under steps. Write its words as a sentence of the step, or end the steps and start the bullets after a blank line.
+3. A list line in a code fence that starts with `*`, for example the continuation lines of a JSDoc block. Write the line so that it does not start with a bullet.
+
+`scripts/reqs.test.ts` holds the rule against the text of pull request #29, word for word, and against its near misses.
+
 ## The matrix
 
 `doorstop publish all <dir>` writes the documents and `traceability.csv` / `traceability.html`.
