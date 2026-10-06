@@ -26,9 +26,15 @@ export interface CornellBox {
  * on the right, a light just below the ceiling, a mirror sphere and a white one. The camera
  * looks in through the open side.
  *
+ * The lamp is two-sided: it emits the same colour from both faces (design record 0001, Emission).
+ * Its front face lights the room. Its back face lights the ceiling directly, so the ceiling is
+ * not lit by bounce alone, and the mirror sphere reflects a lit ceiling.
+ *
  * Every shape is triangles: the walls and the light are planes of two triangles each, and each
- * sphere is a `SphereGeometry` of three.js's default 32 by 16 segments, 960 triangles. It is the
- * scene CI renders on the GPU and on the CPU oracle (design record 0002).
+ * sphere is a `SphereGeometry` of 64 by 32 segments, 3,968 triangles. The segments are twice
+ * three.js's default of 32 by 16. So the outline of the mirror sphere has 64 sides, and each
+ * edge of its facets bends the reflection less. The scene pack holds 7,940 triangles, each shared
+ * geometry once. It is the scene CI renders on the GPU and on the CPU oracle (design record 0002).
  */
 export function createCornellBox(): CornellBox {
   const scene = new Scene();
@@ -36,6 +42,7 @@ export function createCornellBox(): CornellBox {
   const red = new DiffuseMaterial({ color: new Color(0.65, 0.05, 0.05) });
   const green = new DiffuseMaterial({ color: new Color(0.12, 0.45, 0.15) });
   const light = new EmissiveMaterial({ color: new Color(17, 12, 4) });
+  light.doubleSided = true;
   const wall = new PlaneGeometry(2, 2);
 
   const floor = new Mesh(wall, white);
@@ -56,9 +63,9 @@ export function createCornellBox(): CornellBox {
   lamp.position.set(0, 1.98, 0);
   lamp.rotation.x = Math.PI / 2;
 
-  const mirror = new Mesh(new SphereGeometry(0.4), new MirrorMaterial());
+  const mirror = new Mesh(new SphereGeometry(0.4, 64, 32), new MirrorMaterial());
   mirror.position.set(-0.45, 0.4, -0.35);
-  const ball = new Mesh(new SphereGeometry(0.4), white);
+  const ball = new Mesh(new SphereGeometry(0.4, 64, 32), white);
   ball.position.set(0.45, 0.4, 0.3);
 
   scene.add(floor, ceiling, back, left, right, lamp, mirror, ball);
