@@ -103,20 +103,27 @@ bun run gate:api        # the exports of each package equal packages/*/__api__/s
 bun run gate:site       # the site builds from the tree into dist/site, with the hash of each still checked
 bun run bake:api-surface # bake the exports again after an intended change to one of them
 bun run harness         # the gates and their probes on WebGPU, and the site (needs Chromium: npx playwright install chromium)
-bun run gate:differential  # one gate alone: the Cornell box on WebGPU and on the oracle (add `-- <scene>` for another scene)
 bun run bench           # the speed of each scene, one row each, for docs/benchmarks.md (no bound)
+bun run gate:differential  # one gate alone: the Cornell box on WebGPU and on the oracle (add `-- <scene>` for another scene)
 bun run gate:determinism   # one gate alone: two renders of one seed are bit-identical
 bun run gate:render        # one gate alone: each example's picture is within tolerance of its golden
 UPDATE_GOLDENS=1 bun run gate:render  # rewrite the goldens after an intended change to a picture
 doorstop -e -F          # the traceability tree (pip install doorstop==3.2 once; reqs/README.md)
 bun run site            # the site into dist/site; site:dev serves it while you edit
 bun run capture:stills  # the examples' stills, after a change to what an example draws
+RADIANCE_GPU=1 bun run capture:stills  # the same on this machine's GPU instead of SwiftShader
 ```
 
 A gate shows that it can fail before it is trusted to pass: the harness runs each gate's `probe()`.
 The probes of `gate:api` and `gate:site` need no browser, so `bun run test` runs them.
 
 The goldens change only on purpose. Run `UPDATE_GOLDENS=1 bun run gate:render`, look at each old and new picture, and commit the PNGs. The pull request shows both pictures of each one.
+
+A still of the triangle kernel takes about 45 minutes on SwiftShader and seconds on a GPU. The
+workflow `capture stills` (`.github/workflows/capture-stills.yml`) captures them on a self-hosted
+runner with the label `gpu`, on request from the Actions tab, and pushes the changed stills to the
+branch it ran on. It is not a required check. Its `examples` input names the example ids to
+capture, and an empty input captures every one.
 
 CI (`.github/workflows/ci.yml`) runs the same steps, and on a pull request also what a move of
 the compiler pin owes this repository (`compiler-bump`). `check:ste` runs the `asd-ste100` skill's

@@ -1,0 +1,62 @@
+name: capture stills
+
+# The examples' stills (site/public/stills) on a machine with a GPU. A still of the triangle
+# kernel takes about 45 minutes on SwiftShader and seconds on a GPU, so this runs on a
+# self-hosted runner with the label `gpu` (README.md, Checks), on request only: it is not a
+# required check, so a runner that is off holds nothing. It captures the stills, and commits and
+# pushes the ones that changed to the branch it ran on. A forked pull request cannot start it.
+
+on:
+  workflow_dispatch:
+    inputs:
+      examples:
+        description: 'The example ids to capture, separated by spaces. Empty captures every one.'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+concurrency:
+  group: capture-stills-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    name: capture stills (self-hosted GPU)
+    runs-on: [self-hosted, gpu]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: bun install --frozen-lockfile
+      - run: npx playwright install chromium
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: ''
+      - run: bun run site
+        env:
+          STILLS_REBASELINE: '1'
+      - run: node scripts/capture-stills.mjs ${{ inputs.examples }}
+        env:
+          RADIANCE_GPU: '1'
+          # Headless Chromium does not take the GPU: the window of the runner's desktop session does.
+          RADIANCE_HEADED: '1'
+      - name: commit the stills that changed
+        shell: bash
+        run: |
+          git add site/public/stills
+          if git diff --cached --quiet; then
+            echo "no still changed"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "site: capture the stills on the GPU runner" -m "Run ${{ github.run_id }} of capture-stills.yml, examples: '${{ inputs.examples }}'."
+          git push

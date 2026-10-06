@@ -23,7 +23,7 @@
 //   --timeout   Seconds one render may take before the run fails. Default 1800.
 //
 // Env: RADIANCE_CHROMIUM names a Chromium executable (the browsers Playwright installs are used
-// otherwise); RADIANCE_HEADED=1 shows the window.
+// otherwise). RADIANCE_HEADED=1 shows the window.
 //
 // What each column is:
 //

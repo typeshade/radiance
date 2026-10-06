@@ -103,10 +103,10 @@ The row at 512 x 512 comes from
 four cores shared with other jobs, so the numbers vary from run to run. The compiler pin was 596c805.
 The browser was Chromium 141.0.7390.37 on SwiftShader.
 
-The rows were measured on 2026-10-06 at commit 85cce4f of the branch `wt/B3`, in a clean tree: the
-`commit` column has no `-dirty` suffix. Commit 85cce4f is the parent of the commit that records the
-rows here, and that commit changes no script. The squash merge of the pull request gives `main`
-another hash, so `main` does not hold 85cce4f.
+The rows were measured on 2026-10-06 at commit 85cce4f on the branch of the pull request that
+delivers these rows, in a clean tree: the `commit` column has no `-dirty` suffix. Commit 85cce4f is
+the parent of the commit that records the rows here, and that commit changes no script. The squash
+merge of that pull request gives `main` another hash, so `main` does not hold 85cce4f.
 
 | date       | commit  | scene           | size    | spp | triangles | BVH ms | frame ms | paths/s | spp/s | device             | browser                |
 | ---------- | ------- | --------------- | ------- | --- | --------- | ------ | -------- | ------- | ----- | ------------------ | ---------------------- |
@@ -140,7 +140,7 @@ This is a speed on a software device and is not a measure of a GPU.
 
 ### Real GPU, the owner's machine
 
-This row is empty until the owner runs `bun run bench --gpu` and pastes the rows. Milestone M2's acceptance needs the `sponza` row at 1920 x 1080 from a real GPU (`docs/plan.md`, M2, and design record 0002, "The benchmark"). It is open. The command is `bun run bench --gpu --scene sponza --size 1920x1080`.
+This row is empty until the owner runs `bun run bench --gpu` and pastes the rows.
 
 | date | commit | scene | size | spp | triangles | BVH ms | frame ms | paths/s | spp/s | device | browser |
 | ---- | ------ | ----- | ---- | --- | --------- | ------ | -------- | ------- | ----- | ------ | ------- |
