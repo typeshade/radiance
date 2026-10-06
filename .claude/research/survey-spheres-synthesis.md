@@ -60,10 +60,10 @@ renderers subdivide or displace before building the BVH instead.
 
 A. Keep the mesh and the fold (current). Standard. Facet artefacts in curved mirrors stay.
 B. Add a terminator shadowing term (Chiang 2019) and a shadow-ray offset (Hanika 2021): the
-   production fixes for coarse meshes, affects diffuse shading and shadows, not mirror
-   reflections. Record 0004 amendment, kernel and oracle.
+production fixes for coarse meshes, affects diffuse shading and shadows, not mirror
+reflections. Record 0004 amendment, kernel and oracle.
 C. Add an analytic sphere primitive: the research-renderer answer, exact ng = ns, no mismatch.
-   Record 0001 (a new primitive kind in the buffers and the BVH leaf), 0004 (ns = ng), the
-   oracle, and determinism (a quadratic is deterministic). Plan M6 names SDF; an analytic sphere
-   is simpler and can come first.
+Record 0001 (a new primitive kind in the buffers and the BVH leaf), 0004 (ns = ng), the
+oracle, and determinism (a quadratic is deterministic). Plan M6 names SDF; an analytic sphere
+is simpler and can come first.
 D. `flatShading` switch: honest facets, cheap, record 0004 one line.

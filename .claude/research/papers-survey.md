@@ -57,23 +57,25 @@
    - https://diglib.eg.org/handle/10.1111/cgf14347
 
 10. **Firefly Removal in Monte Carlo Rendering with Adaptive Median of meaNs (G-MoN)** (Jerome Buisine et al., EGSR 2021 (Symposium Track), 2021)
-   - Why: It removes the mirror and caustic fireflies before any denoiser sees them, with no atomics and a consistent estimate.
-   - Milestone: quality wave before M3 (plan section 7 puts firefly handling at M1 and M4). Depth: kernel plus record amendment. Cost: small.
-   - Detail: Record 0001 (the accumulator becomes k buckets in its one buffer). Choose the bucket by frame index, not sample index. Then each frame still writes once (record 0005 rule 4), and the write stays outside the sample loop (record 0007 rule 3). The present pass computes the median and the Gini blend. M5 fitting reads the plain mean.
-   - https://diglib.eg.org/handle/10.2312/sr20211296
+
+- Why: It removes the mirror and caustic fireflies before any denoiser sees them, with no atomics and a consistent estimate.
+- Milestone: quality wave before M3 (plan section 7 puts firefly handling at M1 and M4). Depth: kernel plus record amendment. Cost: small.
+- Detail: Record 0001 (the accumulator becomes k buckets in its one buffer). Choose the bucket by frame index, not sample index. Then each frame still writes once (record 0005 rule 4), and the write stays outside the sample loop (record 0007 rule 3). The present pass computes the median and the Gini blend. M5 fitting reads the plain mean.
+- https://diglib.eg.org/handle/10.2312/sr20211296
 
 11. **Efficient Incoherent Ray Traversal on GPUs Through Compressed Wide BVHs** (Henri Ylitie et al., HPG, 2017)
-   - Why: It is the best software traversal without RT cores: about 2x on incoherent secondary rays, which buys about 2x spp at equal time.
-   - Milestone: quality wave before M3 (performance). Depth: kernel plus record amendment. Cost: medium.
-   - Detail: Record 0001 fixes the node layout from M2 through M3, so changing it needs an amendment. The host collapses the SAH BVH into 8-wide nodes. The BLAS loop uses countOneBits and firstLeadingBit (both in the surface) and bitcast from an array<vec4u>. Break ties in t by primitive index.
-   - https://research.nvidia.com/publication/2017-07_efficient-incoherent-ray-traversal-gpus-through-compressed-wide-bvhs
+
+- Why: It is the best software traversal without RT cores: about 2x on incoherent secondary rays, which buys about 2x spp at equal time.
+- Milestone: quality wave before M3 (performance). Depth: kernel plus record amendment. Cost: medium.
+- Detail: Record 0001 fixes the node layout from M2 through M3, so changing it needs an amendment. The host collapses the SAH BVH into 8-wide nodes. The BLAS loop uses countOneBits and firstLeadingBit (both in the surface) and bitcast from an array<vec4u>. Break ties in t by primitive index.
+- https://research.nvidia.com/publication/2017-07_efficient-incoherent-ray-traversal-gpus-through-compressed-wide-bvhs
 
 12. **Screen-Space Blue-Noise Diffusion of Monte Carlo Sampling Error via Hierarchical Ordering of Pixels (ZSobol)** (Abdalla G. M. Ahmed et al., ACM TOG 39(6), SIGGRAPH Asia, 2020)
-   - Why: A scrambled Morton index turns low-spp error into blue noise. The site preview looks cleaner, and a later denoiser removes the noise more easily.
-   - Milestone: quality wave before M3. Depth: kernel. Cost: small.
-   - Detail: Only the sample index in sampler.shade.ts changes. The blue-noise property needs a power-of-two spp budget known in advance. The site's caps (1,024 and 256) already are one.
-   - https://doi.org/10.1145/3414685.3417881
 
+- Why: A scrambled Morton index turns low-spp error into blue noise. The site preview looks cleaner, and a later denoiser removes the noise more easily.
+- Milestone: quality wave before M3. Depth: kernel. Cost: small.
+- Detail: Only the sample index in sampler.shade.ts changes. The blue-noise property needs a power-of-two spp budget known in advance. The site's caps (1,024 and 256) already are one.
+- https://doi.org/10.1145/3414685.3417881
 
 ## rest
 
