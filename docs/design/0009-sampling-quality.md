@@ -38,7 +38,7 @@ compiler: []
 
 ## What changes
 
-The owner approved a quality wave on 2026-10-06. Six techniques from the papers survey make the path tracer converge faster or look cleaner at the same sample count. This record writes each one as a part. A part has its own steps, so an agent can implement and merge it alone. The six parts change no public export. Parts 1 to 5 change the kernels' random numbers or estimators, so they change the images.
+The owner approved a quality wave on 2026-10-06. Six techniques from the papers survey make the path tracer converge faster or look cleaner at the same sample count. This record writes each one as a part. A part has its own steps, so an agent can implement and merge it alone. Five parts change no public export. Part 4 adds one member to `PathTracer` (decision 11). Parts 1, 2, 3 and 5 change the kernels' random numbers or estimators, so they change the images. Part 4 changes the image on the canvas only when the filter is on. Part 6 changes no image.
 
 ### Before
 
@@ -291,3 +291,70 @@ Alternatives. A tabulated Blackman-Harris or Mitchell inverse CDF in the uniform
 
 1. **The moment test fails on a wrong radius.** Plant the fault `FILTER_RADIUS = 1.1`. The variance test must fail with the measured variance in its message. Plant the fault of dropping the `select`, so the left branch serves all `u`. The distribution test must fail at the first check above 0.5.
 2. **The edge-width number moves.** Set `FILTER_RADIUS` to 0, a point filter. The edge width must fall below the box's width. At 1 it must rise above the box's width. The pull request records the widths at 0, 0.5 and 1.
+
+## Part 4: G-MoN firefly removal with k buckets in the accumulator
+
+### What changes (part 4)
+
+The accumulator `accum` holds k buckets for each pixel, in its one buffer. The samples of one frame go to one bucket, chosen by the frame index. The present pass can show the median of the bucket means, blended with the plain mean by the Gini coefficient of the bucket means. This is G-MoN (Buisine et al. 2021). The plain mean stays readable, and it is the default output.
+
+**Before.** `accum` is one `vec4` for each pixel: the sum of the radiance and the sample count in `w` (`trace.shade.ts`, line 66). `trace` writes it once for each frame, with `accum[pixel] += vec4(sum, f32(params.frame.w))` (line 221). `show` reads one `vec4` and divides (lines 243 to 250). `PresentParams` is one `vec4`, `view`, and its `w` is unused (lines 47 to 54). `scene-pack.ts` writes `path: [o.bounces, o.rouletteFrom, 0, 0]` (line 376), so `path.z` and `path.w` are 0. The host clears `accum` at a reset (`PathTracer.ts`, line 234). `readRadiance` divides each cell by its count (lines 298 to 308).
+
+**After.** These are the contract and the code that follows from it.
+
+- **The layout in bytes.** An element of `accum` is still one `vec4` of 16 bytes: `(sum r, sum g, sum b, count)`. The element of bucket `b` of the pixel `p` is at index `b * pixels + p`. Here `pixels` is `params.frame.x * params.frame.y`, the pixels of the traced frame, and `p = py * width + px`. A bucket is one contiguous region, so the adjacent invocations of a tile write adjacent elements, as they do now.
+- **The count of buckets, k.** The host sets `k = min(GMON_BUCKETS, floor(134,217,728 / (width * height * 16)))`. `GMON_BUCKETS` is 8 and sits in `layout.shade.ts` beside `ACCUM_STRIDE`. The buffer is `k * width * height * 16` bytes. It never passes the storage binding limit, and the check of `#allocate` (line 343) stays. A frame of more than 8,388,608 pixels still throws, as it does now. Below four buckets the median means too little, so `GMON_MIN_BUCKETS` is 4, and the G-MoN output is then the plain mean. Decision 10 holds these numbers.
+- **The cost in memory.** These are arithmetic.
+
+| Frame     | Pixels    | k   | `accum` bytes | `accum` bytes today |
+| --------- | --------- | --- | ------------- | ------------------- |
+| 1024x1024 | 1,048,576 | 8   | 134,217,728   | 16,777,216          |
+| 1280x720  | 921,600   | 8   | 117,964,800   | 14,745,600          |
+| 1920x1080 | 2,073,600 | 4   | 132,710,400   | 33,177,600          |
+| 3840x2160 | 8,294,400 | 1   | 132,710,400   | 132,710,400         |
+
+- **The uniform words.** `path.z` is the bucket the dispatch writes. `path.w` stays free for part 5. Both words were "flags (0), unused". `TraceParams` keeps its 144 bytes. `PresentParams` gains `accum: vec4u = (k, mode, pixels, 0)`, and it grows from 16 to 32 bytes. Mode 0 shows the plain mean. Mode 1 shows the G-MoN output. Decision 14 holds this choice.
+- **The write.** `trace` writes `accum[params.path.z * pixels + pixel] += vec4(sum, f32(params.frame.w))`. It is still one write for each pixel in each frame, outside the sample loop. No two invocations write one element. Rule 4 of record 0005 holds.
+- **The bucket.** The host counts the frames since the last reset, in a new private field `#frames` of `PathTracer`. The bucket of a frame is `#frames % k`. The first frame has one sample and the number 0, so it goes to bucket 0. Decision 12 holds this choice.
+- **The plain mean.** `show` in mode 0 adds the `k` elements of the pixel in bucket order, then divides. `readRadiance` adds them in bucket order in f64 and then divides. Both give the same value as today up to the order of float additions. The goldens and the differential gate read the plain mean. Inference: no golden changes, because a difference of one unit in the last place does not move an 8-bit value except by chance. Step 4.4 measures it.
+- **The G-MoN output.** `show` in mode 1 reads the `k` elements. It skips a bucket whose count is 0. Let `m` be the count of the other buckets. When `m` is under `GMON_MIN_BUCKETS`, the output is the plain mean. Otherwise it is `mix(plain, median, w)`, where `median` is the median of the `m` bucket means, channel by channel, and `w` is the blend weight. A mean of an even count takes the mean of the two middle values.
+- **The contract of the blend.** The weight `w` is in `[0, 1]`. These four properties hold for the output, and the test of step 4.1 holds them. P1: when the `m` means are equal, the output is the plain mean, bit for bit. P2: when one mean has at least 10 times the luminance of each other mean, the output is the median of the means. P3: the output is continuous in the means. P4: each channel of the output lies between the smallest and the largest bucket mean.
+- **The default formula.** Fact: the survey says that G-MoN blends the plain mean and the median of the bucket means (Top 12, item 10). The weight comes from the Gini coefficient of the buckets. The survey gives no formula. Proposal: `gn = G * m / (m - 1)`. Here `G` is the Gini coefficient of the luminances of the `m` means. Sort them upward, then `G = sum((2 i - m - 1) x_i) / (m * sum(x_i))`. When the sum is 0, `G` is 0. Then `w = smoothstep(GMON_G_LOW, GMON_G_HIGH, gn)`, with `GMON_G_LOW` 0.25 and `GMON_G_HIGH` 0.5. Arithmetic: seven means of 1 and one of 10 give `gn` of 0.53, so `w` is 1. Seven means of 1 and one of 3 give `gn` of 0.2, so `w` is 0. Decision 13 holds this choice, and step 4.1 reads the paper and replaces the formula where the paper differs.
+- **The sort.** The median and `G` need the means in order. A fixed network of 19 compare and exchange steps sorts eight values with `min` and `max`. A bucket that does not count takes the value 3.0e38, so it sorts last. The median and `G` read the sorted values by `select`, as `pick` does in `intersect.shade.ts`. No loop bound and no index depends on a float. Rule 2 of record 0005 holds.
+- **The public member.** `PathTracer` gains `fireflyFilter: boolean`, default `false`. It sets the mode of `PresentParams`. It changes no kernel and no accumulation. Record 0003 owes an amendment for the new member (Amendment F), and `gate:api` changes its bake. Decision 11 holds this choice.
+- **The split.** Rule 4 says that the bits of the plain mean depend on the split of the samples into frames. The G-MoN output depends on the split more. A different split puts different samples into each bucket, so the median moves by more than a rounding. Fact: the same seed, device and split give the same output. Inference: two splits of one seed give two outputs that agree only within the noise of the buckets.
+- **The oracle.** The oracle renders all samples as one frame (`oracle.ts`, lines 68 to 75). It writes bucket 0 only, and it needs `width * height` cells as now. The G-MoN output has no oracle image. The pure function of step 4.1 has an oracle test instead.
+
+### Why (part 4)
+
+One sample of very large radiance, a firefly, sits in the mean for the rest of the render. The mean of the bucket that holds it is large, and the median of the bucket means ignores it. The paper's claim, from the survey: the filter removes the fireflies before any denoiser sees them. It needs no atomics, and a converged pixel keeps its unbiased mean. The survey also says that the median is biased for a finite count of samples. So the plain mean stays the default, and fitting (milestone M5) reads the plain mean. This record has not read the paper's numbers. Step 4.1 reads it.
+
+Alternatives. Clamp each sample's radiance: simple, and it adds bias at every pixel. Reweight firefly samples (Zirr et al. 2018): the survey lists it as a candidate to compare. This record does not compare. Add a second buffer for the buckets: no storage binding is free (record 0001, rule 1). Choose the bucket by the sample index: it needs one write for each sample and breaks rule 4.
+
+### What it touches (part 4)
+
+- **Files.** `layout.shade.ts` (`GMON_BUCKETS`, `GMON_MIN_BUCKETS`, the thresholds). `trace.shade.ts` (`PresentParams`, the write at line 221, `show`). A new `gmon.shade.ts` for the sort, the median and the weight. `PathTracer.ts` (`#allocate`, `#frames`, `render`, `readRadiance`, `#present`, the member). `scene-pack.ts` (the `path` word). `internal.ts` (the new constants).
+- **Records.** Record 0001: the layout of `accum` and of `PresentParams` (Amendment D). Record 0005: rule 4 and the split (Amendment E). Record 0003: the new member (Amendment F). Record 0002: the new determinism check and the gate's reading of the plain mean (Amendment G).
+- **Gates.** `gate:render`, `gate:differential` and `gate:determinism` read the plain mean and keep their bounds. `gate:api` changes its bake. The determinism gate gains one check (step 4.3).
+- **Tests.** `layout.test.ts` (the 32 bytes of `PresentParams`, the constants). A new `gmon.test.ts`. A new test of the buckets in `kernels.test.ts`.
+- **Not touched.** The goldens. The sampler. The traversal.
+
+### Steps (part 4)
+
+1. **Step 4.1: the pure function and its test.** Read Buisine et al. (2021). Write `gmon.shade.ts`: the sort, the median, the weight and the blend. Write the paper's formula into its comments if it differs from the default. Test through `compile()` on the oracle and through the language service (`getDiagnostics`):
+   - P1 to P4 on the cases above, and on 4,096 means drawn from the hash.
+   - The two cases of arithmetic: `gn` of 0.53 gives `w` of 1, and `gn` of 0.2 gives `w` of 0.
+   - A bucket with count 0 changes no output. Verifies Design 0009.13.
+     Done when the tests pass and `determinism.test.ts` reports no new row.
+2. **Step 4.2: the layout and the host.** Add the constants, change the write in `trace`, and add `#frames`, `k` and the sums to `PathTracer`. Change `PresentParams`. Keep mode 0 as the only mode in use. Tests:
+   - After 16 frames of 4 samples with `k` of 8, each bucket holds 2 frames. Each count is 8. Verifies Design 0009.12.
+   - `readRadiance` with `k` of 8 and with `k` of 1 agree within 1e-5 relative, on the same seed and split. Verifies Design 0009.10.
+   - A frame of 2,073,600 pixels gets `k` of 4, and a frame of 8,294,400 gets 1. Done when the tests pass.
+3. **Step 4.3: the present pass and the member.** Add mode 1 to `show` and the member `fireflyFilter`. Bake the API surface with `bun run gate:api`. Add the check to the determinism gate: two renders with the filter on, one seed and one split, give the same `readPixels` bits. Done when `bun run gate:determinism` passes.
+4. **Step 4.4: the numbers.** Run `bun run gate:differential` before and after. Record `mean`, `largest` and `outOfBounds` of each scene. Run `bun run gate:render` with no golden rewritten. Run `bun run quality` on `cornell` and `lights` with the plain mean and with the filter at 16, 64, 256 and 1,024 samples. Record two more numbers. First, the share of pixels whose luminance is over 10 times the reference at 64 samples, for both outputs. Second, the mean relative difference of the two outputs at 1,024 samples, which is the bias. Done when the pull request shows the table.
+
+### Prove the instrument (part 4)
+
+1. **The test sees a wrong median.** Plant the fault of reading the same sorted value for both middle values. P1 must pass and P2 must fail with the case named. Plant the fault of writing every frame to bucket 0. The count test of step 4.2 must fail with the counts in its message.
+2. **The quality tool sees a firefly.** Plant a fault in a scratch branch. Add 10,000 to the radiance of a path whose hash is under 1 in 4,096. The plain mean's error at 256 samples must rise above the unfaulted error. The filter's error must stay under the plain mean's error. The pull request records the three numbers. Inference: the fault's share of the radiance is large enough to show at 16 by 16 pixels. Step 4.4 measures it.
+3. **The gates stay blind to the filter.** With the filter on, `bun run gate:render` must give the same result as with it off. The mode is read from `PresentParams`, and the goldens use mode 0.
