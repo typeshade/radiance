@@ -110,12 +110,19 @@ UPDATE_GOLDENS=1 bun run gate:render  # rewrite the goldens after an intended ch
 doorstop -e -F          # the traceability tree (pip install doorstop==3.2 once; reqs/README.md)
 bun run site            # the site into dist/site; site:dev serves it while you edit
 bun run capture:stills  # the examples' stills, after a change to what an example draws
+RADIANCE_GPU=1 bun run capture:stills  # the same on this machine's GPU instead of SwiftShader
 ```
 
 A gate shows that it can fail before it is trusted to pass: the harness runs each gate's `probe()`.
 The probes of `gate:api` and `gate:site` need no browser, so `bun run test` runs them.
 
 The goldens change only on purpose. Run `UPDATE_GOLDENS=1 bun run gate:render`, look at each old and new picture, and commit the PNGs. The pull request shows both pictures of each one.
+
+A still of the triangle kernel takes about 45 minutes on SwiftShader and seconds on a GPU. The
+workflow `capture stills` (`.github/workflows/capture-stills.yml`) captures them on a self-hosted
+runner with the label `gpu`, on request from the Actions tab, and pushes the changed stills to the
+branch it ran on. It is not a required check. Its `examples` input names the example ids to
+capture, and an empty input captures every one.
 
 CI (`.github/workflows/ci.yml`) runs the same steps, and on a pull request also what a move of
 the compiler pin owes this repository (`compiler-bump`). `check:ste` runs the `asd-ste100` skill's
