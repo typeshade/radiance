@@ -32,6 +32,37 @@ export const GATE = { size: [16, 16], samples: 1024, perFrame: 64, seed: 1 };
  */
 export const ORACLE = { abs: 1e-3, rel: 0.05, mean: 2e-5 };
 
+/**
+ * The differential gate's scenes of M2 (docs/design/0002-verification.md, "The differential
+ * scenes"): `triangles`, `instances` and `lights`, each 16 x 16 at 256 samples a pixel. At that size
+ * the oracle renders one in 20 to 38 seconds on a four-core machine, 20 seconds when it is lightly
+ * loaded and 38 seconds at a load average of 9 (`lights`, measured on 2026-10-06, SwiftShader).
+ * The gate takes 36 to 48 seconds for a scene at that load. The three scenes with their determinism
+ * renders add under 3 minutes to the harness.
+ */
+export const GATE_M2 = { size: [16, 16], samples: 256, perFrame: 64, seed: 1 };
+
+/**
+ * The bounds of the scene `triangles` (a sphere of 12 x 8 segments and a box). Derived by record
+ * 0002's rule on 2026-10-06 (SwiftShader, pin 596c805): the mean relative difference was 1.52e-7
+ * and the largest difference 2.38e-7, so `mean` is ten times the measured mean, rounded up, and
+ * `abs` and `rel` stay M1's.
+ */
+export const ORACLE_TRIANGLES = { abs: 1e-3, rel: 0.05, mean: 1.6e-6 };
+
+/**
+ * The bounds of the scene `instances` (one geometry in four instances, one scaled non-uniformly
+ * under a turn, one mirrored).
+ * Derived the same way: the mean was 2.19e-7 and the largest difference 8.20e-7.
+ */
+export const ORACLE_INSTANCES = { abs: 1e-3, rel: 0.05, mean: 2.2e-6 };
+
+/**
+ * The bounds of the scene `lights` (three emissive triangles of different areas and colours).
+ * Derived the same way: the mean was 1.73e-7 and the largest difference 2.03e-6.
+ */
+export const ORACLE_LIGHTS = { abs: 1e-3, rel: 0.05, mean: 1.8e-6 };
+
 /** Half floats carry 11 bits of mantissa: what the display gate admits per channel. */
 export const HALF = 2e-3;
 

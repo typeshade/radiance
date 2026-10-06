@@ -58,7 +58,8 @@ and a 1024 spp render on WebGPU is within tolerance of the CPU oracle's render o
 kernel. Milestone **M2** is in progress. The kernel draws triangle meshes through a two-level
 BVH, behind the material record and the shading contract (design records 0001 and 0004). The
 `GLTFLoader` reads `.gltf` and `.glb` files, and the `bunny` example draws the Stanford bunny from
-one. Sponza and the benchmark scenes come next.
+one. The `sponza` example draws the Sponza atrium without its textures. `bun run bench` measures the
+speed of each scene, and `docs/benchmarks.md` holds the rows.
 
 ## Layout
 
@@ -66,19 +67,20 @@ one. Sponza and the benchmark scenes come next.
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `vendor/typeshade`           | The compiler, pinned as a git submodule. Every package is built on its public `typeshade/runtime` exports and nothing else.                                                                                                |
 | `packages/radiance`          | `@typeshade/radiance`: the engine. The math, the scene graph, cameras, geometries, materials, `Scene`, and the `PathTracer` renderer. Its kernels in TypeShade under `src/kernels` (`trace.shade.ts`, `sampler.shade.ts`). |
-| `packages/addons`            | `@typeshade/radiance-addons`: `OrbitControls`, `GLTFLoader` and the Cornell box scene.                                                                                                                                     |
+| `packages/addons`            | `@typeshade/radiance-addons`: `OrbitControls`, `GLTFLoader`, the Cornell box scene and the differential scenes.                                                                                                            |
 | `site/`                      | radiance.typeshade.dev: Starlight (the guide, the search, the API reference from the packages' JSDoc), the front page and the examples (`site/examples`), built by `bun run site` into `dist/site`.                        |
 | `site/public/stills`         | One still per example, the picture a page shows before its canvas runs, with a `.sha256` the build checks. `bun run capture:stills` captures them.                                                                         |
 | `scripts/boundary.mjs`       | The check that no package imports past `typeshade/runtime` or calls WebGPU itself.                                                                                                                                         |
 | `scripts/gates/api.mjs`      | The api gate. `bun run bake:api-surface` (`scripts/bake-api-surface.ts`) writes the exports of each package to `packages/*/__api__/surface.md`. The gate fails when a fresh bake differs.                                  |
 | `scripts/gates/site.mjs`     | The site gate. `bun run gate:site` builds the site from the tree with `bun run site`, so the build checks the hash of each still. It fails when the build exits with a code other than 0.                                  |
 | `scripts/gates.mjs`          | The bounds CI holds the engine to. The site prints the same numbers.                                                                                                                                                       |
-| `scripts/harness.mjs`        | The Cornell box and every example in headless Chromium on SwiftShader, held to their gates and probes. The site's Cornell box example runs under the mouse. Writes `.harness/cornell.png` and `.harness/site.png`.         |
+| `scripts/harness.mjs`        | The differential scenes and every example in headless Chromium on SwiftShader, held to their gates and probes. The site's Cornell box example runs under the mouse. Writes `.harness/cornell.png` and `.harness/site.png`. |
+| `scripts/bench.mjs`          | The benchmark. It prints a row of triangles, BVH time, frame time and paths a second for each scene. `docs/benchmarks.md` holds the rows.                                                                                  |
 | `scripts/gates/`             | One module for each gate: `differential.mjs`, `determinism.mjs` and `render.mjs`. Each exports `run()` and `probe()`. `_browser.mjs` and `_png.mjs` are shared by the gates and the harness.                               |
 | `scripts/__goldens__`        | One PNG for each example, 96 x 64 at 64 samples a pixel. The render gate holds the example's picture to it. `UPDATE_GOLDENS=1 bun run gate:render` rewrites them.                                                          |
-| `site/public/assets`         | The assets the examples load, such as `bunny.glb`. `LICENSES.md` lists the source, the licence and the SHA-256 of each one.                                                                                                |
+| `site/public/assets`         | The assets the examples load, such as `bunny.glb` and `sponza.glb`. `LICENSES.md` lists the source, the licence and the SHA-256 of each one.                                                                               |
 | `scripts/assets`             | One script for each asset. The script builds the file again from its public source (`node scripts/assets/bunny.mjs --check`).                                                                                              |
-| `scripts/scenes.ts`          | The scene table. The harness page and the oracle build each scene from it. The Cornell box is its one entry.                                                                                                               |
+| `scripts/scenes.ts`          | The scene table. The harness page and the oracle build each scene from it. It holds the Cornell box and the scenes `triangles`, `instances` and `lights`.                                                                  |
 | `scripts/oracle.ts`          | The path tracer's kernel on the compiler's CPU oracle, over the same scene pack the renderer uploads. It splits the frame over up to four processes (`RADIANCE_ORACLE_JOBS`).                                              |
 | `scripts/shade-plugin.ts`    | The `*.shade.ts` loader for `bun build` and `bun test`, from the compiler's Vite plugin.                                                                                                                                   |
 | `DESIGN.md`, `PRODUCT.md`    | The site's design system (Vapor UI's tokens) and its product brief, read by the design skills under `.claude/skills`.                                                                                                      |
@@ -101,19 +103,27 @@ bun run gate:api        # the exports of each package equal packages/*/__api__/s
 bun run gate:site       # the site builds from the tree into dist/site, with the hash of each still checked
 bun run bake:api-surface # bake the exports again after an intended change to one of them
 bun run harness         # the gates and their probes on WebGPU, and the site (needs Chromium: npx playwright install chromium)
-bun run gate:differential  # one gate alone: the Cornell box on WebGPU and on the oracle
+bun run bench           # the speed of each scene, one row each, for docs/benchmarks.md (no bound)
+bun run gate:differential  # one gate alone: the Cornell box on WebGPU and on the oracle (add `-- <scene>` for another scene)
 bun run gate:determinism   # one gate alone: two renders of one seed are bit-identical
 bun run gate:render        # one gate alone: each example's picture is within tolerance of its golden
 UPDATE_GOLDENS=1 bun run gate:render  # rewrite the goldens after an intended change to a picture
 doorstop -e -F          # the traceability tree (pip install doorstop==3.2 once; reqs/README.md)
 bun run site            # the site into dist/site; site:dev serves it while you edit
 bun run capture:stills  # the examples' stills, after a change to what an example draws
+RADIANCE_GPU=1 bun run capture:stills  # the same on this machine's GPU instead of SwiftShader
 ```
 
 A gate shows that it can fail before it is trusted to pass: the harness runs each gate's `probe()`.
 The probes of `gate:api` and `gate:site` need no browser, so `bun run test` runs them.
 
 The goldens change only on purpose. Run `UPDATE_GOLDENS=1 bun run gate:render`, look at each old and new picture, and commit the PNGs. The pull request shows both pictures of each one.
+
+A still of the triangle kernel takes about 45 minutes on SwiftShader and seconds on a GPU. The
+workflow `capture stills` (`.github/workflows/capture-stills.yml`) captures them on a self-hosted
+runner with the label `gpu`, on request from the Actions tab, and pushes the changed stills to the
+branch it ran on. It is not a required check. Its `examples` input names the example ids to
+capture, and an empty input captures every one.
 
 CI (`.github/workflows/ci.yml`) runs the same steps, and on a pull request also what a move of
 the compiler pin owes this repository (`compiler-bump`). `check:ste` runs the `asd-ste100` skill's

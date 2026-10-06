@@ -39,10 +39,8 @@ export default async function sceneGraph(canvas: HTMLCanvasElement): Promise<Exa
   const controls = new OrbitControls(camera, canvas);
   controls.target.copy(target);
   controls.targetBounds = bounds;
-  controls.minAzimuthAngle = -0.5;
-  controls.maxAzimuthAngle = 0.5;
-  controls.minPolarAngle = Math.PI / 2 - 0.45;
-  controls.maxPolarAngle = Math.PI / 2 + 0.45;
+  controls.minDistance = 0.05;
+  controls.maxDistance = 50;
   controls.update();
   controls.saveState();
 

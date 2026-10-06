@@ -84,6 +84,13 @@ Each task runs in the order of a maintenance task card:
 5. Record what was done, on which configuration, what was verified and what remains open.
 6. Report the status of every request to the owner.
 
+## Delegating to a sub-agent
+
+The owner's rule, given on 2026-10-06: call a sub-agent with the model `opus` or `sonnet` only.
+Never let a sub-agent inherit the session's own model. The session's model is too costly for
+delegated work. Opus reviews. Sonnet implements and researches. This applies to the Agent tool
+and to each `agent()` call of a workflow.
+
 ## Every package is written on the public runtime alone
 
 `vendor/typeshade` is the compiler, pinned as a git submodule. The compiler decided (#335) that
