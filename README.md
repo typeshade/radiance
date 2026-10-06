@@ -58,7 +58,8 @@ and a 1024 spp render on WebGPU is within tolerance of the CPU oracle's render o
 kernel. Milestone **M2** is in progress. The kernel draws triangle meshes through a two-level
 BVH, behind the material record and the shading contract (design records 0001 and 0004). The
 `GLTFLoader` reads `.gltf` and `.glb` files, and the `bunny` example draws the Stanford bunny from
-one. Sponza and the benchmark scenes come next.
+one. The `sponza` example draws the Sponza atrium without its textures. The benchmark scenes come
+next.
 
 ## Layout
 
@@ -77,7 +78,7 @@ one. Sponza and the benchmark scenes come next.
 | `scripts/bench.mjs`          | The benchmark. It prints a row of triangles, BVH time, frame time and paths a second for each scene. `docs/benchmarks.md` holds the rows.                                                                                  |
 | `scripts/gates/`             | One module for each gate: `differential.mjs`, `determinism.mjs` and `render.mjs`. Each exports `run()` and `probe()`. `_browser.mjs` and `_png.mjs` are shared by the gates and the harness.                               |
 | `scripts/__goldens__`        | One PNG for each example, 96 x 64 at 64 samples a pixel. The render gate holds the example's picture to it. `UPDATE_GOLDENS=1 bun run gate:render` rewrites them.                                                          |
-| `site/public/assets`         | The assets the examples load, such as `bunny.glb`. `LICENSES.md` lists the source, the licence and the SHA-256 of each one.                                                                                                |
+| `site/public/assets`         | The assets the examples load, such as `bunny.glb` and `sponza.glb`. `LICENSES.md` lists the source, the licence and the SHA-256 of each one.                                                                               |
 | `scripts/assets`             | One script for each asset. The script builds the file again from its public source (`node scripts/assets/bunny.mjs --check`).                                                                                              |
 | `scripts/scenes.ts`          | The scene table. The harness page and the oracle build each scene from it. It holds the Cornell box and the scenes `triangles`, `instances` and `lights`.                                                                  |
 | `scripts/oracle.ts`          | The path tracer's kernel on the compiler's CPU oracle, over the same scene pack the renderer uploads. It splits the frame over up to four processes (`RADIANCE_ORACLE_JOBS`).                                              |
