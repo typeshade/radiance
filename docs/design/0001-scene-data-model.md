@@ -1062,4 +1062,5 @@ Verification of #18 says. The gate numbers below come from that run on the branc
 At step 3, the Cornell box gate of record 0002 runs on spheres of 960 triangles. On SwiftShader,
 at 16 by 16 pixels and 1,024 samples, the mean relative difference to the oracle is 3.27e-7.
 The largest is 2.86e-6. `ORACLE.mean` is 3.3e-6, ten times the mean, rounded up, and `abs` and
-`rel` stay 1e-3 and 5 %. Steps 6 to 10 (Amendment 3) are not started.
+`rel` stay 1e-3 and 5 %. Step 4 is delivered as 2f06d0e (typeshade/radiance#43) and step 5 as 4176027
+(typeshade/radiance#53), both on `main`. Steps 6 to 10 (Amendment 3) are not started.
