@@ -42,7 +42,7 @@ compiler: ['0006-4']
 | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Identity      | Design record 0010, status `draft`                                                                                                                                          |
 | Date          | 2026-10-06 (UTC), the date of authorship                                                                                                                                    |
-| Author        | Written in a Claude Code session for the owner. The owner's review is the approval                                                                                          |
+| Author        | Written in an agent session for the owner. The owner's review is the approval                                                                                               |
 | Applicability | `packages/radiance/src` (materials, kernels, cameras, renderers, textures, lights), `packages/addons/src` (loaders, exporters), `scripts/gates`, `scripts/cycles`, `site/`  |
 | Baseline      | `main` at 55bde46. The compiler pinned at 596c805. Every fact below was read on that baseline on 2026-10-06. No number in this record was measured, unless the text says so |
 | Pull request  | Not opened yet. The pull request that carries this record is its review. The record is a draft, so no part of it may be implemented before the owner accepts it             |
@@ -81,7 +81,7 @@ This record is the design of that milestone. It has six parts. Each part is its 
 The six parts keep these invariants:
 
 - The path tracer's pipeline binds 7 storage buffers. No part adds an eighth. The data that needs room goes into uniform blocks, into the region of an existing buffer, or into textures.
-- A scene that uses none of the new features renders the same bits as before the part. Each part names the gate that proves it: the determinism gate on the existing differential scenes.
+- A scene that uses none of the new features keeps its radiance bit for bit. The pull request of a step compares `readRadiance` before and after on each existing differential scene, and 0 floats must differ. Three steps are the exceptions. Step 1.2 changes the picture of an example that uses `PhysicalMaterial`. Step 1.3 changes the weights of the light samples of every scene, and not their expected value. Step 5.5 changes the transform of the screen. Each of the three shows the old and the new picture.
 - Every part keeps the six rules of record 0005. A part that needs another operation amends record 0005 first, in its own step.
 - The public names follow record 0003, rule 2 for materials and lights, and rule 1 for what three.js has.
 
@@ -91,7 +91,7 @@ Two pieces of work land before this record. Neither is in this worktree. Fact: `
 
 | Source                 | The part this record assumes                                                                                                                                                                                     | What this record does if the assumption fails                                                                                      |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Analytic sphere record | A sphere that the kernel meets analytically gives a `Surface` with `ns` equal to `ng`, a `uv` and a `dpdu`. This record needs no word of its buffer layout                                                       | The white-furnace scene and the glass-sphere scenes use `SphereGeometry` at 64 by 32 segments. They lose only the exact normal     |
+| Analytic sphere record | A sphere that the kernel meets analytically gives a `Surface` with `ns` equal to `ng`, a `uv`, a `dpdu` and a `dpdv`. This record needs no word of its buffer layout                                             | The white-furnace scene and the glass-sphere scenes use `SphereGeometry` at 64 by 32 segments. They lose only the exact normal     |
 | Record 0009, light     | The solid-angle sampling of an emissive triangle. A function gives the density in solid angle of a chosen point on a chosen light. Part 1, step 1.3 calls that function for the multiple-importance weight       | Part 1, step 1.3 keeps the area density of `direct` and converts it to solid angle with `dist2 / cosLight`, as `direct` does today |
 | Record 0009, sampler   | `sample2(pixelSeed, index, pair)` keeps its signature and takes any `u32` pair. The sequences change, and the pairs do not                                                                                       | Each part that adds a pair takes it from a named constant. A change of the signature is a change of that constant's users          |
 | Record 0009, filter    | The pixel jitter keeps pair 0, and the filter is applied after the draw. The camera ray keeps the form `forward + right * x + up * y`                                                                            | Part 4 changes the origin of the ray, and the direction stays what the jitter gives                                                |
@@ -128,7 +128,7 @@ The rules of the lobes follow.
 - **The reflection lobe and Fresnel.** A dielectric takes the exact unpolarized Fresnel term with `ior`, times `specularIntensity`. Below, `F` is that product. The term uses `sqrt` and `/` only. A metal takes Schlick's term with `F0 = baseColor`. Schlick's `(1 - c)^5` is written as three products, so no `pow` enters the Fresnel term (record 0005, rule 2). The lobe's Fresnel term is `(1 - metalness)` times the dielectric term, plus `metalness` times the metal term.
 - **The diffuse lobe.** Its weight is `(1 - metalness) * (1 - transmission)`. The dielectric reflection above it takes `1 - F` of the energy at `wo`, as glTF layers it.
 - **The transmission lobe.** Its weight is `(1 - metalness) * transmission * (1 - F)`. When `thickness` is 0 the surface is thin-walled. The sample then goes straight through, `wi = -wo`, with a delta lobe. The reflectance of a thin slab is `2R / (1 + R)`, with `R` the single interface reflectance.
-- **The clearcoat and the layering.** The base lobes are scaled by `1 - clearcoat * Fc(cosThetaO)`. The sheen scales them by `1 - max(sheenColor) * E(cosThetaO, sheenRoughness)`, with `E` from the sheen table. glTF layers them this way, with `cosThetaO` only.
+- **The clearcoat and the layering.** The base lobes are scaled by `1 - clearcoat * Fc(cosThetaO)`. The sheen scales them by `1 - max(sheenColor) * E(cosThetaO, sheenRoughness)`, with `E` from the sheen table. glTF layers the coat by `cosThetaO` only. It layers the sheen by the lower of the two scalings, one for `wo` and one for `wi`.
 - **The choice of lobe.** The weight `w_i` of a lobe is an estimate of its albedo at `wo`. The estimate is the luminance of the lobe's colour times its Fresnel term at `cos(theta_o)`. The chance of lobe `i` is `w_i / sum(w)`. A lobe has chance 0 only when its value is 0 for every `wi`.
 - **The density.** `evalBsdf` returns, in `w`, the sum over the lobes that are not delta of `chance_i * pdf_i(wi)`. A delta lobe adds no density. `sampleBsdf` returns the same sum as `pdf` for a sample that is not delta.
 - **The weight.** For a sample that is not delta, `weight` is the value of all lobes that are not delta, times `cos`, over that sum. This is one-sample importance sampling of a mixture, so it needs no second weight.
@@ -447,6 +447,63 @@ out = clamp(M_out * c, 0, 1), then the sRGB curve
 
 `M_in` has the rows `(0.59719, 0.35458, 0.04823)`, `(0.07600, 0.90834, 0.01566)` and `(0.02840, 0.13383, 0.83777)`. `M_out` has the rows `(1.60475, -0.53108, -0.07367)`, `(-0.10208, 1.10813, -0.00605)` and `(-0.00327, -0.07276, 1.07602)`. This is from memory of the published fit, and step 5.5 compares each number with the source. The sRGB curve keeps its `pow`, as record 0005 allows for a value (`tonemap` is in `VALUE_ONLY`). The curve changes the picture of every example, so the pull request of step 5.5 lists every golden.
 
+### Part 6: The demo
+
+Part 6 builds the first public demo of the plan. It has a product-viewer page, three scenes, and a side-by-side with Blender Cycles. The side-by-side has a procedure and a number. Part 6 needs Parts 1 to 5. It needs change 0050 through Part 2.
+
+**The page.** `site/src/pages/viewer/index.astro` and the island `site/src/islands/Viewer.tsx` make the page `/viewer/`. The page holds one canvas, a drop zone and a panel.
+
+- **The drop.** A visitor drops a `.glb`, a `.gltf` with its files, or a folder. A file input does the same for a browser that cannot drop. `GLTFLoader` gains the option `resolve(uri)`, which gives the bytes of a file that the visitor dropped. Without it, the loader fetches `path + uri`, as it does today.
+- **The light.** The page loads one HDRI, a `.hdr` file, as the environment and as the background. The visitor may drop another `.hdr`.
+- **The controls.** The panel has the exposure in stops, and the f-number and the focus distance of a `PhysicalCamera`. It has the choice of AOV to look at: beauty, albedo, normal, depth or id. It has a button `Save EXR`. The existing `OrbitControls` turns the camera.
+- **The readout.** The toolbar shows the sample count and the status `Preview` while the camera moves, as the examples do.
+- **The side-by-side.** For each demo scene, the page can show the Cycles still in a split view with a divider. Another panel shows the numbers of the comparison. The build reads them from `docs/cycles-comparison.md`. `src/lib/facts.ts` reads the other numbers of the site in the same way.
+
+**The scenes.** Each scene has a camera, a lighting setup and an asset. Facts, read on 2026-10-06 from the repository `KhronosGroup/glTF-Sample-Assets` (its `main`, whose commit this record does not know, because the GitHub API refused the read):
+
+| Scene  | Asset                  | Triangles   | Textures                | Extension in use                           | Licence of the model files              |
+| ------ | ---------------------- | ----------- | ----------------------- | ------------------------------------------ | --------------------------------------- |
+| helmet | DamagedHelmet          | 15,452      | 5 of 2048 by 2048, JPEG | none                                       | CC-BY-4.0 and CC-BY-NC-4.0, both listed |
+| flight | FlightHelmet           | 94,722      | 15 of 2048 by 2048, PNG | `KHR_materials_transmission` on its lenses | CC0-1.0                                 |
+| glass  | a goblet built in code | about 5,000 | none                    | none (the engine's own `PhysicalMaterial`) | the repository's licence                |
+
+DragonAttenuation (134,995 triangles, `KHR_materials_transmission` and `KHR_materials_volume`) is the Khronos asset for glass. Its `LICENSE.md` lists the Stanford Graphics Library licence for the model files and CC0 for the rest. That licence allows free use with credit, and it forbids a commercial use and a place in a product for sale. The site is free, and the engine is Apache-2.0. Whether a demo of an Apache-2.0 library meets the terms is a question for the owner (decision 31). Until the owner decides, the glass scene is a goblet that the addons build in code. It needs `LatheGeometry`, which follows three.js's constructor `LatheGeometry(points, segments)`.
+
+**The assets stay out of the repository.** `scripts/fetch-demo-assets.mjs` downloads each file from a URL that names a commit. It checks the SHA-256 of each file against `site/demo-assets.json`. That file also holds each asset's licence and credit. The deploy workflow runs the script before the site build. `site/public/demo/` is in `.gitignore`. The HDRI is a CC0 file from Poly Haven, chosen at step 6.1. Its licence is read and recorded there.
+
+**The Cycles procedure.** `scripts/cycles/` holds `README.md` (the procedure), `scene.py` (a Blender Python script) and `compare.mjs`. The procedure is a numbered list in the README, one action in each step. It sets these values.
+
+| Setting           | Value                                                                                                    |
+| ----------------- | -------------------------------------------------------------------------------------------------------- |
+| Blender           | 4.5 LTS. Step 6.4 records the exact version that `blender --version` prints                              |
+| Device, seed      | CPU, seed 0. A second render uses seed 1 for the noise floor                                             |
+| Samples           | 1,024, adaptive sampling off, denoising off                                                              |
+| Pixel filter      | `BOX`, width 1.0, which is the engine's one-pixel jitter. Record 0009 may change the engine's filter     |
+| Bounces           | total 8, diffuse 8, glossy 8, transmission 8, volume 0                                                   |
+| Clamps, caustics  | direct and indirect clamp 0, reflective and refractive caustics on, glossy blur 0                        |
+| Colour management | view transform `Standard`, look `None`, exposure 0, gamma 1                                              |
+| Output            | 512 by 512, an EXR of full floats in the scene-linear working space, and a PNG of the `Standard` view    |
+| World             | an Environment Texture node with the same `.hdr`, strength 1, linear interpolation, a rotation about Z   |
+| Camera            | perspective, sensor fit vertical, the engine camera's field of view and position, in Blender's Z-up axes |
+| Materials         | the glTF importer's Principled BSDF, and the goblet's Principled BSDF with the engine's parameters       |
+
+Step 6.4 checks each setting name against the Python API of the pinned Blender. The rotation of the world about Z has no value yet. Step 6.4 renders a mirror sphere in both renderers and measures the angle that aligns them. The glTF importer turns the Y-up axes of the file into Z-up axes. The script applies the same turn to the camera.
+
+**The differences that remain.** These differences are known before any number is measured. Each one adds to the distance between the two images, and the procedure lists them beside the numbers.
+
+- Cycles' Principled BSDF layers its lobes in its own way, which differs from glTF's layering.
+- Cycles' metal uses a Fresnel term with a tint at 82 degrees. The engine's metal uses Schlick's term.
+- Cycles' multiple scattering follows its own model. The engine's is Turquin's approximation. Step 6.4 reads which model the pinned Blender version uses.
+- Cycles reads an image at its first level, with no mip chain (from memory, and step 6.4 checks it). The engine reads a mip level from the footprint.
+- The importer's treatment of a thin transmission (the lenses of FlightHelmet) may differ from the engine's thin-walled surface.
+
+**How close is close.** Two numbers measure the distance. Both read the 512 by 512 renders, after the exposure of the scene is the same.
+
+- **RMSE.** The root mean square of the difference of the two `Standard` PNGs, in 8-bit units, over the colour channels.
+- **FLIP.** The mean of the LDR-FLIP error map (Andersson et al. 2020), computed by NVIDIA's `flip` tool at its default pixels per degree. The share of pixels above 0.2 is recorded too.
+- **The noise floor.** The same two numbers for Cycles at seed 0 against Cycles at seed 1. A number of the engine means something only beside this floor.
+- **The bound.** Step 6.5 records the first measured values. The bound of `gate:cycles` is 1.5 times the engine's measured value, rounded up. Record 0002's rule is ten times for a mean, and that rule is too loose for a number that has a noise floor.
+
 ## Why
 
 ### Part 1: The principled BSDF
@@ -532,6 +589,22 @@ Alternatives considered:
 - **PIZ compression.** It compresses image data better than ZIP. It needs a wavelet and a Huffman coder, which is far more code.
 - **OCIO and a full ACES view.** It needs a library and a config. The fit is enough for the screen, and the EXR carries the scene-linear data.
 
+### Part 6: The demo
+
+- **The plan decides it.** Section 4 of `docs/plan.md` makes a glTF product viewer the first public demo. M3 is done when the same scene renders beside Cycles and the EXR opens in a compositor. Decision 3 of section 12 makes Cycles the reference for the image.
+- **Why these assets.** DamagedHelmet has five textures and no extension. FlightHelmet has fifteen textures and a transmissive lens. Together they test the textures, the normal map, the metallic-roughness map and a thin transmission. The goblet tests glass, absorption and the environment's reflection.
+- **Why the assets stay out of the repository.** One of the 15 PNG files of FlightHelmet has 3,594,300 bytes. The set may reach 54 MB, and no run measured the sum. A repository that holds them is slow to clone. A script with a hash gives the same bytes at every build.
+- **Why a goblet in code.** The one Khronos asset for glass with absorption is DragonAttenuation. Its model files carry the Stanford licence, which forbids a commercial use. The goblet has no such term. The owner may still choose the dragon (decision 31).
+- **Why 512 by 512 for the numbers.** A render at 1,024 by 1,024 has 4 times the pixels of one at 512 by 512. It takes about 4 times as long. The two numbers need no more detail than 512 by 512 gives.
+- **Why two renders of Cycles.** Cycles is noisy at 1,024 samples too. The distance between two Cycles seeds is the least distance that any renderer can reach. A number without this floor does not say how close the images are.
+- **Why 1.5 times for the bound.** The rule of record 0002 sets a mean at ten times its measured value. That rule suits a number that has no floor and no noise. A comparison with another renderer has both. A bound of 1.5 times catches a regression that is larger than the noise of the comparison itself.
+
+Alternatives considered:
+
+- **Mitsuba 3 as the image reference.** Plan decision 3 keeps Mitsuba for the derivatives of M5.
+- **A browser-only comparison with a stored PNG.** It tests the page and not the numbers. The EXR comparison needs the float data.
+- **Running Blender in CI.** It needs Blender and a long CPU render on each pull request. The self-hosted GPU runner of `capture-stills.yml` runs the check on request instead.
+
 ## What it touches
 
 ### Part 1: The principled BSDF
@@ -582,6 +655,16 @@ Alternatives considered:
 - **Tests owed.** `exr.test.ts`, `half.test.ts`, `cryptomatte.test.ts`, `aov.test.ts` (new, on the oracle) and `tonemap` tests in `kernels.test.ts`.
 - **Gates.** `gate:aov` is new. `gate:render` changes every golden at step 5.5. `gate:determinism` runs the `aov` scene.
 - **Site.** The guide gains a page on outputs. The site's stills are captured again after step 5.5.
+
+### Part 6: The demo
+
+- **Site.** `site/src/pages/viewer/index.astro`, `site/src/islands/Viewer.tsx`, `site/demo-assets.json`, the split-view component and the guide page of the procedure are new. `site/src/lib/facts.ts` reads `docs/cycles-comparison.md`. `site/src/i18n/en.ts` gains the labels.
+- **Addons.** `loaders/GLTFLoader.ts` gains the option `resolve`. `scenes/GobletScene.ts` and `geometries/LatheGeometry.ts` are new. `LatheGeometry` is also an engine export, in `packages/radiance/src/geometries/`.
+- **Scripts.** `scripts/fetch-demo-assets.mjs`, `scripts/cycles/README.md`, `scripts/cycles/scene.py`, `scripts/cycles/compare.mjs` and `scripts/gates/cycles.mjs` are new. `scripts/cycles/reference/` holds the reference EXR and PNG of each scene.
+- **Workflow.** `.github/workflows/cycles.yml` runs `gate:cycles` on request on the self-hosted GPU runner. It is not a required check.
+- **Documents.** `docs/cycles-comparison.md` is new and holds the first measured values. `docs/plan.md` changes (Amendments owed). `README.md` names the page.
+- **Tests owed.** `fetch-demo-assets.test.ts`, `Viewer` checks in `scripts/harness.mjs`, `LatheGeometry.test.ts`, `compare.test.ts` and `GLTFLoader.test.ts` for `resolve`.
+- **Gates.** `gate:site` builds the page. `gate:api` re-bakes. `gate:cycles` is new and runs by hand.
 
 ## Amendments owed
 
@@ -772,6 +855,26 @@ Alternatives considered:
 **Record 0007.** One place changes.
 
 > "Limits" gains: "A frame with AOVs or light groups needs `pixels * stride * 16` bytes in one binding. At 16 MiB, a WebGL2 binding holds 1,048,576 pixels at a stride of 1. AOVs and light groups wait for a larger limit (record 0010, Part 5)."
+
+### Part 6: The demo
+
+**Record 0002.** Two places change.
+
+> The gate table gains a row for `cycles`. What it proves: the engine's render of each demo scene stays within the bounds of its first measured distance to a Cycles render. Scene: `helmet`, `flight` and `goblet`, 512 x 512, 1,024 spp. Number: 1.5 times the first measured RMSE and FLIP, from `docs/cycles-comparison.md`. It runs on request on the self-hosted runner.
+
+> The probe list gains: "`cycles`: the engine's image shifted by 2 pixels must fail both bounds."
+
+**Record 0003.** One place changes.
+
+> "The public surface at 0.1.0" gains `LatheGeometry` and the loader option `resolve`.
+
+**Plan (`docs/plan.md`).** Three places change. A change to the plan waits for the owner's "merge".
+
+> Section 7, the row "Compressed textures, UDIM, HDR and EXR decoding in the browser, a texture memory budget" splits. The row "HDR and EXR decoding in the browser, a texture memory budget" keeps M3. The row "Compressed textures, UDIM" reads "after M3".
+
+> Section 9, the last bullet, "A convention for a shader package exporting texture-array bindings as a struct", reads: "Not needed by M3. Record 0010 binds four arrays by name."
+
+> Section 4, "The first public demo", gains: "The demo scenes are DamagedHelmet, FlightHelmet and a goblet that the addons build. Record 0010, Part 6 gives the Cycles procedure and the numbers."
 
 ## Implementation, in steps
 
@@ -1001,6 +1104,61 @@ Steps 5.2 to 5.6 do not need a compiler change. Step 5.1 needs steps 1.1 and 3.1
 
 Part 5 is done when step 5.6 has merged.
 
+### Part 6: The demo
+
+Part 6 starts when Parts 1 to 5 are merged, except step 6.1, which has no dependency. Each step is one pull request.
+
+**6.1 The assets and their licences.**
+
+- Delivers: `scripts/fetch-demo-assets.mjs`, `site/demo-assets.json`, the credits, and the choice of the HDRI. The step records the commit of `KhronosGroup/glTF-Sample-Assets` that it pins, and reads each `LICENSE.md` again.
+- Test: the script checks the SHA-256 of every file. A file with one byte changed is refused, with the file named.
+- Number: the step records the sizes of the three scenes' files, and the licence of the HDRI.
+- Probe: the check runs once on a file with one byte changed. It must fail.
+
+**6.2 The goblet.**
+
+- Delivers: `LatheGeometry`, `GobletScene` and the engine export. The scene has a goblet of glass, a plane and a metal ball.
+- Test: `LatheGeometry` follows three.js's vertex order for a profile of three points and 4 segments. Its normals point outward, and the volume that it closes is positive.
+- Number: the goblet has a closed mesh of about 5,000 triangles. The step records the exact count.
+- Probe: the closed-mesh test runs once on a profile that is not closed. It must fail.
+
+**6.3 The page.**
+
+- Delivers: the page `/viewer/`, `Viewer.tsx`, the drop zone, the loader option `resolve`, the panel and `Save EXR`.
+- Test: the harness site step loads a glb that it builds by hand, through the file input. It reads the sample count, sets the f-number, saves the EXR and reads it back with `EXRLoader`. The channel `R` equals `readRadiance` within 1e-6.
+- Number: the step records the load time of each scene on SwiftShader, labelled as such. No hardware device ran.
+- Probe: the harness check runs once with a glb that has no mesh. The page must show an error and not a blank canvas.
+
+**6.4 The Cycles procedure.**
+
+- Delivers: `scripts/cycles/README.md`, `scene.py`, `compare.mjs` and the three reference renders of Cycles (EXR and PNG). The step records the exact Blender version, and the angle of the world's rotation that aligns the two renderers.
+- Test: the step renders a mirror sphere in both renderers and finds the angle at which the two images of the environment agree most. It renders each scene at seed 0 and seed 1. `compare.mjs` reads two EXR files and gives the RMSE.
+- Number: the step records the angle, the version and the render time of Cycles for each scene.
+- Probe: `compare.mjs` runs once on an image and the same image shifted by 2 pixels. Its RMSE must be above 0.
+
+**6.5 The first measured values.**
+
+- Delivers: `docs/cycles-comparison.md` with a table for each scene: RMSE, FLIP mean and the share of FLIP above 0.2. One row is the engine against Cycles. One row is Cycles at seed 0 against seed 1.
+- Test: the engine renders each scene at 512 by 512 and 1,024 samples a pixel on the owner's GPU or the self-hosted runner. `compare.mjs` and the `flip` tool read the results. The step lists each known difference of "The differences that remain" that the images show.
+- Number: the step records every value of the table. A value that SwiftShader gave is labelled so.
+- Probe: the table has a row of the engine against itself at seeds 0 and 1. It gives the engine's own noise floor and must lie under the engine-against-Cycles row.
+
+**6.6 The side-by-side on the page.**
+
+- Delivers: the split view, the panel of numbers, `facts.ts` reading `docs/cycles-comparison.md`, and the stills. `bun run capture:stills` captures them again.
+- Test: `gate:site` builds the page, and the stills match their hashes. A number on the page equals the number in the table of step 6.5.
+- Number: the page's weight at 1440 and 390 CSS pixels. The step records both.
+- Probe: a still with a wrong hash fails the build. This probe exists already.
+
+**6.7 `gate:cycles`.**
+
+- Delivers: `scripts/gates/cycles.mjs`, `.github/workflows/cycles.yml` and the bounds of 1.5 times the values of step 6.5.
+- Test: the gate renders each scene and compares it with its reference. The run is by hand or on request.
+- Number: the gate reports each distance and its bound.
+- Probe: the gate runs once on the engine's image shifted by 2 pixels. It must fail both bounds.
+
+Part 6 is done when step 6.7 has merged and the owner has seen the page. M3's acceptance needs both.
+
 ## Decisions for the owner
 
 1. Default. Part 1 models the physical material on Burley's Disney BRDF (2012) and BSDF (2015), with glTF's metallic-roughness parameters and glTF's layering. It has five lobes: diffuse, reflection, transmission, clearcoat and sheen. Proposed: yes.
@@ -1031,9 +1189,58 @@ Part 5 is done when step 5.6 has merged.
 26. Default. Cryptomatte is object-level, with two layers of two pairs. The kernel keeps an object index in `[7].z` of an instance, and the host makes the hash. Proposed: yes.
 27. For the owner. The screen's output transform is Hill's fit of the ACES RRT and ODT. It changes every golden and every still. The owner approved an output-transform change on 2026-10-06, and step 5.5 reads what that change delivered. Proposed: yes.
 28. Default. The `aov` gate holds each AOV to a golden in an uncompressed EXR. Its tolerances are derived by the rule of record 0002. Proposed: yes.
+29. Default. The demo is a page, `/viewer/`, with a drop zone, one HDRI, a `PhysicalCamera` panel, an AOV selector and `Save EXR`. Proposed: yes.
+30. Default. The assets are fetched at build from pinned URLs and checked by SHA-256, and no asset is committed. The HDRI is a CC0 file from Poly Haven. Proposed: yes.
+31. For the owner. The glass scene is a goblet that the addons build, until the owner decides whether the demo may use DragonAttenuation. Its dragon carries the Stanford Graphics Library licence, which forbids a commercial use. DamagedHelmet lists CC-BY-4.0 and CC-BY-NC-4.0 for its files. Proposed: the goblet.
+32. Default. The Cycles procedure is Blender 4.5 LTS on the CPU, at 512 by 512 and 1,024 samples, with a box filter of width 1. The distance is the RMSE and the LDR-FLIP of the `Standard` view, beside the Cycles noise floor. Proposed: yes.
+33. Default. The bound of `gate:cycles` is 1.5 times the first measured value. The gate runs on request on the self-hosted runner and is not a required check. Proposed: yes.
 
 ## Record
 
-**Approval and plan record.** This record is a draft. No approval applies yet.
+**Approval and plan record.** This record is a draft. No approval applies yet. The owner's review of the pull request that carries it is the approval. This record is new, and each part changes a design rule, a public export or a layout. So no part merges before that review.
 
-**Configuration and validation record.** This record does not yet apply. No step is started. This draft has Parts 1 to 5 written. Part 6 is not written yet.
+**Configuration and validation record.** This record does not yet apply. No step is started. The draft has six parts, 35 steps and 33 decisions. It was written on `main` at 55bde46 with the compiler pinned at 596c805. The commits are 9feacc4 (skeleton), 47be68e (Part 1), 1a8e624 (Part 2), b8bcd8a (Part 3), 981db8a (Part 4) and 44e581d (Part 5). The commit that carries Part 6 follows them.
+
+Checks that ran on this draft, on 2026-10-06 (UTC), in the worktree of the branch `wt/M3`:
+
+- `bun run check:ste` (exit 0, no hard violation), `bun run check:prose` (exit 0) and `prettier --check` on `docs/design` (exit 0).
+- `bun run reqs:sync`, then `doorstop -e -F` (exit 0) and `bun run reqs:check` (exit 0). Each commit reviewed `REC-0010` and cleared its decisions after reading them.
+
+Checks that did not run: `bun run check` as a whole, `bun run harness`, every gate and every test of a step. This record changes documents only, and no step is implemented.
+
+**What the draft read.** The reading is split into what the worktree holds, what the network gave, and what was measured.
+
+- Read in the worktree: `docs/plan.md` (sections 3.1, 3.2, 4, 7, 9 and 12) and records 0001 to 0008. Also `docs/design/README.md`, the kernels `trace.shade.ts`, `materials.shade.ts`, `sampler.shade.ts`, `layout.shade.ts` and `intersect.shade.ts` (`surfaceAt`), and `scene-pack.ts` (`packMaterial`, `cameraFrame`).
+- Read in the worktree, continued: `PathTracer.ts`, `PhysicalMaterial.ts`, the header of `GLTFLoader.ts`, `determinism-lists.ts`, `scripts/gates.mjs`, the header of `scripts/oracle.ts`, and the compiler's `AUTHORING.md`, `docs/use-typeshade-surface.md` and `changes/` folder.
+- Read through the network on 2026-10-06: the compiler's changes 0050 and 0053 on its `main`. Also, from the repository `KhronosGroup/glTF-Sample-Assets`, the model index, the glTF files of three models and three `LICENSE.md` files. This record does not know the commit of that repository.
+- Measured: the directional albedo of the single-scattering GGX lobe (Part 1), by a host script in f64. Nothing else in this record was measured. Each figure of a step is a proposal.
+
+**What came from memory.** No source was read for these items. Each step that uses one reads the source first.
+
+- The glTF 2.0 Appendix B formulas, Burley's and Lagarde's diffuse terms, Dupuy and Benyoub's sampling, Turquin's factor and the pbrt-v4 scale of a footprint.
+- three.js's film members and its equirectangular map. The OpenEXR file layout and attribute names. The Cryptomatte specification. Hill's ACES constants. The two MurmurHash3 test vectors.
+- Blender's Python setting names and its multiple-scattering model.
+
+**Open items at authorship.**
+
+- **Compiler change 0050.** It is a draft on the compiler's `main`, and the pin does not carry it. Steps 2.2 to 2.7, step 3.3 and Part 6 wait for it. Next action: the owner schedules the pin move (decision 11).
+- **Record 0009 and the analytic sphere record.** Neither is on `main` at 55bde46. Next action: when each merges, compare its text with the table "What this record assumes". A difference is a deviation.
+- **Decision 8 of record 0004.** Decision 5 of this record answers it with the second alternative. Next action: the owner approves it.
+- **Record 0007.** Its rule 4 would make `materials` and `lights` arrays of `vec4u`. Next action: the amendment text for record 0007 in Parts 1 and 2 applies if that rule merges first.
+- **The owner-approved output transform.** No file of the baseline says whether it changed `tonemap`. Next action: step 5.5 reads it.
+- **The licence of DragonAttenuation and of DamagedHelmet.** Next action: the owner answers decision 31.
+- **No hardware measurement.** Every number that a step records on SwiftShader carries that label. Next action: the owner's GPU or the self-hosted runner runs steps 5.1, 6.3 and 6.5.
+- **An issue for the compiler.** It asks for CPU-tier texture reads (Part 2, the amendment of record 0006). Status: not started. Next action: open it when step 2.2 starts.
+
+**Deferred, and not proposed.** None of these is in a step.
+
+- The light tree (Part 3).
+- Compressed textures, UDIM and streaming.
+- `KHR_texture_transform`, alpha BLEND, the texture maps of the other `KHR_materials` extensions, diffuse transmission, dispersion and iridescence.
+- Subsurface scattering (M3s) and a hair BSDF.
+- A multi-part EXR, the PIZ and DWA compressions and OCIO.
+- WebGL2 support for the AOVs and the light groups (record 0007).
+
+**Deviations.** None. No work has been delivered yet, so this text and the work cannot differ.
+
+**Status of the owner's request of 2026-10-06.** Part 1 is written and not implemented. Part 2 is written and not implemented. Part 3 is written and not implemented. Part 4 is written and not implemented. Part 5 is written and not implemented. Part 6 is written and not implemented. The record is a draft.
