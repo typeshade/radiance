@@ -530,16 +530,16 @@ Each step is one pull request with `Design: 0008` in its commit message. Each te
 - **Table growth.** The pack never frees an index of `materials`. Each type change leaves 128 bytes. Disposition: open. Next action: the owner accepts it, or a later record makes the pack reuse the indexes.
 - **Deferred by the inspector, and not proposed.** Some items wait for later records. The first is `PhysicalMaterial`'s five parameters (record 0004, step 2). Then come textures (step 3), a panel for the meshes of a `Group`, undo and the controls of a light. None is in a step.
 
-**Amendment 1** (2026-10-06, UTC). The Sponza example is a tenth example that has controls. This record counts nine. The count is true at `main` eafc2e1, the baseline of "Before". It is false in the pull request that adds `site/examples/sponza.ts`. That example returns `renderer`, `controls` and `dispose`. It has no `playing`. Its loop runs `renderer.preview = controls.moving ? 4 : 1`. This amendment changes six sentences and nothing else. It changes no code, no step and no decision. The decisions keep their numbers and their text.
+**Amendment 1** (2026-10-06, UTC). The Sponza example is a tenth example that has controls. This record counts nine. The count is true at `main` eafc2e1, the baseline of "Before". It is false in the pull request that adds `site/examples/sponza.ts`. That example returns `renderer`, `controls` and `dispose`. It has no `playing`. Its loop runs `renderer.preview = controls.moving ? 4 : 1`. This amendment changes seven sentences in six places and nothing else. It changes no code, the work of no step and no decision. The decisions keep their numbers and their text.
 
 1. "The other nine examples return both ... Eight of them run" in "After", "The site." becomes "The other ten examples ... Nine of them run".
-2. "one of the eight examples of this kind" in "The material inspector", "Edits and the other parts." becomes "one of the nine examples of this kind".
+2. The phrase "one of the eight examples of this kind" becomes "one of the nine examples of this kind". It is in "The material inspector", "Edits and the other parts."
 3. "the nine examples that have controls" in "What it touches" becomes "the ten examples that have controls".
 4. "the nine examples" in step 5 becomes "the ten examples".
 5. "the nine examples" in the note on step 8 becomes "the ten examples".
-6. In the open item "Pause and a moved object", "eight of the nine examples that have controls" becomes "nine of the ten".
+6. The open item "Pause and a moved object" has "eight of the nine examples that have controls". It becomes "nine of the ten examples that have controls".
 
-The sentence of "Before" that lists eight examples stays. It states the baseline, and `sponza` is not in it. Sponza joins the nine in step 5. That step reads `run.editing` in the loop of each example, and it covers `sponza` as it covers `bunny`. The merge of the pull request that carries this amendment is the owner's acceptance. The pull request that adds the Sponza example merges after it.
+The sentence of "Before" that lists eight examples stays. It states the baseline, and `sponza` is not in it. Step 5 changes `sponza` with the other nine. That step reads `run.editing` in the loop of each example, and it covers `sponza` as it covers `bunny`. The merge of the pull request that carries this amendment is the owner's acceptance. The pull request that adds the Sponza example merges after it.
 
 - **The fact.** Measured on 2026-10-06 at `main` 8f52997, by a search of `site/examples/*.ts` for `controls`. Nine examples create controls: `bunny`, `coloured-lights`, `cornell-box`, `first-scene`, `geometries`, `instances`, `lights`, `materials` and `scene-graph`. `determinism.ts` creates none. Only `scene-graph.ts` defines `playing`.
 - **Not run.** No browser check ran for this amendment. The open item "Pause and a moved object" keeps its disposition: open.
