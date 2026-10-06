@@ -1,6 +1,6 @@
 ---
 id: '0008'
-title: A host ray cast picks objects, and controls with four modes (orbit, select, translate, rotate) move them
+title: A host ray cast picks objects, controls with four modes (orbit, select, translate, rotate) move them, and a material inspector edits their materials
 status: draft
 milestones: []
 touches:
@@ -326,9 +326,11 @@ The stage gains a panel, `[data-material-panel]`. The panel is DOM that the page
 - `PhysicalMaterial`'s `metalness`, `roughness`, `ior`, `transmission` and `specularIntensity` get number inputs when step 2 of record 0004 lands. Before that, an edit would change no pixel. Textures get no control until step 3.
 - A colour input holds sRGB `#rrggbb`. A write decodes it with `Color.setHex`. A read encodes the linear value with the sRGB transfer function and rounds to 8 bits. So a `#rrggbb` value round-trips. A channel of `color` above 1 shows as 255. The `emissive` input shows a hue, whose channels do not exceed 1.
 - The panel splits the radiance `r` of a surface into an intensity and a hue. Here `r` is `emissive`, times `emissiveIntensity` for a `PhysicalMaterial`. The intensity is the largest channel of `r`. The hue is `r` over the intensity, by channel.
-- With no emission, the hue input shows `#ffffff`. A hue write sets `emissive` to the new hue, scaled to a largest channel of 1, times the intensity. With an intensity of 0 it uses 1. A black hue sets `emissive` to (0, 0, 0).
-- An intensity write keeps the hue and sets the largest channel to the new intensity. For a `PhysicalMaterial`, both writes also set `emissiveIntensity` to 1, because the pack stores the product.
-- For every class, the `emissive` input and its `data-value` hold the hue. The `emissiveIntensity` input and its `data-value` hold the intensity of the split. The panel derives the intensity. `DiffuseMaterial` and `EmissiveMaterial` store no such field. The input of `PhysicalMaterial` shows the split of `r`, so it can differ from the field of that name. The Cornell lamp, with `emissive` (17, 12, 4), splits into the intensity 17 and the hue (1, 0.706, 0.235). A `PhysicalMaterial` with `emissive` (0.5, 0, 0) and `emissiveIntensity` 4 splits into the intensity 2 and the hue (1, 0, 0).
+- When the emission is zero, the intensity is 0 and the hue input shows `#ffffff`, the hue (1, 1, 1). This is the shown hue. In every other case the shown hue is the hue of the split.
+- A hue write sets `emissive` to the new hue, scaled to a largest channel of 1, times the intensity. When the intensity is 0, it uses 1 in place of the intensity. A black hue sets `emissive` to (0, 0, 0).
+- An intensity write of `I` sets `emissive` to the shown hue times `I`. So on a zero emission, an intensity write of `I` sets `emissive` to (`I`, `I`, `I`). A write of 0 sets `emissive` to (0, 0, 0), and the shown hue is then (1, 1, 1) again.
+- For a `PhysicalMaterial`, both writes also set `emissiveIntensity` to 1, because the pack stores the product.
+- For every class, the `emissive` input and its `data-value` hold the hue. The `emissiveIntensity` input and its `data-value` hold the intensity of the split. The panel derives the intensity. `DiffuseMaterial` and `EmissiveMaterial` store no such field. The input of `PhysicalMaterial` shows the split of `r`, so it can differ from the field of that name. The Cornell lamp, with `emissive` (17, 12, 4), splits into the intensity 17 and the linear hue (1, 0.706, 0.235). The hue input shows the sRGB encoding of that hue, `#ffdb85`. A `PhysicalMaterial` with `emissive` (0.5, 0, 0) and `emissiveIntensity` 4 splits into the intensity 2 and the hue (1, 0, 0).
 - Each input has `data-field`: `type`, `color`, `emissive`, `emissiveIntensity` or `doubleSided`. It also has `data-value`, the value that its input shows: `#rrggbb`, `Number#toString`, `true` or `false`, or a class name. For `emissive` and `emissiveIntensity` it is the hue and the split intensity, and not a field of the material.
 - The root has `data-material-type`, `data-shared` and `data-version`. `data-material-type` is one of the four class names. The panel finds it with `instanceof`, because a minified build can rename a class. `data-version` is `material.version`.
 
@@ -338,7 +340,7 @@ The stage gains a panel, `[data-material-panel]`. The panel is DOM that the page
 2. The panel clamps a number to the `min` and `max` of its input. A value that is not finite ends the path.
 3. The panel assigns a new value through the setter of the material. It assigns a new `Color`, and it never changes a `Color` in place. Each setter adds 1 to `version`. A hue or intensity write on a `PhysicalMaterial` calls two setters, so `version` rises by 2.
 4. At the next frame, `ScenePack.update` sees the new words. It writes `materials`, and `lights` when the light table's words change. It builds no TLAS and writes no `nodes`.
-5. `PathTracer.render` restarts the accumulation, because the pack wrote a buffer. The count of samples returns to 0 inside the `render` call. The same call then adds its own samples (`PathTracer.ts`), so the toolbar reads 1 or more.
+5. `PathTracer.render` restarts the accumulation, because the pack wrote a buffer. It sets the count of samples to 0 before it awaits `f.submit()`, and it adds the frame's `n` samples only after the submit (`PathTracer.ts`). The stage polls `t.samples` every 200 ms. So `data-samples` can read 0 while the submit is in flight, and it reads the frame's samples after it.
 6. The panel reads every field again from the material. It writes `data-value` and `data-version`, and it writes each input that has no focus.
 
 The panel reads from the material and never from the input. So a value that the material changed, or that an example changed in a frame, shows at once. The panel reads the material again at every animation frame while it shows.
@@ -346,8 +348,11 @@ The panel reads from the material and never from the input. So a value that the 
 **The path of a type change.**
 
 - The `<select>` lists `DiffuseMaterial`, `MirrorMaterial` and `EmissiveMaterial`. `PhysicalMaterial` is not an option until step 2 of record 0004 lands, because it would render as a diffuse. A mesh that holds one gets a disabled `PhysicalMaterial` option, which the select shows as its value.
-- The panel builds one instance of the chosen class. It takes `name` from the old instance. For each field the new class lists, it takes `color`, the radiance of `emissive` and `doubleSided` from the old instance.
-- The new instance omits a field that its class lacks, and a change back does not restore it. A parameter that the old class lacks takes the default of the constructor.
+- The panel builds one instance of the chosen class. It takes `name` from the old instance.
+- The source of a value is one rule. The new instance takes every field that the old instance holds, hidden by the panel or not. Only a parameter that the old class does not hold takes the default of the new constructor.
+- Every class holds `color`, `emissive` and `doubleSided`, so no pair of the three options has such a parameter. The five parameters of `PhysicalMaterial` are the first (record 0004, step 2).
+- The destination is the row of the new class in the table above. The new instance omits a field that its class lacks, and a change back does not restore it.
+- Example: `EmissiveMaterial` to `DiffuseMaterial`. The old instance holds `color` (0, 0, 0). The new `DiffuseMaterial` takes that value, so its `color` is black and not the constructor's white. It also takes the `emissive` and the `doubleSided` of the old instance. The viewer sets the colour after the change.
 - The panel assigns the new instance to `mesh.material` of every mesh that held the old one. So the meshes keep sharing one instance. No constructor takes `doubleSided`, so the panel sets it through its setter, and only when the old value is true. The new instance has `version` 0, or 1 when `doubleSided` is true.
 - `ScenePack.update` finds an instance it does not know. It gives the instance the next table index and writes `materials`. The instance array changes, so it builds the TLAS again from the same boxes. It writes `nodes`, `instances` and `lights` too. It builds no BLAS.
 - This is the code path of a transform change in "Before". Inference: the host cost has the same size. That is 0.50 ms for the Cornell box and 1.03 ms for the bunny. Each writes `nodes` whole, with 34,976 and 1,296,896 bytes, plus four device writes (`instances`, `lights`, `materials` and `nodes`). Step 8 measures both.
@@ -361,7 +366,7 @@ The panel reads from the material and never from the input. So a value that the 
 **Edits and the other parts.**
 
 - The panel does not set `run.editing`. Each edit restarts the accumulation at the full frame size. A slow device may call for a preview during an edit, so step 8 measures the restart (decision 26).
-- While the toolbar's Pause is on, an edit restarts the accumulation and the paused tracer dispatches nothing (`PathTracer.ts`, `render`). Inference: the canvas then shows a black frame. This is the open item on Pause in "Record".
+- While the toolbar's Pause is on, an edit restarts the accumulation and the paused tracer dispatches nothing (`PathTracer.ts`, `render`). The canvas keeps the stale frame until the viewer turns Pause off: `#drawn` stays true, so nothing draws again, and `data-samples` reads 0. This is the open item on Pause in "Record".
 - A key press in the panel's inputs does not reach the canvas, because the handlers of the modes and of `OrbitControls` listen on the canvas. A press of `w` in a number input does not change the mode.
 - A wheel turn over the panel does not dolly the camera. A click on the panel does not clear the selection.
 
@@ -449,11 +454,11 @@ Each step is one pull request with `Design: 0008` in its commit message. Each te
 
    1. Press `q`. Read `data-mode` as `select`. Read `data-selected` as `ball`.
    2. Read `data-material-type` as `DiffuseMaterial`. Read `data-shared` as 4. Read `data-version` as `v`.
-   3. Wait for 4 samples. Take a screenshot of the canvas.
+   3. Wait for `data-samples` to read 4 or more. Read it as `s0`. Take a screenshot of the canvas.
    4. Fill the `color` input with `#ff0000`.
-   5. Wait for `data-samples` to fall below 4. This is the restart.
+   5. Wait for `data-version` to read `v + 1`, or for `data-samples` to read less than `s0` at any poll. A read of 0 counts. Do not wait for a count under 4. `samplesPerFrame` adapts up to 64 with `targetFrameTime` 30, so the first frame after the restart can take 4 samples or more. The 200 ms poll can also miss a short low count.
    6. Read `data-value` of the `color` field as `#ff0000`. Read `data-version` as `v + 1`.
-   7. Wait for 2 samples. Read that the canvas differs from the screenshot of action 3.
+   7. Wait for `data-samples` to read 2 or more. Then wait up to 10 s for the canvas to differ from the screenshot of action 3. `data-samples` can still hold the count from before the edit. Read that the canvas differs.
    8. Fill the `emissive` input with `#00ff00`.
    9. Read `data-value` of `emissive` as `#00ff00`. Read `data-value` of `emissiveIntensity` as 1.
    10. Click the centre of the canvas. The ray meets `back`. Read `data-selected` as `back` and `data-shared` as 4.
@@ -492,7 +497,7 @@ Each step is one pull request with `Design: 0008` in its commit message. Each te
 21. The material inspector is a panel of the page, in the DOM over the top right of the canvas. It shows in `select` mode for a selected `Mesh`. It adds no export. Proposed: yes.
 22. The panel lists these controls by class: `color`, `emissive`, `emissiveIntensity` and `doubleSided`. The `emissive` control shows the hue of the emission and the `emissiveIntensity` control shows its intensity. The panel derives both from the radiance, and only `PhysicalMaterial` has a field `emissiveIntensity`. `PhysicalMaterial`'s five parameters wait for step 2 of record 0004, and textures for step 3. Proposed: yes.
 23. A field edit assigns through the setters of the material, and each adds 1 to `version`. The pack then writes `materials`, and `lights` when its words change, and builds no TLAS. The panel reads each value back from the material. Proposed: yes.
-24. A type change replaces `mesh.material` with a new instance of the chosen class. The instance carries `name`, `color`, the emission and `doubleSided`. The path costs as a transform change does, and the old table entry stays. `PhysicalMaterial` is no option before step 2 of record 0004. Proposed: yes.
+24. A type change replaces `mesh.material` with a new instance of the chosen class. The instance takes `name`, `color`, the emission and `doubleSided` from the old instance, hidden fields too, and omits the fields that its class lacks. The path costs as a transform change does, and the old table entry stays. `PhysicalMaterial` is no option before step 2 of record 0004. Proposed: yes.
 25. An edit applies to every mesh that shares the material instance, and the panel shows how many. The alternative is a clone on the first edit, for the selected mesh alone. Proposed: share.
 26. The panel does not set `run.editing`. Each edit restarts the accumulation at the full frame size. Step 8 measures the restart. Proposed: yes.
 
@@ -507,7 +512,7 @@ Each step is one pull request with `Design: 0008` in its commit message. Each te
 - **The request's premise.** The request to this session said that a transform change bumps an `Object3D` version. `Object3D` has no version. The pack compares the instance array bit for bit ("Before"). This record states the code's behaviour. Disposition: closed.
 - **Plan section 7's wording.** The row says "picking (`examples/id-pick`'s way)". That example does not pick ("Before"). Disposition: open. Next action: the owner accepts the host cast, and step 7 changes the row.
 - **three.js's names.** Every claim about three.js in this record comes from memory. That includes the keys and the members of `TransformControls`. No three.js source was read for it. Disposition: open. Next action: step 3 checks the names and amends this record for each difference.
-- **Pause and a moved object.** `PathTracer.render` clears the accumulation when the scene changes. With `paused` true it then traces nothing (`working` is false). Inference from that code: a drag while the toolbar's Pause is on leaves a black frame, as a camera drag does now. Not run. Disposition: open. Next action: step 5 reads this in a browser, and the owner chooses between leaving it and disabling the modes while paused.
+- **Pause and a moved object.** `PathTracer.render` clears the accumulation when the scene changes. With `paused` true it then traces nothing (`working` is false). By that code, a drag while the toolbar's Pause is on leaves the stale frame on the canvas. It stays until the viewer turns Pause off, as it does for a camera drag now. The restart sets the accumulation and the count of samples to 0. `working` is false, so nothing dispatches. `#drawn` stays true. Not run in a browser. Disposition: open. Next action: step 5 reads this in a browser, and the owner chooses between leaving it and disabling the modes while paused.
 - **A click also orbits.** `OrbitControls` starts an orbit on every primary press and stays unchanged. A click that moves 1 to 4 pixels in `select`, `translate` or `rotate` mode also turns the camera by that move and restarts the accumulation. With damping on, the release can leave a small coast. Disposition: open. Next action: step 5 measures the turn of a 4 pixel click. The owner then accepts it or asks for a suppress rule in a later record.
 - **three.js's `Intersection`.** three.js's mesh intersection may have a `normal` field with the meaning of an interpolated normal. This comes from memory. Decision 9 gives the next action. Disposition: open. Next action: step 1 checks the name.
 - **Double click.** `OrbitControls` resets the view on a double click. In `select` mode, two quick clicks on an object also reset the view. Disposition: open. Next action: the owner decides whether the edit modes turn the reset off.
