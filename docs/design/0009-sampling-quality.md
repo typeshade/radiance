@@ -589,14 +589,14 @@ Three rules hold for every step:
 ## Decisions for the owner
 
 1. The parts merge in the order 1, 2, 3, 5, 4, 6. Part 2 comes before part 5, and part 6 comes last. Proposed: yes. This asks the owner, because the order changes.
-2. Part 1 writes `arcTan` from sums, products and one division, and it does not change rule 2. The fallback is a longer polynomial. Admitting `atan2` for `omega` (Amendment B) needs the owner's go-ahead. Proposed: the polynomial.
+2. Part 1 writes `arcTan` from sums, products and one division, and it does not change rule 2. The fallback is a longer polynomial. Admitting `atan2` for `omega` (Amendment B) needs the owner's go-ahead. Proposed: the polynomial. This is a default.
 3. `OMEGA_MIN` is 1e-4 sr. Under it, `direct` samples the light by area. Proposed: yes. This is a default.
 4. No part has a minimum gain. Each part shows its measured numbers in its pull request, and the owner judges them. Part 6 has its own condition (decision 20). Proposed: yes. This is a default.
-5. Peters's projected solid angle (step 1.5) waits for the owner's go-ahead after step 1.4 gives its number. Proposed: wait.
+5. Peters's projected solid angle (step 1.5) waits for the owner's go-ahead after step 1.4 gives its number. Proposed: wait. This asks the owner.
 6. Part 2 uses SZ groups of four dimensions, the pair numbering `2 + bounce * 4`, and a table of 128 words in `sampler.shade.ts`. The fallbacks are a `select` tree, then the uniform block (Amendment C). Proposed: yes. This is a default.
 7. Part 3 replaces the box filter with a tent filter. The image becomes softer, so the owner judges the look. A tabulated filter and a Gaussian are not used. Proposed: tent. This asks the owner.
-8. `FILTER_RADIUS` is 1.0 pixel. The alternative is 0.5 pixel, which is sharper and gains less. Proposed: 1.0.
-9. A preview frame, traced at a lower resolution, is blurred over its blocks. Proposed: accept.
+8. `FILTER_RADIUS` is 1.0 pixel. The alternative is 0.5 pixel, which is sharper and gains less. Proposed: 1.0. This is a default.
+9. A preview frame, traced at a lower resolution, is blurred over its blocks. Proposed: accept. This is a default.
 10. The accumulator has at most 8 buckets. The G-MoN output needs at least 4. A frame over 2,097,152 pixels has fewer than 4 buckets, so it gets the plain mean only. A frame over 1,048,576 pixels gets fewer than 8. Proposed: yes. This asks the owner, because it costs memory.
 11. `PathTracer` gains the public member `fireflyFilter`, default `false`. Amendment F amends record 0003, and the bake of the API changes. Proposed: yes. This asks the owner, because it adds an export.
 12. The bucket of a frame is its number since the last restart, modulo `k`. The first frame of one sample keeps the place that record 0005 gives it. The alternative is the bucket with the fewest samples. Proposed: modulo `k`. This is a default.
