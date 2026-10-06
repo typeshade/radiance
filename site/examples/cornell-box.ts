@@ -1,5 +1,5 @@
 // The Cornell box, the path tracer's reference scene: the same one CI renders and holds to
-// the CPU oracle. The orbit stays inside limits that keep the camera looking into the box.
+// the CPU oracle. The orbit is free. Only the distance has limits, 0.05 to 50.
 
 import { Clock, PathTracer } from '@typeshade/radiance';
 import { OrbitControls, createCornellBox } from '@typeshade/radiance-addons';
