@@ -122,10 +122,25 @@ another hash, so `main` does not hold 85cce4f.
 | 2026-10-06 | 85cce4f | scene-graph     | 128x128 | 16  | 2892      | 5.9    | 1524.8   | 40294   | 2.46  | google swiftshader | Chromium 141.0.7390.37 |
 | 2026-10-06 | 85cce4f | instances       | 128x128 | 16  | 148       | 0.0    | 762.0    | 80633   | 4.92  | google swiftshader | Chromium 141.0.7390.37 |
 | 2026-10-06 | 85cce4f | cornell         | 512x512 | 4   | 1932      | 5.7    | 8137.8   | 48320   | 0.18  | google swiftshader | Chromium 141.0.7390.37 |
+| 2026-10-06 | 78f8132 | sponza          | 128x128 | 16  | 227329    | 532.0  | 13588.5  | 4521    | 0.28  | google swiftshader | Chromium 141.0.7390.37 |
+| 2026-10-06 | 78f8132 | sponza          | 512x512 | 2   | 227329    | 444.4  | 62681.8  | 4182    | 0.02  | google swiftshader | Chromium 141.0.7390.37 |
+
+### SwiftShader, the `sponza` rows
+
+The two `sponza` rows come from `node scripts/bench.mjs --scene sponza --size 128x128 --samples 16 --per-frame 4`
+and from `node scripts/bench.mjs --scene sponza --size 512x512 --samples 2 --per-frame 1`. The tree
+was commit 78f8132 of the branch `wt/S3` with no change, and the compiler pin was 596c805. Commit
+78f8132 is the parent of the commit that records the rows here. The squash merge of the pull request
+gives `main` another hash, so `main` does not hold 78f8132.
+
+The machine had four cores shared with other jobs. Its load average was between 7 and 8. The
+triangle count holds the 2 triangles of the light. The 227,327 triangles of the model build into 22
+BVHs (`BVH ms`). The rate is about 4,500 paths a second, a sixth of the `cornell` row at 128 x 128.
+This is a speed on a software device and is not a measure of a GPU.
 
 ### Real GPU, the owner's machine
 
-This row is empty until the owner runs `bun run bench --gpu` and pastes the rows.
+This row is empty until the owner runs `bun run bench --gpu` and pastes the rows. Milestone M2's acceptance needs the `sponza` row at 1920 x 1080 from a real GPU (`docs/plan.md`, M2, and design record 0002, "The benchmark"). It is open. The command is `bun run bench --gpu --scene sponza --size 1920x1080`.
 
 | date | commit | scene | size | spp | triangles | BVH ms | frame ms | paths/s | spp/s | device | browser |
 | ---- | ------ | ----- | ---- | --- | --------- | ------ | -------- | ------- | ----- | ------ | ------- |
