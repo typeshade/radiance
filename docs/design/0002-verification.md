@@ -120,14 +120,20 @@ and the mean of 4/255 breaks the mean bound. The same shift passes when it moves
 quarter of the pixels. The mean is then 4/255 times the share of pixels it moves. The gate
 admits a render with up to 6 pixels beyond 4/255 at 96 x 64.
 
-**The benchmark** is `scripts/bench.mjs`. It renders each benchmark scene for ten seconds at
-each size on the device it finds, and prints one row per scene and size:
-`| date | commit | scene | size | paths/s | spp/s | device | browser |`. `docs/benchmarks.md`
-holds the rows, appended by whoever ran it, with the device named as the browser reports it. A
-row from SwiftShader is marked as such and shows a trend only. M2's acceptance ("spp per second
-at 1080p recorded") is a row from a real GPU, which the owner's machine produces by the
-procedure in that file. CI runs the script on SwiftShader at 512 x 512 as a smoke test and
-records nothing.
+**The benchmark** is `scripts/bench.mjs`. It renders each benchmark scene at each size on the device
+it finds. The benchmark scenes are `cornell` (the gate's Cornell box) and every site example. Each
+render takes a fixed number of samples a pixel, 16 by default. The script prints one row per scene
+and size:
+`| date | commit | scene | size | spp | triangles | BVH ms | frame ms | paths/s | spp/s | device | browser |`.
+`docs/benchmarks.md` (What a row holds) defines each column. The script holds no bound on time or
+on speed. Its one limit is a timeout, 1,800 s a render by default, and a render that passes it fails
+the run. `docs/benchmarks.md` holds the rows, appended by whoever ran it, with the device named as
+the browser reports it. A row from SwiftShader is marked as such and shows a trend only. M2's
+acceptance ("spp per second at 1080p recorded") is a row from a real GPU, which the owner's machine
+produces by the procedure in that file. The option `--smoke` renders every scene at 32 x 32 and 2
+samples a pixel. It shows that every scene renders, and its rows are no measurement. CI is to run
+`node scripts/bench.mjs --smoke` on SwiftShader as a smoke test and to record nothing. That step is
+not in `.github/workflows/ci.yml` yet.
 
 **The probes.** Each gate's test file runs the gate once wrong on purpose and asserts that the
 gate reports it:
@@ -221,7 +227,7 @@ M3).
 6. **The differential scenes of M2.** `triangles`, `instances`, `lights`, each with its
    thresholds derived and recorded, as record 0001 steps 3 to 5 land.
 7. **The benchmark.** `scripts/bench.mjs`, `docs/benchmarks.md` with the procedure and the first
-   rows (SwiftShader from CI's smoke run, and the owner's GPU).
+   rows (SwiftShader from a manual run on the build machine, and the owner's GPU).
 8. **The journeys gate**, before the first release (record 0003).
 
 ## Decisions for the owner
@@ -352,6 +358,48 @@ names this record on a line of its own, `Design: 0002`.
   the stop rule in `window.runExample` in `scripts/gates/_browser.mjs`. That rule stops when
   `r.samples` reaches the samples. The second cost is a run of three renders in place of one for
   this example. The owner can choose this option in place of `OWN_SEED`.
+
+**Amendment 4** (2026-10-06, UTC). Step 7 delivered `scripts/bench.mjs` and `docs/benchmarks.md`
+with differences from "The benchmark" and step 7 of this record. This amendment settles the entries
+below. The owner has not decided any of them. The merge of the pull request that carries this
+amendment is the owner's acceptance of each entry marked "made part of the record" or "proposed".
+An entry marked "open" waits for the owner's answer. This amendment changes the text of "The benchmark" and step 7.
+The decisions keep their numbers and their text. The pull request that delivers step 7 merges after
+this one.
+
+- **The bound of a run.** This record said that the script renders each scene for ten seconds at
+  each size. The script stops at a number of samples a pixel instead: 16 by default, set with
+  `--samples`. A render that passes `--timeout` (1,800 s by default) fails the run. Fact: SwiftShader
+  traced from 28,584 to 158,147 paths a second in the rows of `docs/benchmarks.md`. One 1080p render
+  of 16 samples is 33,177,600 paths. Inference: a time bound gives each device a different number of
+  samples, and the first frame, which adds one sample, is then a different share of each row. A
+  fixed number of samples gives every device the same work, so `frame ms` and `paths/s` compare.
+  Proposed: made part of the record. "The benchmark" now says it.
+- **The row.** This record gave the row as eight columns: `date`, `commit`, `scene`, `size`,
+  `paths/s`, `spp/s`, `device` and `browser`. The script prints twelve. It adds `spp`, `triangles`,
+  `BVH ms` and `frame ms`, and it puts them in the order given in "The benchmark". The added columns
+  say how much work a row measured. Record 0007 (section 4, and step 5) expects a later amendment
+  of this row that adds the tier. Proposed: made part of the record. "The benchmark" now gives the
+  twelve columns, and `docs/benchmarks.md` defines them.
+- **The smoke run and the first rows.** This record said that CI runs the script on SwiftShader at
+  512 x 512 as a smoke test and records nothing. It also said that the first SwiftShader rows come
+  "from CI's smoke run". The two sentences disagree, because a smoke test records nothing. The
+  script's `--smoke` is 32 x 32 at 2 samples a pixel. The first SwiftShader rows of
+  `docs/benchmarks.md` come from a manual run at 128 x 128 and 16 samples, and one row at 512 x 512
+  and 4 samples, on the build machine at pin 596c805. The 1080p run of the default options takes
+  over an hour on SwiftShader, so a SwiftShader row may use a size below the two sizes of the `bench`
+  gate. Its `size` column says which. Proposed: made part of the record. "The benchmark" and step 7
+  now say it. The smoke run is a check that each scene renders, and the size does not matter to it,
+  so the small size stands.
+- **The smoke step in CI.** The pull request that delivers step 7 adds no step to
+  `.github/workflows/ci.yml`. Open. Next action: a pull request that adds
+  `node scripts/bench.mjs --smoke` to the `harness` job, after `bun run harness`, with the added
+  seconds measured in that pull request. Fact: measured on 2026-10-06 at 596584d (SwiftShader, node
+  v22.22.0, bun 1.3.14), the smoke run of all seven scenes took 8.7 s.
+- **The verification of decision 3.** No test carries `Verifies: Design 0002.3`, and DEC-0203 keeps
+  `verification: pending`. Proposed: decision 3 is verified by inspection. The script holds no bound,
+  and no gate reads `docs/benchmarks.md`. `scripts/bench.test.ts` states this in its header. This
+  amendment adds no test.
 
 **Configuration and validation record.** This record does not yet apply. Implementation will
 record each gate's first measured numbers, the pin, and the CI run that first ran it.
