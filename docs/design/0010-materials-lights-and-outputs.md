@@ -322,6 +322,63 @@ scene.background = environment; // or a Color, or null for black
 
 **MIS compensation (option).** Karlik et al. (2019) lower the density of the light technique where the BSDF technique is the better one. For an environment, the host subtracts `compensation * mean` from each texel's weight and clips at 0. It builds the table from the result. `compensation` is from 0 to 1 and is 0 by default. BSDF samples alone reach a texel with a density of 0 and a radiance above 0. They count in full there, so the estimate stays unbiased. The tables are the only change.
 
+### Part 4: The physical camera
+
+Part 4 gives the camera a focal length, an f-number, a focus distance, an ISO speed and a shutter time. The f-number sets the depth of field. The three exposure values set the exposure. Part 4 needs nothing from the other parts and nothing from the compiler.
+
+**Before.** Fact, from the code at the baseline: `PerspectiveCamera(fov, aspect)` holds the vertical field of view and the aspect. `cameraFrame` in `scene-pack.ts` writes `lens` as `(tanX, tanY, 0, 0)`. Record 0001 reserved `lens.z` for the aperture radius and `lens.w` for the focus distance. The kernel reads neither. The exposure is one number in stops, `PathTracer.exposure`, which `present.view.x` carries to `show`.
+
+**The film.** `PerspectiveCamera` gains the members of three.js that tie the field of view to a focal length. The formulas are three.js's (from memory, and step 4.1 checks them against its source).
+
+- `filmGauge` is the width of the film in millimetres, 35 by default.
+- `getFilmHeight()` is `filmGauge / max(aspect, 1)`.
+- `getFocalLength()` is `0.5 * getFilmHeight() / tan(fov / 2)`.
+- `setFocalLength(f)` sets `fov` to `2 * atan(0.5 * getFilmHeight() / f)`, in degrees.
+
+For an aspect of 1, a focal length of 50 mm gives a `fov` of 38.58 degrees. The constructor and the existing members do not change.
+
+**The physical camera.** `PhysicalCamera` extends `PerspectiveCamera`. The name is three-gpu-pathtracer's, which also has `fStop` and `apertureBlades`.
+
+```ts
+class PhysicalCamera extends PerspectiveCamera {
+  constructor(fov?: number, aspect?: number, parameters?: PhysicalCameraParameters);
+  fStop: number; // 5.6
+  focusDistance: number; // 10, in scene units
+  iso: number; // 100
+  shutterSpeed: number; // 1 / 125, in seconds
+  exposureCompensation: number; // 0, in stops
+  exposureMode: 'relative' | 'absolute'; // 'relative'
+  depthOfField: boolean; // true
+  apertureBlades: number; // 0 is a circle. 3 or more is a polygon
+  apertureRotation: number; // 0, in radians
+  unitsPerMeter: number; // 1
+  readonly ev100: number;
+  readonly exposureStops: number;
+}
+```
+
+**The exposure.** The exposure is a number of stops. The renderer adds it to its own `exposure` on the host, so the kernel does not change.
+
+- `ev100` is `log2(fStop^2 / shutterSpeed) - log2(iso / 100)`.
+- In the `absolute` mode the exposure scale is `shutterSpeed * iso / (120 * fStop^2)`, which is `1 / (1.2 * 2^ev100)`. It is the saturation-based exposure of Lagarde and de Rousiers (2014), for a scene in cd/m^2. `exposureStops` is `log2(scale) + exposureCompensation`.
+- In the `relative` mode the scale is the same ratio divided by its value at the defaults. The default camera then adds 0 stops, and a scene in relative units renders as it did. A doubled ISO, a halved shutter time and an f-number that grows by `sqrt(2)` each change the exposure by one stop.
+- The exposure acts on the image on the screen only. The EXR of Part 5 keeps the scene-linear radiance, and records the ISO, the shutter time and the f-number as attributes.
+
+**The thin lens.** The aperture radius is `focalLength * 0.001 / (2 * fStop) * unitsPerMeter`, in scene units. `cameraFrame` writes it in `lens.z` and the focus distance in `lens.w`. It writes `lens.z` as 0 when `depthOfField` is false or the camera is a `PerspectiveCamera`. The kernel then follows the pinhole path, bit for bit.
+
+In `trace`, for each sample, when `lens.z` is above 0:
+
+1. Take the pinhole direction `dir`, the unit vector of `forward + right * x + up * y`, as today.
+2. Take the focus point `eye + dir * (focus / dot(dir, forward))`.
+3. Take two numbers `l` from `sample2(pixelSeed, index, PAIR_LENS)`.
+4. Make a point `(px, py)` of the aperture from `l`.
+5. Move the origin to `eye + right * (px * radius) + up * (py * radius)`.
+6. Set the direction to the unit vector from that origin to the focus point.
+
+`PAIR_LENS` is 65,536. A bounce takes pairs from 1 up, four to a bounce, so no bounce reaches it. A circle takes the point `sqrt(l.x) * turn(l.y)`. The radius comes from `sqrt` and the angle from `turn`, which keeps record 0005, rule 2. A polygon of `n` blades picks the sector `k = floor(l.x * n)` and remaps `l.x`. It then takes a point that is uniform in the triangle of the centre and the vertices `k` and `k + 1`. The vertices come from `turn(k / n + rotation / (2 * pi))`. The polygon has a circumradius of 1.
+
+**The camera's footprint and the AOVs.** The texture footprint of Part 2 uses the pinhole's spread. The geometry AOVs of Part 5 use the pinhole ray too, so they stay sharp.
+
 ## Why
 
 ### Part 1: The principled BSDF
@@ -376,6 +433,19 @@ Alternatives considered:
 - **An octahedral map.** It needs no `atan2`. The assets are equirectangular, so the host would resample every image. A resample loses detail at the poles.
 - **A sun as a bright texel.** A sun of 0.5 degrees is a fraction of one texel in a 2,048 wide image. A light of its own is exact and cheap.
 
+### Part 4: The physical camera
+
+- **The acceptance names a physical camera.** Plan section 4 lists exposure and bokeh for M3. A product shot uses a shallow depth of field.
+- **Why the exposure is on the host.** The tone map already takes `exposure` in stops. A sum of stops on the host changes no kernel, no golden and no determinism row.
+- **Why a relative mode.** Every scene so far is in relative units, where a light has a radiance of 17 and no unit. In the absolute mode, a default camera would scale such a scene by about 2e-4 and show black. The relative mode keeps the default at 0 stops and keeps the stop arithmetic of a real camera.
+- **Why `turn` and `sqrt`.** The polar map of a disc needs an angle and a radius. `turn` and `sqrt` are the operations that record 0005 admits. A concentric map (Shirley and Chiu 1997) keeps the neighbours of the Sobol pair closer together. Step 4.2 may measure it, and the polar map is the first choice because it is the simpler one.
+- **Why the geometry AOVs ignore the lens.** A denoiser wants a first hit that has no noise. A blurred depth or normal carries a blur that the beauty pass already shows.
+
+Alternatives considered:
+
+- **A lens model with several elements.** It gives cat-eye bokeh and vignetting. It needs a lens prescription and a ray trace through it. It is out of M3.
+- **Autofocus by a ray cast.** Record 0008's `Raycaster` could set `focusDistance` from a click. The viewer of Part 6 may do it when that record has merged. The camera itself needs no ray cast.
+
 ## What it touches
 
 ### Part 1: The principled BSDF
@@ -407,6 +477,15 @@ Alternatives considered:
 - **Tests owed.** `lights.test.ts` (new, on the oracle), `environment-table.test.ts`, `environment.test.ts` (new, on the oracle), `RGBELoader.test.ts` and the loader's test for `KHR_lights_punctual`. `scene-pack.test.ts` holds the rows and the blocks.
 - **Gates.** `gate:differential` runs `analytic` and `hdri`. `gate:determinism` runs them too. `gate:furnace` gains the environment row. `gate:render` changes no golden at the baseline.
 - **Site.** The guide gains a page on lights and environments.
+
+### Part 4: The physical camera
+
+- **Engine host.** `cameras/PerspectiveCamera.ts` gains the film members. `cameras/PhysicalCamera.ts` is new. `renderers/scene-pack.ts` changes `cameraFrame`. `renderers/PathTracer.ts` adds the camera's exposure in `#present`. `index.ts` and `__api__/surface.md` change.
+- **Engine kernels.** `trace.shade.ts` changes the `trace` entry: the lens sample before `radiance`. `materials.shade.ts` holds `turn`, which the lens uses. `sampler.shade.ts` is unchanged.
+- **Scripts.** `scripts/scenes.ts` lists the scene `lens`. `scripts/gates.mjs` gains its bound.
+- **Tests owed.** `PhysicalCamera.test.ts`, `aperture.test.ts` (new, on the oracle) and `lens.test.ts` (new, on the oracle, for the blur radius).
+- **Gates.** `gate:differential` runs `lens`. `gate:determinism` runs it too. `gate:render` changes no golden, because no example uses a `PhysicalCamera`.
+- **Site.** The guide gains a page on the camera.
 
 ## Amendments owed
 
@@ -537,6 +616,28 @@ Alternatives considered:
 **Record 0007.** One place changes.
 
 > "The execution model" gains: "The `trace` entry also reads three environment textures of 32-bit floats with `textureLoad`. WebGL2 renders to such a texture only with `EXT_color_buffer_float`. The extension is present on SwiftShader."
+
+### Part 4: The physical camera
+
+**Record 0001.** Two places change.
+
+> The sentence "The uniform block reserves two words for M3's thin lens (aperture, focus distance)" reads as follows. "`lens.z` is the aperture radius in scene units. `lens.w` is the focus distance. `lens.z` is 0 for a pinhole. The thin lens takes its two numbers from the sampler pair `PAIR_LENS`, 65,536."
+
+> "Camera" gains: "`PhysicalCamera` extends `PerspectiveCamera` with an f-number, a focus distance, an ISO speed and a shutter time (record 0010, Part 4)."
+
+**Record 0002.** Two places change.
+
+> The table of differential scenes gains `lens`: "Three small emissive spheres at 0.5, 1 and 2 times the focus distance, under a thin lens".
+
+> The probe list gains: "`lens`: an aperture radius of twice the right one fails the blur radius test."
+
+**Record 0003.** One place changes.
+
+> "The public surface at 0.1.0" gains `PhysicalCamera` and the members `filmGauge`, `getFilmHeight`, `getFocalLength` and `setFocalLength` of `PerspectiveCamera`.
+
+**Record 0005.** One place changes.
+
+> Rule 2 gains: "The aperture point of a thin lens is made from `sqrt` and `turn`."
 
 ## Implementation, in steps
 
@@ -691,6 +792,33 @@ Steps 3.1, 3.2 and 3.4 do not need the pin of change 0050. Step 3.3 does, and it
 
 Part 3 is done when step 3.4 has merged. The light tree has no step. A later record owns it.
 
+### Part 4: The physical camera
+
+Part 4 has no dependency. Each step is one pull request.
+
+**4.1 The film and the exposure.**
+
+- Delivers: the film members of `PerspectiveCamera`, `PhysicalCamera` with its exposure, and the sum of stops in `PathTracer`. The kernel does not change.
+- Test: `setFocalLength(50)` at an aspect of 1 gives a `fov` of 38.5808 degrees within 1e-3, and `getFocalLength()` returns 50 within 1e-9. `ev100` is 14.644 within 1e-3 for f/16, 1/100 s and ISO 100. A doubled ISO adds one stop exactly. The `relative` mode adds 0 stops at the defaults.
+- Number: `gate:determinism` reports 0 of 1,024 floats that differ. No golden changes.
+- Probe: the stop test runs once with `fStop^2` replaced by `fStop`. It must fail.
+
+**4.2 The thin lens.**
+
+- Delivers: `PAIR_LENS`, the lens sample in `trace`, the polar map of the disc, the lens fields of `cameraFrame`, and the `lens` scene.
+- Test: take an emissive sphere of radius 1e-3 at twice the focus distance, with a focal length of 50 mm and f/2. Its blur radius, projected onto the focal plane, matches `R * abs(s - d) / d` within 5 %. Here `R` is the aperture radius, `s` the focus distance and `d` the distance of the sphere. The radius comes from the second moment of the image, `sqrt(2 * m2)`. At the focus distance the radius equals the pinhole's within 5 %. With `lens.z` equal to 0 the image equals the pinhole render bit for bit.
+- Number: `gate:differential` holds `lens` within a bound that the step derives by the rule of record 0002.
+- Probe: the blur test runs once with an aperture radius of twice the right one. It must fail. It runs once with an f-number of 4, which must halve the radius.
+
+**4.3 The aperture blades.**
+
+- Delivers: the polygon map and `apertureBlades` and `apertureRotation` in `cameraFrame`.
+- Test: 10^6 points of a hexagon lie inside it. Each of the six sectors holds one sixth of them within 5 standard deviations. The second moment agrees with a host quadrature within 1 %.
+- Number: the step records the area of the hexagon against the circle of the same circumradius, which is 0.827.
+- Probe: the sector test runs once with the sector chosen by `floor(l.y * n)` where `l.y` is also the angle. It must fail the uniformity bound.
+
+Part 4 is done when step 4.3 has merged.
+
 ## Decisions for the owner
 
 1. Default. Part 1 models the physical material on Burley's Disney BRDF (2012) and BSDF (2015), with glTF's metallic-roughness parameters and glTF's layering. It has five lobes: diffuse, reflection, transmission, clearcoat and sheen. Proposed: yes.
@@ -713,9 +841,11 @@ Part 3 is done when step 3.4 has merged. The light tree has no step. A later rec
 18. For the owner. The power table is the first step and the light tree is deferred. The demo scenes hold few lights. The tree waits for a record that has a scene of thousands of emitters to measure. Proposed: this order.
 19. Default. An environment is an equirectangular `rgba32float` image of at most 2,048 texels across. Its distribution is at most 1,024 across. The rotation is about +y only. `scene.background` takes a `Color`, an `Environment` or `null`. Proposed: yes.
 20. Default. MIS compensation is an option, `compensation`, with 0 as the default until step 3.4 measures a gain. Proposed: yes.
+21. Default. `PhysicalCamera` extends `PerspectiveCamera`. The exposure is a number of stops, added on the host. Its default `relative` mode adds 0 stops at the defaults, and the `absolute` mode follows Lagarde and de Rousiers. Proposed: yes.
+22. Default. The aperture is a disc, or a polygon of 3 or more blades. The thin lens takes its numbers from the sampler pair 65,536. The geometry AOVs use the pinhole ray. Proposed: yes.
 
 ## Record
 
 **Approval and plan record.** This record is a draft. No approval applies yet.
 
-**Configuration and validation record.** This record does not yet apply. No step is started. This draft has Parts 1 to 3 written. Parts 4 to 6 are not written yet.
+**Configuration and validation record.** This record does not yet apply. No step is started. This draft has Parts 1 to 4 written. Parts 5 and 6 are not written yet.
