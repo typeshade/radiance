@@ -2,7 +2,8 @@
 
 This file records how fast each scene renders. A row is a measurement. It is not a bound, and no
 gate reads it (design record 0002, decision 3). `scripts/bench.mjs` produces the rows. The owner
-or an agent appends them here by hand.
+or an agent appends them here by hand. Each render takes a fixed number of samples a pixel and
+stops there, so the work is the same on every device (design record 0002, Amendment 4).
 
 The first rows come from SwiftShader, the software WebGPU device the gates use. A SwiftShader row
 shows a trend and nothing more. Milestone M2's acceptance asks for samples a second at 1080p on a
@@ -51,28 +52,33 @@ for the timing, so the number is the cost of the builder and not a part of `fram
 
 Run these steps on Linux or macOS from the repository root.
 
-1. Run `bun install`.
-2. Run `npx playwright install chromium`, or set `RADIANCE_CHROMIUM` to a Chromium executable.
-3. Run `node scripts/bench.mjs --size 128x128 --samples 16 --per-frame 4`.
-4. Copy each row of the output into the SwiftShader table below.
-5. Check that `device` names SwiftShader.
+1. Run `git submodule update --init`. It fetches the compiler into `vendor/typeshade`.
+2. Run `bun install`.
+3. Run `npx playwright install chromium`, or set `RADIANCE_CHROMIUM` to a Chromium executable.
+4. Run `node scripts/bench.mjs --size 128x128 --samples 16 --per-frame 4`.
+5. Copy each row of the output into the SwiftShader table below.
+6. Check that `device` names SwiftShader.
 
-SwiftShader traces about 30,000 to 160,000 paths a second on four cores. At 1920 x 1080 the default
+SwiftShader traces about 28,000 to 160,000 paths a second on four cores. At 1920 x 1080 the default
 run takes over an hour. Use the small size of step 3.
 
 ## Procedure: a real GPU, in Windows PowerShell
 
-The owner runs these steps. The run takes minutes on a real GPU.
+The owner runs these steps. The run takes minutes on a real GPU. Git, node and bun must be on
+`PATH`. `bun run bench` runs `node scripts/bench.mjs`, and the script starts `bun` without a shell.
+So `bun` must be an executable, as the installer from bun.sh sets it up. A `.cmd` shim may not work
+(inference, not tested).
 
 1. Open PowerShell in the repository folder.
-2. Run `bun install`.
-3. Set the browser: `$env:RADIANCE_CHROMIUM = "C:\Program Files\Google\Chrome\Application\chrome.exe"`.
-4. Run `bun run bench --gpu`.
-5. Read the first row. The `device` column must name your GPU and not SwiftShader.
-6. If the run fails with a software adapter, run `$env:RADIANCE_HEADED = "1"`.
-7. After step 6, run step 4 again.
-8. Copy each row of the output into the real GPU table below.
-9. Commit the rows in a pull request.
+2. Run `git submodule update --init`. It fetches the compiler into `vendor/typeshade`.
+3. Run `bun install`.
+4. Set the browser: `$env:RADIANCE_CHROMIUM = "C:\Program Files\Google\Chrome\Application\chrome.exe"`.
+5. Run `bun run bench --gpu`.
+6. Read the first row. The `device` column must name your GPU and not SwiftShader.
+7. If the run fails with a software adapter, run `$env:RADIANCE_HEADED = "1"`.
+8. After step 7, run step 5 again.
+9. Copy each row of the output into the real GPU table below.
+10. Commit the rows in a pull request.
 
 The default run renders every scene at 512 x 512 and 1920 x 1080 with 16 samples a pixel. To record
 the 1080p speed of one scene, run `bun run bench --gpu --scene cornell --size 1920x1080`.
@@ -90,7 +96,8 @@ after `bun run harness`. The step fails when a scene does not render, and it rec
 The command was `node scripts/bench.mjs --size 128x128 --samples 16 --per-frame 4`, and for the
 512 x 512 row `node scripts/bench.mjs --scene cornell --size 512x512 --samples 4 --per-frame 2`.
 The machine had four cores shared with other jobs, so the numbers vary from run to run. The
-compiler pin was 596c805.
+compiler pin was 596c805. The `commit` column names 1dcdfaf, the commit of `scripts/bench.mjs` when
+the rows were measured. A later rebase renamed that commit e75b7f5, and the script's code is the same.
 
 | date       | commit  | scene           | size    | spp | triangles | BVH ms | frame ms | paths/s | spp/s | device             | browser                |
 | ---------- | ------- | --------------- | ------- | --- | --------- | ------ | -------- | ------- | ----- | ------------------ | ---------------------- |

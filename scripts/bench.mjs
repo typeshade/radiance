@@ -1,6 +1,6 @@
 // === The benchmark: how fast each scene renders, recorded and not held ===
 //
-// Design record 0002, "The benchmark" and step 7. The script renders the Cornell box and each
+// Design record 0002, "The benchmark", step 7 and Amendment 4. The script renders the Cornell box and each
 // site example at a fixed size and a fixed number of samples a pixel, in headless Chromium, and
 // prints one row of a Markdown table for each scene and size:
 //
@@ -14,8 +14,8 @@
 //
 //   --gpu       Drop the SwiftShader flags the gates use (scripts/gates/_browser.mjs), so Chromium
 //               takes the machine's GPU. The run fails when the adapter is a software one.
-//   --smoke     A tiny run (SMOKE below) that shows every scene still renders. CI's row comes
-//               from it, and the row is not a measurement.
+//   --smoke     A tiny run (SMOKE below) that shows every scene still renders. CI is to run it as
+//               a smoke test and to record nothing: its rows are not a measurement.
 //   --size      The frame sizes in pixels. Default 512x512 and 1920x1080.
 //   --samples   The samples a pixel of each render. Default 16.
 //   --per-frame The samples one frame adds. Default 4.
