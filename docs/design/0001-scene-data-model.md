@@ -204,11 +204,13 @@ size, not the scene the owner has in mind.
 
 - **Ray against box**: the slab test with precomputed `1 / d` per ray, in the space the box is
   in. A division is a `ulp` row of the determinism report. Record 0005 admits it. `prepare`
-  replaces a component of `d` whose absolute value is below 1e-20 with 1e-20, whatever its sign
-  (`TINY`). No infinity then enters the test. `prepare` runs for the world ray and, through
-  `rayIn`, for each instance-space ray, so the floor holds in both spaces. The kernel multiplies
-  the far distance by 1.0000004 (`SLAB_SLACK` in `enters`), to keep the rounding of the test from
-  culling a hit on a box's face.
+  computes `inv`, the slab test's `1 / d`, with each component of `d` whose absolute value is
+  below 1e-20 taken as +1e-20 (`TINY`). The ray keeps `d` as it is for the triangle test and the
+  walk. A component of -1e-30 gives `inv` of about +1e20, and `d` keeps the component as -1e-30.
+  No infinity then enters the test. `prepare` runs for the world ray and, through `rayIn`, for
+  each instance-space ray, so it computes `inv` the same way in both spaces. The kernel multiplies
+  the far distance by 1.0000004 (`SLAB_SLACK` in `enters`). This keeps the rounding of the test
+  from culling a hit on a box's face.
 - **Ray against triangle**: the watertight test of Woop, Benthin and Wald (2013). Its shear
   constants are computed once per ray per space. It leaves no crack along a shared edge, which a
   shadow ray toward a light would otherwise pass through. Its one division is the final `1 / det`.
@@ -227,8 +229,8 @@ size, not the scene the owner has in mind.
   triangle's second and third vertex. `surface(hit, dir)` computes the point, the geometric
   normal, the shading normal, the uv, and the material index.
 - **The surface of a point**: `surfaceAt(instance, triangle, b1, b2, dir)` gives the same
-  `Surface` for any point that its instance, triangle and weights name, met by a ray along `dir`.
-  `surface` calls it for a hit. Next-event estimation calls it for the point it samples on a
+  `Surface` as `surface` for the point that its instance, triangle and weights name. A ray along
+  `dir` meets that point. `surface` calls it for a hit. Next-event estimation calls it for the point it samples on a
   light (`direct` in `trace.shade.ts`), with the direction from the shaded point to that point.
 - **The normals**: the outward normal is `cross(p1 - p0, p2 - p0)` in the geometry's space. For a
   counter-clockwise triangle it points out of the surface. The kernel moves it to world space by
@@ -331,8 +333,9 @@ under the budget (`tileFrame` in `tiles.ts`). The last frame's nanoseconds per p
 dispatches inside it are as many as the tiles.
 
 **What `info` holds.** `info` holds `frameTime` (the last frame's time in milliseconds),
-`pathsPerSecond`, `frames` (the count of frames traced), `dispatches` (the last frame's count of
-tiles), `tilePixels` (the pixels of its largest tile) and `dispatchTime`. `dispatchTime` is
+`pathsPerSecond` and `frames` (the count of frames traced). It also holds `dispatches` (the last
+frame's count of tiles), `tilePixels` (the pixels of the last frame's largest tile) and
+`dispatchTime`. `dispatchTime` is
 `frameTime` over `dispatches`, a mean. It is not the measured time of one dispatch. The runtime
 submits the dispatches of a frame together and reports no time for one (record 0006, item 5).
 
@@ -362,9 +365,19 @@ numbers are arithmetic. No device gave them.
 No measure of the host time of one dispatch exists. Inference: 2,025 dispatches take less host time
 than 129,600 dispatches.
 
-Open question for the owner: when a tile of 4,096 pixels passes the budget, does the renderer
-take fewer samples in that frame, down to 1? This amendment does not decide it. `samplesPerFrame`
-stays as the author sets it.
+The tile rules do not change `samplesPerFrame`. Only `targetFrameTime` changes it, in `render` in
+`PathTracer.ts`. With `targetFrameTime` set, `render` changes it after each full-resolution
+frame. In `render`, `n` is the samples of the frame. The new `samplesPerFrame` is `n` times
+`targetFrameTime` over the frame's time, rounded and kept from 1 to `maxSamplesPerFrame`. In the same
+function, `maxSamples` caps `n` at the samples that remain. Without `targetFrameTime`,
+`samplesPerFrame` stays as the author sets it.
+
+Open question for the owner: a tile of 4,096 pixels may pass the budget. Does the renderer then
+take fewer samples in that frame, down to 1? Two answers exist. First, the renderer lowers `n` for
+that frame only, and `samplesPerFrame` keeps its value. Second, the renderer lowers
+`samplesPerFrame` itself, as `targetFrameTime` does. With the second answer, the budget and
+`targetFrameTime` both set `samplesPerFrame`, so the record must say which one wins. This
+amendment does not decide it.
 
 Owed: a later pull request with `Design: 0001` changes `tileFrame` and `tiles.test.ts` to these
 rules. The tests "is one tile of the whole frame before any frame is measured" and "never makes a
@@ -505,9 +518,9 @@ record is implemented at step 5.
 6. Tiling with a `watchdogBudget` of 50 ms by default.
 7. `QuadGeometry` is renamed `PlaneGeometry`, and `BoxGeometry` is added, for three.js parity
    (record 0003 decides names, this record depends on it).
-8. A light's chance is its share of the emitted power. The share is its area in world space times
-   the mean of its emissive colour ("The GPU layout", the light table). Amendment 2 adds this
-   decision.
+8. A light's chance is its share of the emitted power. A light's power is its area in world
+   space times the mean of its emissive colour. Its chance is its power over the sum of the power
+   of every light ("The GPU layout", the light table). Amendment 2 adds this decision.
 9. The first frame, traced before the renderer measures a speed, takes one sample. The smallest
    nominal tile is 4,096 pixels ("Tiles and the watchdog"). Amendment 2 adds this decision.
 
@@ -530,9 +543,9 @@ The merge of the pull request that carries this amendment is the owner's accepta
 disposition. "Made part of the record" means that the section named states the rule as the code at
 `main` 6ad088d has it. "The record's new text" means that the section states a rule that the code
 at `main` 6ad088d does not follow. The merge accepts the rule, and a later pull request makes the
-code follow it. The numbers: the Cornell box pack holds 8 instances, 1,924 triangles, 1,130
-vertices, 1,093 nodes (5 of them the TLAS) and 2 lights. A 4K frame takes 2 tiles in its first frame
-and 129,600 tiles at the smallest tile.
+code follow it. The numbers: `ScenePack.counts` of `createCornellBox()` at `main` 6ad088d holds 8
+instances, 1,924 triangles, 1,130 vertices, 1,091 nodes (3 of them the TLAS) and 2 lights. A 4K
+frame takes 2 tiles in its first frame and 129,600 tiles at the smallest tile.
 
 1. **TLAS leaves.** Made part of the record. "The build" states how the TLAS splits a node of
    more than 4 instances (`buildTlas` and `build` in `bvh.ts`).
@@ -540,8 +553,9 @@ and 129,600 tiles at the smallest tile.
    states that `Hit.triangle` and `bits(triangle)` are absolute indices into `triangles`. Decision 4
    stands.
 3. **A light's chance.** Made part of the record, with decision 8 for the owner. "The GPU layout"
-   states the light table: a chance is a share of the emitted power, the rows are in slot order
-   then triangle order, and no triangle of area 0 is a light (`#lightTable` in `scene-pack.ts`).
+   states the light table (`#lightTable` in `scene-pack.ts`). A light's chance is its power over
+   the sum of the power of every light. The rows are in slot order then triangle order, and no
+   triangle of area 0 is a light.
 4. **The outward normal in world space.** Made part of the record. "Traversal" states that the
    kernel moves the cross product to world space by the inverse transposed (`surfaceAt` in
    `intersect.shade.ts`).
@@ -550,17 +564,19 @@ and 129,600 tiles at the smallest tile.
    the bit.
 6. **The surface of a point on a light.** Made part of the record. "Traversal" names `surfaceAt`
    beside `surface`, and the call in `direct` (`trace.shade.ts`).
-7. **The slab test's edge cases.** Made part of the record. "Traversal" states the floor of 1e-20
-   on a component of the direction and the factor 1.0000004 on the far distance (`TINY` and
-   `SLAB_SLACK` in `intersect.shade.ts`).
+7. **The slab test's edge cases.** Made part of the record. "Traversal" states that `inv` takes a
+   component of the direction below 1e-20 as +1e-20, and that the ray keeps the direction. It also
+   states the factor 1.0000004 on the far distance (`TINY` and `SLAB_SLACK` in
+   `intersect.shade.ts`).
 8. **The first frame and the count of tiles.** The record's new text, accepted by the merge.
-   "Tiles and the watchdog" states rules 1 to 4, and decision 9 holds the number: the first frame
+   "Tiles and the watchdog" states rules 1 to 4, and decision 9 holds the number. The first frame
    takes one sample in nominal tiles of 4,096 pixels, and no nominal tile is smaller. The code does
    not follow them yet. `tileFrame` in `tiles.ts` and `tiles.test.ts` must follow them in a later
    pull request with `Design: 0001`. The old text said that the first frame takes one tile of the
    whole frame. That is true only for a frame of 4,194,240 pixels or fewer. Open: when a tile of
    4,096 pixels passes the budget, does the renderer take fewer samples in that frame, down to 1?
-   No rule answers it yet.
+   No rule answers it yet. The answer must say how it fits `targetFrameTime`, which already
+   changes `samplesPerFrame` in `render` (`PathTracer.ts`).
 9. **The time of a dispatch.** Made part of the record. "Tiles and the watchdog" states what
    `info` holds, and that `dispatchTime` is `frameTime` over `dispatches` (`PathTracer.ts`). A
    measured time for each dispatch waits on record 0006, item 5.
@@ -571,8 +587,8 @@ and 129,600 tiles at the smallest tile.
 11. **An emptied geometry.** Closed at 7b4494f, a commit of the pull request's branch. "Change
     tracking and upload" now states the rule that the fix made.
 
-This amendment also changes two entries below: "Deviations of step 3" names a disposition for each
-open entry, and "Configuration and validation record" names the merged pull request of step 3.
+This amendment also changes two entries below. "Deviations of step 3" names a disposition for each
+open entry. "Configuration and validation record" names the merged pull request of step 3.
 
 **Approval and plan record.** Accepted on 2026-10-05 (UTC). The owner approved the merge of typeshade/radiance#6 in the conversation, which merged this record as `draft` at 9e8b479. The owner then said to implement the records with Opus 5.5 and Sonnet 5.5, and that go-ahead is the acceptance. Every entry of "Decisions for the owner" stands as proposed.
 
@@ -595,9 +611,9 @@ that was open.
   The record names both fields and does not say relative or absolute. Decision 0001.2 makes a
   layout change an amendment. Made part of the record by Amendment 2, item 2.
 - **A light's chance.** The record says that `cdf` is the cumulative probability of a light, and
-  not what the probability follows. A light's chance is its share of the emitted power: its
-  world-space area times the mean of its emitted colour. The table is in slot order, then in
-  triangle order, and holds no triangle of area 0. Made part of the record by Amendment 2,
+  not what the probability follows. A light's power is its world-space area times the mean of
+  its emitted colour. Its chance is its power over the sum of the power of every light. The table
+  is in slot order, then in triangle order, and holds no triangle of area 0. Made part of the record by Amendment 2,
   item 3.
 - **The outward normal in world space.** The record gives `normalize(cross(e1, e2))` and does
   not say in which space. The kernel moves the cross product to world space by the inverse
@@ -610,9 +626,9 @@ that was open.
   `surfaceAt(instance, triangle, b1, b2, dir)`. `surface(hit, dir)` calls it, and next-event
   estimation calls it for the point it samples on a light. The record names `surface` alone.
   Made part of the record by Amendment 2, item 6.
-- **The slab test's edge cases.** A component of the direction whose absolute value is below
-  1e-20 is taken as 1e-20, so no infinity enters the test. The far distance is multiplied by
-  1.0000004, so the rounding of a box culls no hit on its face. The record says neither. Made
+- **The slab test's edge cases.** `inv` takes a component of the direction whose absolute value is
+  below 1e-20 as +1e-20, so no infinity enters the test. The ray keeps the direction. The far
+  distance is multiplied by 1.0000004, so the rounding of a box culls no hit on its face. The record says neither. Made
   part of the record by Amendment 2, item 7.
 - **The first frame.** The first frame traces one sample over one tile of the whole frame, as
   "Tiles and the watchdog" says. No speed is known before it, so the budget does not size that
