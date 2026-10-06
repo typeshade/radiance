@@ -145,13 +145,16 @@ of record 0001's layout holds on WebGL2.
    - a storage texture format that WebGL2 cannot render to
 
    Change 0054 will report each one with a reason and run it on the CPU tier. Inference: the
-   renderer has no CPU tier at the pin. Unless M4's reference mode (L3, the same kernels on the CPU
-   oracle) serves as the fallback, a scene past one of these limits will not render on WebGL2.
+   renderer has no CPU tier at the pin. M4's reference mode (L3) runs the same kernels on the CPU
+   oracle. Unless it serves as the fallback, a scene past one of these limits will not render on
+   WebGL2.
 
-   Change 0054 specifies one `R32UI` texel for each 4-byte lane when the context has no
-   `EXT_color_buffer_float`. The OpenGL ES 3.0 minimum for `MAX_TEXTURE_SIZE` is 2048. At that
-   minimum, one buffer holds 4,194,304 lanes, which is 16 MiB. Record 0006, row 1, assumes 128 MiB
-   for each buffer on WebGPU. A device may report a larger `MAX_TEXTURE_SIZE`.
+   Change 0054 specifies one `R32UI` texel for each 4-byte lane. Every `u32` buffer uses `R32UI`
+   on any context. An `f32` buffer may use `R32F` or `RGBA32F` when the context has
+   `EXT_color_buffer_float`. The figures here assume `R32UI`. The OpenGL ES 3.0 minimum for
+   `MAX_TEXTURE_SIZE` is 2048. At that minimum, one buffer holds 4,194,304 lanes, which is
+   16 MiB. Record 0006, row 1, assumes 128 MiB for each buffer on WebGPU. A device may report a
+   larger `MAX_TEXTURE_SIZE`.
 
    Change 0054 does not state how many buffers one pass can read. The design record of the tier
    will measure the limits against record 0001's seven buffers.
@@ -314,15 +317,21 @@ place of M8 in the order and its numbers are proposals, and the owner has not de
 done when each of these holds. Each item names what checks it:
 
 - The pin carries steps 1 to 4 of change 0054's implementation (its "Draft impact estimate"),
-  and `compiler-changes.md` records 0054. A reviewer checks this in the pull request that moves
-  the pin. The `compiler bump impact` job reports a proposal that the pin implements and that
-  `compiler-changes.md` does not record.
+  and `compiler-changes.md` records 0054. A reviewer checks both in the pull request that moves
+  the pin. Change 0054 names `typeshade.github.io` and `vscode-typeshade` in its `downstream`
+  list. It does not name `radiance`. So the `compiler bump impact` job does not report 0054, and
+  the reviewer adds the `- 0054` item to `compiler-changes.md` by hand. If the compiler adds
+  `radiance` to the `downstream` list of 0054, the job reports 0054 on a pin that implements it,
+  until the item exists.
 - `tshc check` reports no `TS8015` on the kernels. `bun run check:shaders` runs it in the
-  `format + boundary + typecheck + test` job. This is also 0054's own evidence for
-  `trace.shade.ts` ("What it touches").
+  `format + boundary + typecheck + test` job. It reports `TS8015` as a warning and exits 0, so no
+  CI job fails on `TS8015`. A reviewer reads the output of `bun run check:shaders` in the job log.
+  This is also 0054's own evidence for `trace.shade.ts` ("What it touches").
 - The renderer runs on a WebGL2 context when the browser has no WebGPU, through
   `typeshade/runtime` alone. `bun run check:boundary` holds the boundary in the same job. The
-  three gates below show the run in the `harness` job.
+  `harness` job runs Chromium with WebGPU present. So the three gates below show a WebGL2 render.
+  They do not show that the renderer chooses WebGL2 without WebGPU. The tier's design record names
+  the test that removes WebGPU (for example, `navigator.gpu` undefined) and checks the fallback.
 - The Cornell box on WebGL2, in headless Chromium on SwiftShader, is within the `ORACLE` bounds
   (`scripts/gates.mjs`) of the oracle's render. This is the `differential` gate of record 0002. It
   runs in the `harness` job.
@@ -330,8 +339,9 @@ done when each of these holds. Each item names what checks it:
   `harness` job.
 - A golden holds the WebGL2 image (the `render` gate). It runs in the `harness` job.
 - `docs/benchmarks.md` has one row for WebGL2 and one for WebGPU, with the paths per second. The
-  rows follow the procedure of record 0002 ("The benchmark", step 7). The `bench` gate runs by
-  hand, so no CI job checks these rows. A reviewer reads them.
+  file does not exist on `main` at 7d48fa4. Step 7 of record 0002 ("The benchmark") creates it
+  and gives the procedure for the rows. The `bench` gate runs by hand, so no CI job checks these
+  rows. A reviewer reads them.
 - The owner accepts a design record for the tier before the first line of its code (decision 6,
   section 12). A reviewer checks this at the pull request of the record. An amendment to records
   0001 and 0002 merges first, in its own pull request, where WebGL2 changes a limit or a gate.
@@ -434,9 +444,10 @@ console's slot to the items below:
 - WebGL2: change 0054, accepted on the compiler's `main` at a5dcbe7 (pull request #506) and
   amended at 146b162 (#509). It answers typeshade/typeshade#468, raised in
   `docs/typeshade-feedback.md` on 2026-10-05. The engine opens no proposal for it, and M8 waits
-  on it. The pin 596c805 is before it. Its implementation is not on the compiler's `main` at
-  146b162. Record 0006 says that 0054 is not implemented at the pin and that the engine waits on
-  it for M8 (the paragraph "What the engine waits on and does not open", Amendment 1).
+  on it. The pin 596c805 is before it. Only step 1a of its implementation (#510) is on the
+  compiler's `main`, at 1c2d6406. Record 0006 says that 0054 is not implemented at the pin. It
+  says that the engine waits on 0054 for M8 (the paragraph "What the engine waits on and does not
+  open", Amendment 1).
 - What change 0054 leaves open for the engine. Its implementing pull request will settle the shape
   of `RuntimeOptions` for a WebGL2 context ("Decisions at acceptance", decision 2). Change 0054
   does not state the count of buffers one pass reads on WebGL2. If the tier's design record needs
