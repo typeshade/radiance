@@ -19,10 +19,15 @@ touches:
   - packages/radiance/src/renderers/scene-pack.ts
   - scripts/gates.mjs
   - scripts/gates/differential.mjs
+  - scripts/gates/determinism.mjs
+  - scripts/bench.mjs
   - scripts/oracle.ts
   - scripts/quality.mjs
   - scripts/sz-matrices.ts
   - scripts/__goldens__
+  - site/public/stills
+  - PRODUCT.md
+  - site/src/content/docs/guide/checked-on-the-cpu.mdx
   - docs/benchmarks.md
   - docs/design/0001-scene-data-model.md
   - docs/design/0002-verification.md
@@ -33,19 +38,19 @@ compiler: []
 
 **Document control**
 
-| Field         | Value                                                                                                                                                                                                                 |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Identity      | Design record 0009, status `draft`. Six parts, 21 decisions, 12 amendments owed (A to L). Branch `wt/Q`                                                                                                               |
-| Date          | 2026-10-06 (UTC), the date of authorship. The owner approved the quality wave on the same date                                                                                                                        |
-| Author        | Written in an agent session for the owner. The owner's review is the approval                                                                                                                                         |
-| Applicability | The kernels in `packages/radiance/src/kernels`, the host in `packages/radiance/src/accel` and `src/renderers`, and the gates in `scripts/`. No site page. One public member, `PathTracer.fireflyFilter` (decision 11) |
-| Baseline      | `main` at 55bde46. The compiler pinned at 596c805. Every line number below is a line of that commit. `main` has since moved to 13b9e88, and the lines are not checked against it                                      |
-| Source        | The papers survey of 2026-10-06 (Top 12 items 2, 3, 4, 10, 11 and 12, and its "avoid" list). The survey is a working file and is not in the tree                                                                      |
-| Pull request  | Not opened yet. The pull request that carries this record is its review. The parts were committed one by one on branch `wt/Q`, from 10677bb                                                                           |
+| Field         | Value                                                                                                                                                                                                                                                                                                                                                      |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Identity      | Design record 0009, status `draft`. Six parts, 21 decisions, 12 amendments owed (A to L). Branch `wt/Q`                                                                                                                                                                                                                                                    |
+| Date          | 2026-10-06 (UTC), the date of authorship. The owner approved the quality wave on the same date                                                                                                                                                                                                                                                             |
+| Author        | Written in an agent session for the owner. The owner's review is the approval                                                                                                                                                                                                                                                                              |
+| Applicability | The kernels in `packages/radiance/src/kernels`, the host in `packages/radiance/src/accel` and `src/renderers`, and the gates in `scripts/`. The stills in `site/public/stills` change with parts 2, 3 and 5, and part 2 may amend two prose lines (`PRODUCT.md` and `checked-on-the-cpu.mdx`). One public member, `PathTracer.fireflyFilter` (decision 11) |
+| Baseline      | `main` at 55bde46. The compiler pinned at 596c805. Every line number below is a line of that commit. `main` has since moved to a89aaa1. Of the cited files, only `scripts/gates.mjs` changed between the two                                                                                                                                               |
+| Source        | The papers survey of 2026-10-06 (Top 12 items 2, 3, 4, 10, 11 and 12, and its "avoid" list). The survey is a working file and is not in the tree                                                                                                                                                                                                           |
+| Pull request  | Not opened yet. The pull request that carries this record is its review. The parts were committed one by one on branch `wt/Q`, from 10677bb                                                                                                                                                                                                                |
 
 ## What changes
 
-The owner approved a quality wave on 2026-10-06. Six techniques from the papers survey make the path tracer converge faster or look cleaner at the same sample count. This record writes each one as a part. A part has its own steps, so an agent can implement and merge it alone. Five parts change no public export. Part 4 adds one member to `PathTracer` (decision 11). Parts 1, 2, 3 and 5 change the kernels' random numbers or estimators, so they change the images. Part 4 changes the image on the canvas only when the filter is on. Part 6 changes no image.
+The owner approved a quality wave on 2026-10-06. Six techniques from the papers survey make the path tracer converge faster or look cleaner at the same sample count. This record writes each one as a part. A part has its own steps, so an agent can implement and merge it alone. Five parts change no public export. Part 4 adds one member to `PathTracer` (decision 11). Parts 1, 2, 3 and 5 change the kernels' random numbers or estimators, so they change the images. Part 4 changes the image on the canvas only when the filter is on. Part 6 changes an image only where a tie in `t` is decided otherwise.
 
 ### Before
 
@@ -71,13 +76,13 @@ Each part below gives the contract before and after. The table lists the parts a
 | 3    | Filter importance sampling with a tent filter        | Ernst et al. 2006          | The jitter in `trace`                              | Yes. The image is filtered, so it is softer              |
 | 4    | G-MoN firefly removal                                | Buisine et al. 2021        | `accum`, `trace`, `show`, `PathTracer.ts`          | In the G-MoN output only. The plain mean does not change |
 | 5    | Blue-noise diffusion by hierarchical pixel ordering  | Ahmed et al. 2020 (ZSobol) | The sample index in `sampler.shade.ts` and `trace` | No. Only the error's pattern changes                     |
-| 6    | An 8-wide compressed BVH                             | Ylitie et al. 2017         | `bvh.ts`, `layout.shade.ts`, `intersect.shade.ts`  | No. The nearest hit stays the same                       |
+| 6    | An 8-wide compressed BVH                             | Ylitie et al. 2017         | `bvh.ts`, `layout.shade.ts`, `intersect.shade.ts`  | No, except where a tie in `t` is decided otherwise       |
 
 **The order.** The parts are independent in code. Four couplings set the order of merging.
 
 1. Parts 2 and 5 both change `sampler.shade.ts`. Part 5 builds on part 2's function names, so part 2 merges first.
 2. Parts 1, 2, 3 and 5 change the images the goldens hold. Merge each one with its own golden update, and never two in one pull request. Part 6 moves a golden only where a tie in `t` is decided otherwise.
-3. Part 6 changes the layout that record 0001 fixes. Merge it last, because it is the largest change. It also needs the instrument of "The instrument" to measure its gain.
+3. Part 6 changes the layout that record 0001 fixes. Merge it last, because it is the largest change. It measures its gain with `bun run bench` (step 6.4), so it does not need the quality instrument.
 4. Parts 4 and 5 use different words of `TraceParams.path`: part 4 uses `path.z` and part 5 uses `path.w`. So their order does not change the layout.
 
 The default order is 1, 2, 3, 5, 4, 6. Decision 1 asks the owner to approve it.
@@ -152,7 +157,7 @@ Alternatives. Keep area sampling and clamp the weight: this adds bias. Sample th
    - Both through `compile()` and through the language service (`getDiagnostics`), as `CLAUDE.md` asks, with no diagnostic.
      Done when the tests pass and `determinism.test.ts` reports no new row.
 
-2. **Step 1.2: the sampler and the new `direct`.** Add `sampleSolidAngle`. Change `direct` as "What changes" says. Two tests. First, take 65,536 values of `r` on a grid and three triangles. Each sampled direction meets its triangle with `b1` and `b2` in `[0, 1]` and `b1 + b2 <= 1`. Second, take a 256 by 256 grid of `r`, one shading point and one BSDF. The estimator's mean equals the area estimator's mean within 1e-3 relative. Verifies Design 0009.3. Done when both tests pass on the CPU oracle.
+2. **Step 1.2: the sampler and the new `direct`.** Add `sampleSolidAngle`. Change `direct` as "What changes" says. Three tests. First, take 65,536 values of `r` on a grid and three triangles. Each sampled direction meets its triangle with `b1` and `b2` in `[0, 1]` and `b1 + b2 <= 1`. Second, take a 256 by 256 grid of `r`, one shading point and one BSDF. The estimator's mean equals the area estimator's mean within 1e-3 relative. Third, take a triangle with `omega` of 5e-5 sr. `direct` takes the area branch, and its mean equals the area estimator's mean within 1e-3 relative. Verifies Design 0009.3. Done when the three tests pass on the CPU oracle.
 
 3. **Step 1.3: the numbers.** Run `bun run gate:differential` before and after, and record the `mean`, `largest` and `outOfBounds` of each of the four scenes in the pull request. The bound of each scene stays. Run `bun run gate:determinism`. Run `UPDATE_GOLDENS=1 bun run gate:render` and show each old and new golden. Inference: the goldens of `cornell-box`, `first-scene`, `coloured-lights`, `lights` and `materials` move, because the noise at 64 samples changes. Done when the gates pass at the old bounds, or the bound is amended by record 0002's rule in the same pull request.
 
@@ -164,7 +169,7 @@ Alternatives. Keep area sampling and clamp the weight: this adds bias. Sample th
 
 An instrument shows that it can fail before it is trusted to pass (record 0002, "prove the instrument"). Part 1 has two.
 
-1. **The quality tool sees a bias.** Plant a fault in a scratch branch. Multiply `omega` by 1.1 in `direct`. Run `bun run quality` on `lights`. The error at 1,024 samples of the faulted kernel must stay at or above half of the floor that step 1.4 measures. The error of the unfaulted kernel must fall below that half. Inference: the direct light is most of `lights`, so a 10 % error in it gives an error floor of about 0.05 relative. Step 1.4 measures the floor and records it. Verifies Design 0009.4.
+1. **The quality tool sees a bias.** Plant a fault in a scratch branch. Multiply `omega` by 1.1 in `direct`. Run `bun run quality` on `lights`. The error at 1,024 samples of the faulted kernel must stay at or above half of the floor that step 1.4 measures. The error of the unfaulted kernel must fall below that half. Inference: the direct light is most of `lights`, so a 10 % error in it gives an error floor of about 0.05 relative. Step 1.4 measures the floor and records it.
 2. **The uniformity test sees a wrong sampler.** Plant the fault of using `r.x` for both numbers in `sampleSolidAngle`. The mean-equality test of step 1.2 must fail. It is a test of a test: the pull request names the planted fault and the failing message.
 
 ## Part 2: SZ sequences in place of the padded Sobol sequence
@@ -630,6 +635,6 @@ Three rules hold for every step:
 - **The first frame.** The first render of a renderer takes one sample, which shifts its later frames by one index. A restart does not repeat it. This lowers the stratification that parts 4 and 5 rely on. Disposition: open. Next action: step 5.3 measures it. A change of the split needs an amendment of record 0005.
 - **The public export.** The overview said "no public export". Part 4 adds one member. The text of the overview is changed. Disposition: open. Next action: the owner answers decision 11.
 - **The table in the sampler.** Part 2 and part 5 read a module constant array with a runtime index. This is not checked in any of the three outputs. Disposition: open. Next action: step 2.2.
-- **The line numbers.** They are lines of `main` 55bde46. `main` has moved to 13b9e88. Disposition: open. Next action: re-read each named file when the record is accepted.
+- **The line numbers.** They are lines of `main` 55bde46. Between 55bde46 and a89aaa1, the only cited file that changed is `scripts/gates.mjs`. In it, `RENDER` moved from line 74 to line 84, and the `ORACLE` mean bound moved from 3.3e-6 to 2e-5 after the two-sided lamp (#54). The kernel and host files that the record cites did not change. Disposition: closed. Next action: none.
 - **Stale prose.** Part 2 makes the phrase "an Owen-scrambled Sobol sequence" in `PRODUCT.md` (line 77) and in `checked-on-the-cpu.mdx` (line 42) less exact. Disposition: open. Next action: part 2's pull request reads both and amends them.
 - **Not proposed.** EARS (Rath et al. 2022), the reweighting of firefly samples (Zirr et al. 2018), the short stack (Vaidyanathan et al. 2019), ART-Owen (Ahmed et al. 2023) and the denoisers of the survey. Disposition: deferred, and none is in a step.
