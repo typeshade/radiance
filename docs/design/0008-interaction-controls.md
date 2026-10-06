@@ -507,7 +507,7 @@ Each step is one pull request with `Design: 0008` in its commit message. Each te
 
 ## Record
 
-**Approval and plan record.** Accepted on 2026-10-06 (UTC). The owner pre-approved the merge of typeshade/radiance#46 in the conversation, which merged this record as `draft` at 06b2928. The owner then answered the decisions with "as recommended" (추천대로, 2026-10-06), and that answer is the acceptance. Every entry of "Decisions for the owner" stands as proposed.
+**Approval and plan record.** Accepted on 2026-10-06 (UTC). The owner pre-approved the merge of typeshade/radiance#46 in the conversation, which merged this record as `draft` at 06b2928. The owner then answered the decisions with "as recommended" (2026-10-06), and that answer is the acceptance. Every entry of "Decisions for the owner" stands as proposed.
 
 **Configuration and validation record.** This record does not yet apply. Implementation will record the commits of the eight steps, the pin and each gate's result. It will also record the numbers that "Before" and the steps label as measured later.
 

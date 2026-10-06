@@ -86,4 +86,4 @@ The order of implementation is 0001 and 0002 first, in parallel, because M2 is w
 0003 is done before the first npm release. 0004 and 0005 are needed before M3. 0006 is a list
 of proposals the compiler's owner schedules. Each record names the item it waits on.
 0007 waits for the compiler's change 0054 and the pin that carries it. It serves milestone M8, which the plan pull request proposes, and merges after that pull request.
-0008 serves no milestone of the plan. It is a change to the engine's core (the ray cast), to the addons (the controls) and to the site. It waits for the owner's acceptance only.
+0008 serves no milestone of the plan. It is a change to the engine's core (the ray cast), to the addons (the controls) and to the site. The record is accepted, and its implementation runs in the steps the record lists, after the Sponza example (decision 20).
