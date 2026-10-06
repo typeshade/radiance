@@ -108,7 +108,9 @@ it in CI.
 
 ### 3.1 Constraints that shape the design (assumed from the start)
 
-Found in the owner's review of what was missing. Each is cheap at M1 or M2 and a rewrite later.
+Items 1 to 7 are from the owner's review of what was missing. Each is cheap at M1 or M2 and a
+rewrite later. Item 8 came with decision 7 (section 12). It bounds how much of a scene one buffer
+of record 0001's layout holds on WebGL2.
 
 1. **The GPU watchdog (TDR).** Windows kills a dispatch over two seconds. A frame of the path
    tracer is several dispatches of tiles times sample batches, and the watchdog budget (say
@@ -135,16 +137,24 @@ Found in the owner's review of what was missing. Each is cheap at M1 or M2 and a
    BLAS refit and a TLAS rebuild.
 7. **A scene graph.** Parent-child transforms, instances and LOD live in the scene package: the
    glTF node tree is taken as it is, not flattened.
-8. **WebGL2 limits (M8).** On WebGL2 a storage buffer is a texture (change 0054, "The execution
-   model", item 1). Change 0054 names three limits of the WebGL2 context ("What stays outside"):
+8. **WebGL2 limits (M8).** On WebGL2 a storage buffer will be a texture (change 0054, "The
+   execution model", item 1). Change 0054 names three limits of the WebGL2 context ("What stays
+   outside"):
    - a buffer past `MAX_TEXTURE_SIZE` squared texels
    - an entry that needs `f16` or subgroups
    - a storage texture format that WebGL2 cannot render to
 
-   Change 0054 reports each one with a reason and runs it on the CPU tier. Inference: the renderer
-   has no CPU tier at the pin, so a scene past one of these limits does not render on WebGL2.
+   Change 0054 will report each one with a reason and run it on the CPU tier. Inference: the
+   renderer has no CPU tier at the pin. Unless M4's reference mode (L3, the same kernels on the CPU
+   oracle) serves as the fallback, a scene past one of these limits will not render on WebGL2.
+
+   Change 0054 specifies one `R32UI` texel for each 4-byte lane when the context has no
+   `EXT_color_buffer_float`. The OpenGL ES 3.0 minimum for `MAX_TEXTURE_SIZE` is 2048. At that
+   minimum, one buffer holds 4,194,304 lanes, which is 16 MiB. Record 0006, row 1, assumes 128 MiB
+   for each buffer on WebGPU. A device may report a larger `MAX_TEXTURE_SIZE`.
+
    Change 0054 does not state how many buffers one pass can read. The design record of the tier
-   measures the limits against record 0001's seven buffers.
+   will measure the limits against record 0001's seven buffers.
 
 ### 3.2 The path tracer
 
@@ -297,26 +307,34 @@ The real-time tier (R1 to R3) comes after M3 and shares M6's SDF kernels. The wh
 M0, M1, M2, M2a, M3 (the product-viewer demo, AOVs, EXR, ACES), M3v (volumes, clouds and fog,
 VDB), M3s (SSS), M5 (the fitting demo), M6 (procedural kernels, SDF), M6p (Pyro), R1, R2, R3
 (DDGI), R3v (froxel volumes), M6s (FLIP), M4 (denoising, determinism), R6 (the error gate), M7
-(the desktop, cache export), M8 (the WebGL2 tier), then R4, R5 and the further solvers.
+(the desktop, cache export), then R4, R5, the further solvers and M8 (the WebGL2 tier).
 
 **M8, the WebGL2 tier (proposed).** The owner's decision 7 (section 12) sets the direction. The
 place of M8 in the order and its numbers are proposals, and the owner has not decided them. M8 is
-done when each of these holds, in CI's `harness` job:
+done when each of these holds. Each item names what checks it:
 
 - The pin carries steps 1 to 4 of change 0054's implementation (its "Draft impact estimate"),
-  and `compiler-changes.md` records 0054.
-- `tshc check` reports no `TS8015` on the kernels. This is also 0054's own evidence for
+  and `compiler-changes.md` records 0054. A reviewer checks this in the pull request that moves
+  the pin. The `compiler bump impact` job reports a proposal that the pin implements and that
+  `compiler-changes.md` does not record.
+- `tshc check` reports no `TS8015` on the kernels. `bun run check:shaders` runs it in the
+  `format + boundary + typecheck + test` job. This is also 0054's own evidence for
   `trace.shade.ts` ("What it touches").
 - The renderer runs on a WebGL2 context when the browser has no WebGPU, through
-  `typeshade/runtime` alone.
+  `typeshade/runtime` alone. `bun run check:boundary` holds the boundary in the same job. The
+  three gates below show the run in the `harness` job.
 - The Cornell box on WebGL2, in headless Chromium on SwiftShader, is within the `ORACLE` bounds
-  (`scripts/gates.mjs`) of the oracle's render. This is the `differential` gate of record 0002.
-- Two renders of one seed on WebGL2 are bit-identical (the `determinism` gate).
-- A golden holds the WebGL2 image (the `render` gate).
-- The `bench` gate records the paths per second on WebGL2 and on WebGPU side by side.
+  (`scripts/gates.mjs`) of the oracle's render. This is the `differential` gate of record 0002. It
+  runs in the `harness` job.
+- Two renders of one seed on WebGL2 are bit-identical (the `determinism` gate). It runs in the
+  `harness` job.
+- A golden holds the WebGL2 image (the `render` gate). It runs in the `harness` job.
+- `docs/benchmarks.md` has one row for WebGL2 and one for WebGPU, with the paths per second. The
+  rows follow the procedure of record 0002 ("The benchmark", step 7). The `bench` gate runs by
+  hand, so no CI job checks these rows. A reviewer reads them.
 - The owner accepts a design record for the tier before the first line of its code (decision 6,
-  section 12). An amendment to records 0001 and 0002 merges first, in its own pull request, where
-  WebGL2 changes a limit or a gate.
+  section 12). A reviewer checks this at the pull request of the record. An amendment to records
+  0001 and 0002 merges first, in its own pull request, where WebGL2 changes a limit or a gate.
 
 R1 to R3 acceptance: Sponza at 1080p on a desktop GPU within 16 ms a frame. The error against the
 path tracer on the same scene (RMSE and the FLIP metric) recorded by the R6 gate, and R4 and R5
@@ -417,10 +435,11 @@ console's slot to the items below:
   amended at 146b162 (#509). It answers typeshade/typeshade#468, raised in
   `docs/typeshade-feedback.md` on 2026-10-05. The engine opens no proposal for it, and M8 waits
   on it. The pin 596c805 is before it. Its implementation is not on the compiler's `main` at
-  146b162. Record 0006 says so in its Amendment 1.
-- What change 0054 leaves open for the engine. Its implementing pull request settles the shape of
-  `RuntimeOptions` for a WebGL2 context ("Decisions at acceptance", decision 2). Change 0054 does
-  not state the count of buffers one pass reads on WebGL2. If the tier's design record needs
+  146b162. Record 0006 says that 0054 is not implemented at the pin and that the engine waits on
+  it for M8 (the paragraph "What the engine waits on and does not open", Amendment 1).
+- What change 0054 leaves open for the engine. Its implementing pull request will settle the shape
+  of `RuntimeOptions` for a WebGL2 context ("Decisions at acceptance", decision 2). Change 0054
+  does not state the count of buffers one pass reads on WebGL2. If the tier's design record needs
   either, the need goes back to the compiler as a proposal.
 - How the runtime helps frame accumulation (#204). Solved on the host at M1, and the need
   written down.
@@ -445,9 +464,9 @@ console's slot to the items below:
 - The scope of differentiation: forward mode plus zero at discontinuities. Neural fields and shape
   optimisation are out until reverse mode. The docs say "fitting a few parameters" from the
   start.
-- WebGL2 cost: change 0054 runs a dispatch as passes over textures, with a write log and a scatter
-  pass (its "execution model"). No measurement of the path tracer on it exists. M8 records the
-  number, and the plan promises no speed on WebGL2.
+- WebGL2 cost: change 0054 will run a dispatch as passes over textures, with a write log and a
+  scatter pass (its "execution model"). No measurement of the path tracer on it exists. M8
+  records the number, and the plan promises no speed on WebGL2.
 - An unfrozen runtime surface: the API moves until 0.8. The submodule pin and
   `downstream-impact.ts` absorb it.
 - The desktop: the Dawn host is unverified. Deferred to M7. The core stays host-agnostic.
@@ -496,12 +515,11 @@ numbers and the probe each proves itself with. In short:
    each implementing commit names it (`Design: NNNN`). `docs/design/README.md` is the
    procedure (the owner, 2026-10-05).
 7. WebGL2 is a target of the engine (the owner, 2026-10-06). The engine runs on WebGPU only
-   today, and decision 7 changes the direction, not the code. The owner's reason, translated: the
-   site says that the engine supports only WebGPU now, but it should support WebGL2 too in the
-   end. Fact:
-   the plan's exclusion gave "no compute" as its reason, and change 0054 (accepted by the owner
-   on 2026-10-06) will give WebGL2 compute. Section 4 proposes milestone M8 for the work.
-   Decision 7 supersedes four texts written on 2026-10-05. They stay here as history:
+   today, and decision 7 changes the direction, not the code. The owner's words, translated: "It is
+   written now that only WebGPU is supported, but in the end it seems right that WebGL2 is
+   supported too." Fact: the plan's exclusion gave "no compute" as its reason, and change 0054
+   (accepted by the owner on 2026-10-06) will give WebGL2 compute. Section 4 proposes milestone M8
+   for the work. Decision 7 supersedes four texts written on 2026-10-05. They stay here as history:
    - Section 1, Platform: "the browser (WebGPU) first, the desktop second. The core is WebGPU
      throughout. Only the host differs."
    - Section 2, what it is not: "WebGL2 (no compute, so no path tracer)."
@@ -509,4 +527,4 @@ numbers and the probe each proves itself with. In short:
    - `PRODUCT.md`, capabilities: "WebGPU only, by decision: no WebGL2 fallback (`docs/plan.md`)."
 
    Decision 7 does not decide the place of M8 in the order, its numbers or the date of the pin
-   move.
+   move. The proposal puts M8 after every current milestone, at the end of the order in section 4.
