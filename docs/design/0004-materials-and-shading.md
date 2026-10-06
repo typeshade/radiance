@@ -101,16 +101,20 @@ export function evalBsdf(s: Surface, wo: vec3, wi: vec3): vec4; // f in xyz, pdf
   the lobe choice and the two direction numbers). `evalBsdf` returns `f` and the pdf of `wi`
   under the same sampling, for multiple importance sampling (M3).
 - A diffuse surface samples the cosine distribution. A mirror returns `specular: true` with
-  `weight = color` and `pdf = 1`. The physical material at M3 is the principled BSDF (a
-  Disney-style diffuse, a GGX specular with Fresnel from `ior` and `specularIntensity`, a transmission
-  lobe, then clearcoat, sheen and anisotropy in M3's own steps).
+  `weight = color` and `pdf = 1`. Its direction is the reflection of `-wo` about `ns`. When that
+  direction goes under `ng`, `sampleBsdf` folds it back across `ng`, as "A direction under the
+  surface" says. The physical material at M3 is the principled BSDF (a Disney-style diffuse, a GGX
+  specular with Fresnel from `ior` and `specularIntensity`, a transmission lobe, then clearcoat,
+  sheen and anisotropy in M3's own steps).
 - `surface(hit, dir)` in `intersect.shade.ts` (record 0001) fills `Surface`. `dpdu` is
   `(dp1 * dv2 - dp2 * dv1) / (du1 * dv2 - du2 * dv1)` from the triangle's edges and uv
   differences, and a fallback frame about `ns` when the determinant is 0.
 
 **The rules of the surface and of emission.** These rules state what the code of step 1 does
 (`emission` in `materials.shade.ts`, `surfaceAt` in `intersect.shade.ts` and `radiance` in
-`trace.shade.ts`):
+`trace.shade.ts`). One rule is the exception: the fold of a mirror sample in "A direction under
+the surface". The code of step 1 does not fold. Step 7 delivers the fold. That rule applies from
+the pull request that implements step 7. The rules follow:
 
 - **Which face emits.** `emission` returns 0 when bit 8 is not set. It returns 0 on the back
   face (`front` is false) when bit 9 is not set. Otherwise it returns `[1].xyz`, the same on both
@@ -129,15 +133,29 @@ export function evalBsdf(s: Surface, wo: vec3, wi: vec3): vec4; // f in xyz, pdf
   moved to world space by the inverse transposed and made unit. `surfaceAt` turns it to the ray's
   side when the ray met the back face. `ns` is `ng` when the vector in world space has length 0.
   `ns` is `ng` too when its dot product with `ng` is 0 or less after the turn.
-- **A direction under the surface.** This rule holds for a reflection lobe, the only kind at M2.
-  After the BSDF sample, `radiance` ends the path in two cases. The `pdf` of the sample is 0 or
-  less. Or the dot product of `wi` and `ng` is 0 or less. A shading normal can give such a
-  direction. The end of the path follows next-event estimation, so the light sample of that bounce
-  still counts. `direct` adds nothing for a light sample whose direction has a dot product with
-  `ng` of 0 or less. Inference: the rule acts only where `ns` differs from `ng`. The light that
-  such a path would carry is lost. The loss was not measured. A transmission sample goes under
-  `ng` on purpose, so this rule does not hold for it. Step 2 states the end rule for a
-  transmission sample.
+- **A direction under the surface.** This rule holds for a reflection lobe, the only kind at M2. The
+  reflection of `-wo` about `ns` can go under `ng`. For a mirror sample, let
+  `wi = reflect(-wo, ns)`. When `dot(wi, ng)` is less than 0, `sampleBsdf` returns
+  `wi - ng * (2 * dot(wi, ng))`. Otherwise it returns `wi`. Its `weight`, its `pdf` and `specular`
+  do not change. The fold puts a direction under `ng` above `ng`. After the BSDF sample, `radiance`
+  ends the path in two cases, for every sample. The `pdf` of the sample is 0 or less. Or the dot
+  product of `wi` and `ng` is 0 or less. A shading normal can give such a direction to a sample that
+  is not specular. After the fold, a mirror sample meets the second case only when `wi` lies exactly
+  in the surface. The end of the path follows next-event estimation, so the light sample of that
+  bounce still counts. `direct` adds nothing for a light sample whose direction has a dot product
+  with `ng` of 0 or less.
+  Inference: for a sample that is not specular, the second case acts only where `ns` differs from
+  `ng`. The light that such a path would carry is lost. The loss of a sample that is not specular is
+  not measured. The investigations recorded in Amendment 2 measured the loss of a mirror sample,
+  before the fold, on `main` 2f06d0e with the pin 596c805. The mirror was the sphere of the
+  Cornell box (`SphereGeometry`, 32 by 16 segments). The rule ended the path for 0.416 % of the
+  area that the sphere covers. All of it lay within about 5 degrees of the silhouette. On that
+  configuration the band was about 0.2 % of the radius. At 256 pixels, the rim pixels were 6.4 %
+  darker. At 768 pixels, and in the committed still `cornell-box.webp` at eafc2e1, the band was a
+  line of 1 to 2 pixels, about 42 % dark. Inference: a perfect mirror on a closed
+  convex surface always reflects into the half-space of the viewer. So the band comes from the
+  shading normal and not from physics. A transmission sample goes under `ng` on purpose, so this
+  rule does not hold for it. Step 2 states the end rule for a transmission sample.
 
 **The path loop** (`radiance()` in `trace.shade.ts`) becomes these steps for each bounce:
 
@@ -152,8 +170,13 @@ export function evalBsdf(s: Surface, wo: vec3, wi: vec3): vec4; // f in xyz, pdf
 8. Apply Russian roulette from the bounce that `params.path.y` sets.
 
 The loop draws the BSDF sample first because a specular sample skips next-event estimation. The
-two use their own sampler dimensions, so the order changes no number. Nothing in the loop reads a
-material word: that is the contract.
+two use their own sampler dimensions, so the order changes no number. Next-event estimation cannot
+connect through a delta lobe, so only BSDF sampling finds light that reaches a diffuse surface by
+way of a mirror. That light converges as sparse bright samples, it is unbiased, and no kernel
+clamps it. Proposals, not decisions: a later record may add one of these techniques. They are path
+guiding, a caustic photon map, light tracing, bidirectional path tracing or an opt-in roughening of
+delta lobes after a diffuse bounce. Nothing in the loop reads a material word: that is the
+contract.
 
 **The grad boundary** (plan §3.1 item 2, §3.3). `grad` differentiates `evalBsdf`, `emission`
 and the light's contribution with respect to a material's or a light's parameters. It never
@@ -254,10 +277,10 @@ optional and `dpdu` from the triangle is exact for a triangle). Texture atlases 
 - `src/kernels/materials.shade.ts` (new), `trace.shade.ts`, `intersect.shade.ts` (`surface`).
 - `src/renderers/scene-pack.ts` (the record's packer).
 - `packages/addons/src/loaders/GLTFLoader.ts` (`pbrMetallicRoughness` to `PhysicalMaterial`).
-- Tests: `materials.test.ts` on the oracle (a diffuse sample's weight equals its colour, a
-  mirror sample is the reflection. `evalBsdf`'s pdf integrates to 1 over the hemisphere within
-  2 % by a 4,096-sample estimate. `emission` is zero on the back face). `scene-pack.test.ts`
-  (the record's words). The `physical` differential scene (record 0002).
+- Tests: `materials.test.ts` on the oracle (a diffuse sample's weight equals its colour, a mirror
+  sample is the reflection above `ng`. `evalBsdf`'s pdf integrates to 1 over the hemisphere, within
+  2 % by a 4,096-sample estimate. `emission` is zero on the back face). `scene-pack.test.ts` (the
+  record's words). The `physical` differential scene (record 0002).
 - The site's guide page on materials. The API reference follows the JSDoc.
 - Step 6 touches the files below. It waits for an amendment of record 0001 if the owner chooses
   the eighth buffer.
@@ -299,6 +322,26 @@ optional and `dpdu` from the triangle is exact for a triangle). Texture atlases 
    Done when a test sends `0xffffffff` through the oracle's binding and reads it back, the
    Cornell box gate and the render gate pass with no change of a number, and the determinism
    lint passes.
+7. **The fold of a mirror sample.** `sampleBsdf` in `materials.shade.ts` folds a mirror direction
+   under `ng` back across `ng`, as "A direction under the surface" states. `radiance` in
+   `trace.shade.ts` does not change. A test in `materials.test.ts` calls `sampleBsdf` with a grazing
+   `wo` and an `ns` tilted away from `ng`. It asserts that `dot(wi, ng)` is above 0. A second
+   assertion covers a mirror sample whose reflection is above `ng`. That sample keeps
+   `reflect(-wo, ns)`. The test carries `Verifies: Design 0004.6`. The pull request measures the
+   fold at the edge of the band on the Cornell box sphere. It measures at 256 and 768 pixels. It
+   shows that the radiance has no step there. It measures the alternative too, which reflects about
+   `ng` in that case. If it delivers the alternative, it amends this record first. The golden of an
+   example that uses `MirrorMaterial` can change. The candidates are `cornell-box`, `determinism`,
+   `scene-graph`, `materials` and `first-scene`. The pull request runs the render gate. It lists
+   each golden that changes, with the old and the new picture.
+   `UPDATE_GOLDENS=1 bun run gate:render` rewrites every golden, so the pull request commits only
+   the goldens that change. `bun run capture:stills` recaptures the stills of every example, so the
+   pull request commits only the stills whose picture changes. The pull request commits the
+   `.sha256` file of each changed still too. The pull request measures the floor caustic again and
+   compares it with the ratio of Amendment 2. It names this record on a line of its own,
+   `Design: 0004`. Done when four things hold. The test passes. The render gate passes on the
+   goldens that the pull request commits. The differential gate passes. The stills match their
+   hashes.
 
 ## Decisions for the owner
 
@@ -311,8 +354,10 @@ optional and `dpdu` from the triangle is exact for a triangle). Texture atlases 
 6. The rules that Amendment 1 writes for the surface and for emission: a back face emits only
    for a material with bit 9, `Surface.p` is offset by `OFFSET` times the largest of 1 and the
    point's largest absolute coordinate, and `ns` falls back to `ng`. For a reflection lobe, the
-   path loop casts each ray from `p` and ends a path whose direction goes under `ng`. Step 2
-   states the origin of a ray and the end rule for a transmission sample.
+   path loop casts each ray from `p`. It ends a path whose sample is not specular and goes under or
+   into `ng`. Amendment 2 folds a mirror sample under `ng` back across `ng`. Of the mirror samples,
+   only one whose direction lies exactly in the surface still ends the path. Step 2 states the
+   origin of a ray and the end rule for a transmission sample.
 7. `Material.type` replaces `Material.kind`, and no `kind` stays (Amendment 1).
 8. At step 6, the six integer words of the material record move to `materialBits`, a
    `storage<array<vec4u>>` binding with 2 `vec4u` for each material. That changes six words of
@@ -354,6 +399,70 @@ changes the code or this record. The dispositions:
   in the list of #18. The loop draws the BSDF sample first, so that a specular sample skips
   next-event estimation. Proposed: made part of the record. "The path loop" now has that order.
 
+**Amendment 2** (2026-10-06, UTC). Two investigations of the mirror sphere in the Cornell box
+measured the loss that "A direction under the surface" left unmeasured. The loss is a dark line at
+the silhouette of the sphere. This amendment changes the rule for a mirror sample and records the
+numbers. It changes these seven places:
+
+1. The rule itself.
+2. The mirror bullet of "The shading contract".
+3. The introduction of "The rules of the surface and of emission".
+4. "The path loop".
+5. The Tests bullet of "What it touches".
+6. Decision 6.
+7. The deviation "A direction under the surface".
+
+In "The path loop", it adds two sentences of facts and two of proposals. It adds step 7. It changes
+no code. The merge of the pull request that carries it is the owner's acceptance of the new rule.
+Decision 6 is re-stated, and the merge accepts that text. The pull request that implements step 7
+merges after it and carries a line of its own, `Design: 0004`. The fold is the smallest change that
+closes the band. The amendment proposes it, and step 7 states how the implementing pull request
+measures it.
+
+The configuration is `main` at 2f06d0e, the compiler pinned at 596c805, on 2026-10-06. This pull
+request carries no program that measured the numbers, and no test holds them. Each one is an
+observed result:
+
+- **The loss of the rule.** On the mirror sphere of the Cornell box (`SphereGeometry`, 32 by 16
+  segments), 0.416 % of the area that the sphere covers reflects under `ng`. For each angle from
+  the silhouette, the share of the area that reflects under `ng` is as follows. It is 95 % at 0
+  degrees, 60 % at 1 degree and 49 % at 2 degrees. It is 27 % at 3 degrees, 9 % at 4 degrees and
+  1.6 % at 5 degrees. It is 0 % at 6 degrees. An independent model
+  (orthographic, 400,000 rays) gave 0.467 % at 0.9906 of the radius or more.
+- **What a reader saw.** On the configuration above, the band was about 0.2 % of the radius. At
+  256 pixels it was under one pixel, and the rim pixels were 6.4 % darker (ratio 0.936). At 768
+  pixels it was a line of 1 to 2 pixels, about 42 % dark. The committed still
+  `site/public/stills/cornell-box.webp` at eafc2e1 showed the same line.
+- **The tessellation.** The investigations give the dark area at 256 pixels in pixel equivalents,
+  the area measured in pixels. It is 18.8 at 32 by 16 segments, 5.56 at 64 by 32 and 0.94 at 128
+  by 64.
+- **The floor caustic.** The rule does not remove it in a measurable way. The ratio is 1.0042
+  between the two seed-matched renders, with and without the rule, over 8,294 caustic pixels (128
+  by 128 pixels, 256 samples a pixel, 2 bounces). This record does not give the direction of the
+  ratio. The scratch data of the investigation records it.
+- **The path of a caustic.** Next-event estimation cannot connect through a delta lobe, because the
+  shadow ray meets the sphere. So only BSDF sampling finds the light that reaches a diffuse surface
+  by way of a mirror. At 256 samples a pixel, 78 % of the caustic pixels get no caustic sample. The
+  estimate is unbiased: it is within 2 to 3 % of an independent photon estimate. No kernel clamps
+  it. The only clamps on a throughput or a radiance value are the survival bound of Russian
+  roulette, [0.05, 0.95], and the output tone map. Multiple importance sampling at step 2 does not
+  change this.
+- **The size of the caustic.** The caustic of a convex mirror is faint and broad. The mirror adds
+  15 to 21 % over a black sphere, about as much as a white diffuse sphere does. A focused caustic
+  needs transmission (step 2, M3).
+
+Two inferences follow. First, a perfect mirror on a closed convex surface always reflects into the
+half-space of the viewer. So the band comes from the approximation of the shading normal. Second,
+the fold equals the reflection where the reflection is above `ng`. So it is continuous at the edge
+of the band. Step 7 measures that edge. The dispositions:
+
+- **The mirror sample under `ng`.** Proposed: the rule changes for a mirror sample, from "the path
+  ends" to "the direction folds across `ng`". The text is in "A direction under the surface".
+- **The end rule.** Proposed: the end rule stays and `trace.shade.ts` does not change. Its loss for
+  a sample that is not specular is not measured.
+- **The caustic through a delta lobe.** Proposed: made part of the record as a statement of fact in
+  "The path loop". The techniques it names are proposals. No decision adds one.
+
 **Deviations of step 1** (2026-10-05, UTC). Step 1 is typeshade/radiance#18 with record 0001
 step 3, merged as 9f2cf1a. Each entry gives the difference and its disposition. Amendment 1
 adds the fifth and the seventh entries and proposes a disposition for each entry.
@@ -371,6 +480,7 @@ adds the fifth and the seventh entries and proposes a disposition for each entry
 - **A direction under the surface.** The path loop ends a path when `sampleBsdf` gives a
   direction on the other side of `ng`, which a shading normal can give. The record's path loop
   is silent on it. Disposition: made part of the record by Amendment 1, for a reflection lobe.
+  Amendment 2 measures the loss of a mirror sample and changes the rule for that sample.
 - **The type of a material.** Step 1 removes M1's `Material.kind` and adds `Material.type` in
   its place. The list in #18 names it, and this record's list did not. Disposition: made part
   of the record by Amendment 1.
@@ -393,7 +503,7 @@ which had already moved the pin, so 9f2cf1a pins the compiler at fd39ba3. The or
 `src/kernels/materials.test.ts` pass. A diffuse sample's weight is its colour, and a mirror
 sample is the reflection. `evalBsdf`'s pdf integrates to 1 within 2 % by 4,096 samples. A
 single-sided light is dark from behind. The Cornell box gate passes on the contract with the
-numbers in record 0001's record. Steps 2 to 6 are not started.
+numbers in record 0001's record. Steps 2 to 7 are not started.
 
 **Open item.** Decisions 0004.6 and 0004.7 carry no `Verifies:` tag, so DEC-0406 and DEC-0407 have
 no reference. Tests of some of their rules exist. `materials.test.ts` ('is zero on the back face
