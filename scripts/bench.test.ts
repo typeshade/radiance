@@ -134,6 +134,8 @@ describe('the adapter', () => {
   test('a software adapter is found by the flag or by its name', () => {
     expect(isSoftware({ isFallbackAdapter: true }, 'x')).toBe(true);
     expect(isSoftware({}, 'google swiftshader')).toBe(true);
+    expect(isSoftware({}, 'Microsoft Basic Render Driver')).toBe(true);
+    expect(isSoftware({}, 'Microsoft WARP')).toBe(true);
     expect(isSoftware({}, 'NVIDIA GeForce RTX 4080')).toBe(false);
   });
 });
