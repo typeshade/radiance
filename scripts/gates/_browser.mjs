@@ -12,7 +12,7 @@
 //      it, and the browser that runs the page.
 //
 // Env: RADIANCE_CHROMIUM names a Chromium executable (the browsers Playwright installs are used
-// otherwise); RADIANCE_HEADED=1 shows the window.
+// otherwise). RADIANCE_HEADED=1 shows the window.
 
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, statSync } from 'node:fs';
@@ -82,7 +82,7 @@ const GPU_ARGS = ['--enable-unsafe-webgpu', '--ignore-gpu-blocklist'];
 
 /** Chromium with a WebGPU device on SwiftShader, as the compiler's user journeys run it. With
  *  `gpu: true` (scripts/bench.mjs, `--gpu`) it drops the SwiftShader flags. RADIANCE_CHROMIUM
- *  names the executable; RADIANCE_HEADED=1 shows the window. */
+ *  names the executable. RADIANCE_HEADED=1 shows the window. */
 export function launchBrowser({ gpu = false } = {}) {
   return chromium.launch({
     executablePath: process.env.RADIANCE_CHROMIUM || undefined,

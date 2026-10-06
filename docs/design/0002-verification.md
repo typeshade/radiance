@@ -363,9 +363,9 @@ names this record on a line of its own, `Design: 0002`.
 with differences from "The benchmark" and step 7 of this record. This amendment settles the entries
 below. The owner has not decided any of them. The merge of the pull request that carries this
 amendment is the owner's acceptance of each entry marked "made part of the record" or "proposed".
-An entry marked "open" waits for the owner's answer. This amendment changes the text of "The benchmark" and step 7.
-The decisions keep their numbers and their text. The pull request that delivers step 7 merges after
-this one.
+An entry marked "open" waits for the owner's answer. This amendment changes the text of "The
+benchmark" and step 7. The decisions keep their numbers and their text. The pull request that
+delivers step 7 merges after this one.
 
 - **The bound of a run.** This record said that the script renders each scene for ten seconds at
   each size. The script stops at a number of samples a pixel instead: 16 by default, set with
@@ -390,10 +390,10 @@ this one.
   script's `--smoke` is 32 x 32 at 2 samples a pixel. The first SwiftShader rows of
   `docs/benchmarks.md` come from a manual run at 128 x 128 and 16 samples, and one row at 512 x 512
   and 4 samples, on the build machine at pin 596c805. The 1080p run of the default options takes
-  over an hour on SwiftShader, so a SwiftShader row may use a size below the two sizes of the `bench`
-  gate. Its `size` column says which. Proposed: made part of the record. "The benchmark" and step 7
-  now say it. The smoke run is a check that each scene renders, and the size does not matter to it,
-  so the small size stands.
+  over an hour on SwiftShader, so a SwiftShader row may use a size below the two sizes of the
+  `bench` gate. Its `size` column says which. Proposed: made part of the record. "The benchmark"
+  and step 7 now say it. The smoke run is a check that each scene renders, and the size does not
+  matter to it, so the small size stands.
 - **The smoke step in CI.** The pull request that delivers step 7 adds no step to
   `.github/workflows/ci.yml`. Open. Next action: a pull request that adds
   `node scripts/bench.mjs --smoke` to the `harness` job, after `bun run harness`, with the added
@@ -401,9 +401,9 @@ this one.
   branch of the pull request of step 7 (compiler pin 596c805, SwiftShader, node v22.22.0, bun
   1.3.14), the smoke run of all 11 scenes took 12.6 s.
 - **The verification of decision 3.** No test carries `Verifies: Design 0002.3`, and DEC-0203 keeps
-  `verification: pending`. Proposed: decision 3 is verified by inspection. The script holds no bound,
-  and no gate reads `docs/benchmarks.md`. `scripts/bench.test.ts` states this in its header. This
-  amendment adds no test.
+  `verification: pending`. Proposed: decision 3 is verified by inspection. The script holds no
+  bound, and no gate reads `docs/benchmarks.md`. `scripts/bench.test.ts` states this in its header.
+  This amendment adds no test.
 
 **Configuration and validation record.** This record does not yet apply. Implementation will
 record each gate's first measured numbers, the pin, and the CI run that first ran it.
