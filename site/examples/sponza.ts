@@ -72,7 +72,18 @@ export default async function sponza(canvas: HTMLCanvasElement): Promise<Example
   // the one the orbit start gave.
   const fly = new FlyControls(camera, canvas);
   fly.movementSpeed = 3;
-  const swap = swapControls(camera, canvas, fly, controls, 'fly');
+  const FLY_LABEL =
+    'Drag to look, W A S D to move, Q and E to go down and up, Shift to go faster, F to switch to orbit.';
+  const ORBIT_LABEL = 'Drag to orbit, scroll to zoom, right-drag to pan, F to switch to fly.';
+  let label = FLY_LABEL;
+  const swap = swapControls(camera, canvas, fly, controls, 'fly', (mode) => {
+    // The stage set the canvas label from `controlsLabel`: swap its tail for the active mode's.
+    const now = mode === 'fly' ? FLY_LABEL : ORBIT_LABEL;
+    const current = canvas.getAttribute('aria-label');
+    if (current?.endsWith(label))
+      canvas.setAttribute('aria-label', current.slice(0, -label.length) + now);
+    label = now;
+  });
 
   // Fill the canvas: the frame follows its size, and the camera its shape.
   const resize = (): void => {
@@ -93,8 +104,7 @@ export default async function sponza(canvas: HTMLCanvasElement): Promise<Example
 
   return {
     renderer,
-    controlsLabel:
-      'Drag to look, W A S D to move, Q and E to go down and up, Shift to go faster, F to switch to orbit.',
+    controlsLabel: FLY_LABEL,
     get controls() {
       return swap.active;
     },

@@ -1,12 +1,12 @@
 // swapControls, held to the four facts the KeyF swap promises: the mode and the active controls
 // flip, `enabled` follows the mode, the camera keeps its place and look across fly to orbit, and
 // `dispose()` leaves no listener on the document. The canvas is a bare event target.
-// Verifies: Design 0008 Amendment 2, step "KeyF swaps the controls".
+// Verifies: Design 0008.27
 
 import { describe, expect, it } from 'bun:test';
 import { PerspectiveCamera } from '@typeshade/radiance';
 import { FlyControls, OrbitControls } from '@typeshade/radiance-addons';
-import { swapControls } from '../site/src/lib/swap-controls.ts';
+import { swapControls, type ControlMode } from '../site/src/lib/swap-controls.ts';
 
 class FakeDocument extends EventTarget {
   count = 0;
@@ -43,7 +43,7 @@ function key(canvas: FakeCanvas, type: 'keydown' | 'keyup', code: string): void 
   );
 }
 
-function setup() {
+function setup(onSwap?: (mode: ControlMode) => void) {
   const camera = new PerspectiveCamera(70);
   camera.position.set(-6.8, 5.8, 0.4);
   const canvas = new FakeCanvas();
@@ -52,7 +52,7 @@ function setup() {
   orbit.update();
   const fly = new FlyControls(camera, canvas as unknown as HTMLElement);
   fly.movementSpeed = 3;
-  const swap = swapControls(camera, canvas as unknown as HTMLElement, fly, orbit, 'fly');
+  const swap = swapControls(camera, canvas as unknown as HTMLElement, fly, orbit, 'fly', onSwap);
   return { camera, canvas, fly, orbit, swap };
 }
 
@@ -67,6 +67,14 @@ describe('swapControls', () => {
     key(canvas, 'keydown', 'KeyF');
     expect(swap.mode).toBe('fly');
     expect(swap.active).toBe(fly);
+  });
+
+  it('reports each new mode to the callback', () => {
+    const seen: ControlMode[] = [];
+    const { canvas } = setup((m) => seen.push(m));
+    key(canvas, 'keydown', 'KeyF');
+    key(canvas, 'keydown', 'KeyF');
+    expect(seen).toEqual(['orbit', 'fly']);
   });
 
   it('sets enabled on fly and orbit', () => {

@@ -28,6 +28,8 @@ export function swapControls(
   fly: FlyControls,
   orbit: OrbitControls,
   start: ControlMode,
+  /** Called with the new mode after each swap, so a caller can follow the active control kind. */
+  onSwap?: (mode: ControlMode) => void,
 ): ControlSwap {
   let mode: ControlMode = start;
   const apply = (): void => {
@@ -49,6 +51,7 @@ export function swapControls(
       mode = 'fly';
       apply();
     }
+    onSwap?.(mode);
   };
 
   const onKey = (e: Event): void => {
