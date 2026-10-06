@@ -1,5 +1,6 @@
 // FlyControls, held to a fixed key state and a fixed dt. The element is a bare event target, so
 // the test needs no DOM. Keys arrive as events with a `code`, as the browser sends them.
+// Verifies: Design 0008.27
 
 import { describe, expect, it } from 'bun:test';
 import { PerspectiveCamera, Vector3 } from '@typeshade/radiance';
@@ -8,7 +9,7 @@ import { FlyControls } from './FlyControls.ts';
 class FakeElement extends EventTarget {
   tabIndex = -1;
   style = { touchAction: '' };
-  ownerDocument = new EventTarget();
+  ownerDocument = Object.assign(new EventTarget(), { defaultView: new EventTarget() });
   focus(): void {}
   setPointerCapture(): void {}
   releasePointerCapture(): void {}
@@ -17,9 +18,16 @@ class FakeElement extends EventTarget {
   }
 }
 
-function key(el: FakeElement, type: 'keydown' | 'keyup', code: string): void {
+function key(
+  el: FakeElement,
+  type: 'keydown' | 'keyup',
+  code: string,
+  mods: { metaKey?: boolean } = {},
+): void {
   // A key event on the canvas bubbles to its document, where the controls listen.
-  el.ownerDocument.dispatchEvent(Object.assign(new Event(type, { cancelable: true }), { code }));
+  el.ownerDocument.dispatchEvent(
+    Object.assign(new Event(type, { cancelable: true }), { code }, mods),
+  );
 }
 
 function pointer(el: FakeElement, type: string, x: number, y: number): void {
@@ -47,7 +55,32 @@ describe('FlyControls', () => {
     expect(controls.moving).toBe(true);
     for (let i = 0; i < 60; i++) controls.update(1 / 60);
     const moved = camera.position.clone().sub(new Vector3(1, 2, 3));
-    expect(moved.distanceTo(dir.multiplyScalar(3))).toBeLessThan(1e-6);
+    expect(moved.distanceTo(dir.clone().multiplyScalar(3))).toBeLessThan(1e-6);
+    // One step of 1 s gives the same place.
+    const one = setup();
+    one.camera.position.set(1, 2, 3);
+    one.camera.lookAt(new Vector3(4, 4, -3));
+    one.controls.movementSpeed = 3;
+    key(one.el, 'keydown', 'KeyW');
+    one.controls.update(1);
+    const movedOne = one.camera.position.clone().sub(new Vector3(1, 2, 3));
+    expect(movedOne.distanceTo(dir.clone().multiplyScalar(3))).toBeLessThan(1e-6);
+  });
+
+  it('counts a keyup with a modifier, so no key stays down', () => {
+    const { el, controls } = setup();
+    key(el, 'keydown', 'KeyW');
+    expect(controls.moving).toBe(true);
+    key(el, 'keyup', 'KeyW', { metaKey: true });
+    expect(controls.moving).toBe(false);
+  });
+
+  it('clears the held keys when the window loses focus', () => {
+    const { el, controls } = setup();
+    key(el, 'keydown', 'KeyW');
+    expect(controls.moving).toBe(true);
+    el.ownerDocument.defaultView.dispatchEvent(new Event('blur'));
+    expect(controls.moving).toBe(false);
   });
 
   it('does not depend on the frame rate', () => {
