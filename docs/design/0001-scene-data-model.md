@@ -751,8 +751,7 @@ Each step is one pull request with `Design: 0001` in its commit message. The gat
    ball and the white ball `Sphere(0.4, material)` at the same centres. Change the comment that
    says every shape is triangles. `scenes.test.ts` holds these counts for the box: 8 instances, 4
    triangles, 8 vertices, 2 lights and 7 nodes. The nodes are 2 for the two plane BLASes and 5 for
-   the TLAS. The 5 is from a throwaway script on the boxes of the spheres. The sum is an inference until the test runs. Today the same scene counts 1,924 triangles, 1,130 vertices and
-   1,093 nodes (Amendment 2). Re-derive `ORACLE.mean` by record 0002's rule. The pull request
+   the TLAS. The 5 is from a throwaway script on the boxes of the spheres. The sum is an inference until the test runs. If the test measures another count of TLAS nodes, the pull request records the count and amends this record. Today the same scene counts 7,940 triangles, 4,298 vertices and 4,741 nodes. These are measured values of `ScenePack.counts` on `main` at 5c29193, which includes a89aaa1 (#54). Re-derive `ORACLE.mean` by record 0002's rule. The pull request
    records the old value, the measured mean, the largest difference, and the new value. Rewrite the
    goldens with `UPDATE_GOLDENS=1 bun run gate:render`, and commit only the goldens that change.
    The candidates are `cornell-box`, `determinism` and `scene-graph`, the three examples that call
@@ -761,8 +760,7 @@ Each step is one pull request with `Design: 0001` in its commit message. The gat
    in `site/examples/scene-graph.ts` so that it also removes a `Sphere`. Add the probe of record 0002 to the render gate. It renders `cornell-box` with the `radius` of every `Sphere` times 1.01. It asserts that `comparePictures` fails against the golden. Done when five things hold.
    The counts are as above. The differential gate passes on the new `ORACLE.mean`. The render gate
    passes on the committed goldens. The probe fails the gate at a radius 1 % too large. The pull
-   request shows a crop of the mirror ball at 768 pixels, before and after. It sets no number on the brightness of the rim. The open front of the box also darkens a reflection there (inference). The count of record 0004 holds instead (step 6 of this record). The step starts after the scene pull request has merged. That pull request holds the 64 by 32 sphere tessellation and the two-sided lamp. If that pull request merges first, this step replaces its two sphere meshes and
-   keeps its lamp. The commit names `Design: 0001`, `Design: 0002` and `Design: 0004`.
+   request shows a crop of the mirror ball at 768 pixels, before and after. It sets no number on the brightness of the rim. The open front of the box also darkens a reflection there (inference). The count of record 0004 holds instead (step 6 of this record). The scene pull request, a89aaa1 (#54), has merged. It gave the two spheres a 64 by 32 tessellation and made the lamp two-sided. This step replaces its two sphere meshes with two `Sphere` objects and keeps the two-sided lamp. The commit names `Design: 0001`, `Design: 0002` and `Design: 0004`.
 9. **The `flatShading` flag** (Amendment 3, record 0003, record 0004, step 8 there). Add
    `Material.flatShading` and `MaterialParameters.flatShading`. Add `MATERIAL_FLAT_SHADING` to
    `materials.shade.ts`, and set bit 11 of `[2].w` in `packMaterial`. In `surfaceAt`, take `ns` as
@@ -930,6 +928,8 @@ The configuration is `main` at 13b9e88, the compiler pinned at 596c805, bun 1.3.
 v22.22.0, on 2026-10-06. The measures below come from throwaway scripts in a scratch directory.
 This pull request does not keep them, and no test holds them. Each one is an observed result:
 
+Since 13b9e88, `main` moved to 5c29193. The commit a89aaa1 (#54) changed the Cornell box: both balls are `SphereGeometry(0.4, 64, 32)`, the lamp is `doubleSided`, and `ORACLE.mean` is 2e-5. Step 8 reads that state. The counts of `ScenePack.counts` of `createCornellBox()` at 5c29193 are 7,940 triangles, 4,298 vertices, 4,741 nodes, 8 instances and 2 lights. The Amendment 2 counts below are the state at 13b9e88.
+
 - **The precision of the form.** A script rounded every operation of "The ray and the sphere" to `f32` and fused none. It compared the result with the same formula in `f64` on the same `f32` inputs. For an impact parameter of at most 0.9 the worst case was 7.12 units of `ulp(S)` over
   1,200,000 rays. For an impact parameter of at most 0.999 it was 20.62, with 10 missed hits of
   1,199,955. The worst `abs(length(q) - 1)` was 1.43e-7 over 300,000 hits. A ray from at least
@@ -981,8 +981,7 @@ dispositions:
 - **Open: `docs/plan.md`.** Section 3.2 says "triangles only", and the M6 row names the SDF. This
   amendment does not touch the plan. Next action: a plan pull request, which waits for the owner's
   "merge".
-- **Open: the scene pull request.** One pull request holds the 64 by 32 tessellation and the two-sided lamp. It changes the spheres that step 8 replaces. Next action: step 8 starts after it
-  merges, or replaces its sphere meshes.
+- **Closed: the scene pull request.** a89aaa1 (#54) holds the 64 by 32 tessellation and the two-sided lamp. It merged into `main` before 5c29193. Step 8 replaces its two sphere meshes and keeps its lamp.
 
 **Approval and plan record.** Accepted on 2026-10-05 (UTC). The owner approved the merge of typeshade/radiance#6 in the conversation, which merged this record as `draft` at 9e8b479. The owner then said to implement the records with Opus 5.5 and Sonnet 5.5, and that go-ahead is the acceptance. Every entry of "Decisions for the owner" stands as proposed.
 

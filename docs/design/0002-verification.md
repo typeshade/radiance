@@ -526,7 +526,7 @@ changes these places:
 The decisions 1 to 5 keep their numbers and their text. The merge of the pull request that
 carries this amendment is the owner's acceptance. The pull requests of record 0001, steps 6, 8
 and 10, merge after it. The configuration is `main` at 13b9e88, the compiler pinned at 596c805,
-bun 1.3.14 and node v22.22.0, on 2026-10-06. The numbers come from throwaway scripts that this
+bun 1.3.14 and node v22.22.0, on 2026-10-06. The two entries on the Cornell box read `main` at 5c29193, which includes a89aaa1 (#54). The numbers come from throwaway scripts that this
 pull request does not keep. Each is an observed result:
 
 - **The shared pack.** Fact: `scripts/oracle.ts` binds the arrays of the `ScenePack` that the
@@ -534,12 +534,12 @@ pull request does not keep. Each is an observed result:
   in both images. The gate compares the two images only.
 - **The silhouette.** In `f64`, 256 by 256 rays hit 18,072 times. They went over the square from -0.2 to 0.2 at unit distance, from 3.4 from a sphere of radius 0.4. The area is 18,060 cells.
   A radius of 0.404 gave 18,440. A radius of 0.396 gave 17,708.
-- **The Cornell counts.** Today `createCornellBox()` gives 1,924 triangles, 1,130 vertices and
-  1,093 nodes (record 0001, Amendment 2). At step 8 of record 0001 the test expects 4 triangles,
+- **The Cornell counts.** Today `createCornellBox()` gives 7,940 triangles, 4,298 vertices and
+  4,741 nodes. These are `ScenePack.counts` on `main` at 5c29193, which includes a89aaa1 (#54). At step 8 of record 0001 the test expects 4 triangles,
   8 vertices, 8 instances, 2 lights and 7 nodes. Of the nodes, 5 are the TLAS, from a script on
   the exact boxes. The other 2 are the two plane BLASes, one leaf each (an inference, until the
   test runs).
-- **The old thresholds.** `ORACLE` is `{ abs: 1e-3, rel: 0.05, mean: 3.3e-6 }` at 13b9e88.
+- **The old thresholds.** `ORACLE` is `{ abs: 1e-3, rel: 0.05, mean: 2e-5 }` on `main` at 5c29193. a89aaa1 (#54) set `mean` to 2e-5. It was 3.3e-6 at 13b9e88.
   The pull request of step 8 replaces `mean` by the rule.
 
 The dispositions:
@@ -567,9 +567,9 @@ The dispositions:
   change at step 8 of record 0001, because each calls `createCornellBox`. The pull request commits
   only those that change, and shows each old and new picture, as step 4 requires. Step 10 adds
   the golden `spheres`.
-- **Open: the scene pull request.** The pull request with the 64 by 32 tessellation and the
-  two-sided lamp also regenerates the same goldens. Next action: run step 8 of record 0001 after
-  it merges, so that each golden is rewritten once for each cause.
+- **Closed: the scene pull request.** a89aaa1 (#54) holds the 64 by 32 tessellation and the
+  two-sided lamp, and it regenerated the same goldens. Step 8 of record 0001 rewrites each golden
+  once more, for the `Sphere`.
 
 **Configuration and validation record.** This record does not yet apply. Implementation will
 record each gate's first measured numbers, the pin, and the CI run that first ran it.
