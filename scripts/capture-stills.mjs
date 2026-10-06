@@ -47,7 +47,7 @@ try {
     const animated = (await page.locator('[data-stage-toolbar][data-animated]').count()) > 0;
     const panel = (await page.locator('[data-stage-panel][data-filled]').count()) > 0;
     if (panel) {
-      // Four renders of the stage's size at RENDER.samples (site/examples/determinism.ts).
+      // Three renders of the stage's size at RENDER.samples (site/examples/determinism.ts).
       await page.waitForSelector('[data-stage-panel] [data-done]', { timeout: 120 * 60_000 });
     } else {
       if (animated) await pause.click();

@@ -49,7 +49,9 @@ with TypeScript's `TS2454` ("used before being assigned") at each `stack[i] = ..
 out. Rule 12.7 makes the two halves one vocabulary, and here they disagreed at the pin. Change
 0043 (PR #473, merged as 46f6b84 after the pin) closes that: at `main` fd39ba3, both halves
 refuse the first spelling with `TS8075`. The zero-value call stays refused at both commits.
-Filed as typeshade/typeshade#495 (https://github.com/typeshade/typeshade/issues/495).
+Filed as typeshade/typeshade#495 (https://github.com/typeshade/typeshade/issues/495). Since pin
+596c805 carries change 0047, the stacks of `nearest` and `occluded` in `intersect.shade.ts` use
+`array<u32, 32>()`.
 
 ### 2026-10-05 · host · Record 0001 step 3: the oracle pays for every aggregate it copies
 

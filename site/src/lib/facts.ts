@@ -7,6 +7,7 @@ import path from 'node:path';
 import { compile } from 'typeshade';
 import {
   ALLOWED,
+  VALUE_ONLY,
   describeRow,
   outsideLists,
 } from '../../../packages/radiance/src/kernels/determinism-lists.ts';
@@ -88,8 +89,9 @@ export const facts = {
   license: 'Apache-2.0',
   /** The examples, by id. */
   examples: exampleIds(siteRoot),
-  /** The determinism report of the reported kernels, and the allowlist every row is held to. */
-  determinism: { rows: kernelDeterminism(), allowed: ALLOWED },
+  /** The determinism report of the reported kernels, and the two lists of record 0005 every row
+   *  is held to: `ALLOWED` and `VALUE_ONLY`. */
+  determinism: { rows: kernelDeterminism(), allowed: ALLOWED, valueOnly: VALUE_ONLY },
   /** The gates CI holds the engine to. */
   gate: {
     size: `${GATE.size[0]} x ${GATE.size[1]}`,

@@ -34,17 +34,22 @@ Start each render from zero. Call `reset()`, or set `seed`. Both start the accum
 
 ## Check it yourself
 
-`readRadiance()` gives every float of a render. Render twice with one seed and count the floats
-that differ. `Object.is` decides, as the gate does: a NaN equals a NaN, and 0 differs from -0.
+`readRadiance()` gives every float of a render. Render seed 2 once and seed 1 twice, and count the
+floats that differ. `Object.is` decides, as the gate does: a NaN equals a NaN, and 0 differs
+from -0.
+
+A renderer's first frame adds one sample, so its first render has a split of its own, and the code
+draws seed 2 first.
 
 ```ts
 import { PathTracer } from '@typeshade/radiance';
 
 // `scene` and `camera` are the ones from Getting started.
-const renderer = await new PathTracer({ seed: 1, samplesPerFrame: 16 }).init();
+const renderer = await new PathTracer({ samplesPerFrame: 16 }).init();
 renderer.setSize(320, 200);
 
-async function render(): Promise<Float32Array> {
+async function render(seed: number): Promise<Float32Array> {
+  renderer.seed = seed;
   renderer.reset();
   do {
     await renderer.render(scene, camera);
@@ -52,12 +57,17 @@ async function render(): Promise<Float32Array> {
   return renderer.readRadiance();
 }
 
-const first = await render();
-const again = await render();
-const differing = first.filter((value, i) => !Object.is(value, again[i])).length;
+const other = await render(2);
+const first = await render(1);
+const again = await render(1);
+
+const count = (a: Float32Array, b: Float32Array) =>
+  a.filter((value, i) => !Object.is(value, b[i])).length;
+const same = count(first, again);
+const different = count(first, other);
 ```
 
-On one device, `differing` is 0. Set `renderer.seed = 2` before the second render, and it is many.
+On one device, `same` is 0, and `different` is many.
 
 ## Where CI checks it
 
