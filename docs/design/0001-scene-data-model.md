@@ -138,7 +138,7 @@ to the kernel's, and the record names that as the fallback.
 | `vertices`  | `storage<array<vec4>>`               | 2      | `[0] = (p.x, p.y, p.z, u)`, `[1] = (n.x, n.y, n.z, v)`. The position, the shading normal in the geometry's space and the uv.                                                                                                                                                  |
 | `instances` | `storage<array<vec4>>`               | 8      | `[0..2]`: the world matrix, rows (`m00 m01 m02 tx`, `m10 m11 m12 ty`, `m20 m21 m22 tz`). `[3..5]`: the inverse, the same way. `[6] = (bits(nodeBase), bits(primBase), bits(vertexBase), bits(material))`. `[7] = (bits(flags), bits(geometryId), 0, 0)`.                      |
 | `materials` | `storage<array<vec4>>`               | 8      | Record 0004's material record. M2 fills `[0..3]`. `[4..7]` are reserved for M3.                                                                                                                                                                                               |
-| `lights`    | `storage<array<vec4>>`               | 1      | `(bits(type), bits(instance), bits(triangle), cdf)`. `type` 0 is an emissive triangle. `cdf` is the cumulative probability of this light, in `[0, 1]`, the last light's 1. M3 adds types for point, spot, sun and the environment in the same table.                          |
+| `lights`    | `storage<array<vec4>>`               | 1      | `(bits(type), bits(instance), bits(triangle), cdf)`. `type` 0 is an emissive triangle. `triangle` is absolute. `cdf` is the cumulative chance of this light, in `[0, 1]`, the last light's 1. M3 adds types for point, spot, sun and the environment in the same table.       |
 | `accum`     | `storage<array<vec4>, "read_write">` | 1      | A pixel's samples added up: rgb, and how many in w. Unchanged from M1.                                                                                                                                                                                                        |
 
 Indices inside a BLAS are **relative**: a child index is relative to the BLAS's first node, a
@@ -146,11 +146,36 @@ leaf's first primitive to its `primBase`, a triangle's vertex indices to its `ve
 kernel adds the instance's bases. A BLAS is then position-independent: when the compiler gives
 the runtime a partial buffer write (record 0006, item 2), a BLAS moves without a rewrite.
 
+A triangle's index outside a BLAS is absolute. `Hit.triangle` and the light table's
+`bits(triangle)` index `triangles` as a whole: the instance's `primBase` plus the triangle's
+relative index. `nearest` adds `primBase` to a leaf's relative index (`intersect.shade.ts`). The
+host adds it when it writes the light table (`#lightTable` in `scene-pack.ts`).
+`triangleWords(i)` in `layout.shade.ts` takes such an index. Decision 4 stands, because an index
+stored inside a BLAS stays relative. The pack builds `lights` again when a geometry changed, so a
+light never names a triangle of a BLAS that moved.
+
 The TLAS lives in `nodes` too, after every BLAS, at `params.scene.x` (`tlasBase`). Its leaves
 hold instances: `a` is the first instance's slot in the TLAS's leaf order, `count` how many, up
 to the leaf size of 4. The packer writes `instances` in that order, so a slot is the index into
 `instances`, and `Hit.instance` and the light table's `bits(instance)` name the same index. Its
 boxes are the instances' object-space boxes transformed to world space.
+
+**The light table.** `#lightTable` in `scene-pack.ts` builds it, as follows:
+
+- One light for each triangle of each instance whose material's emissive colour has a mean above
+  zero. A triangle whose area in world space is zero is not a light.
+- A light's power is its area in world space times that mean. The mean is over the three
+  channels of the emissive colour, which record 0004 stores multiplied by `emissiveIntensity`.
+  The "double sided" flag does not change it.
+- A light's chance is its share of the emitted power: its power over the sum of the power of
+  every light.
+- The rows are in slot order, then in the order of `triangles`.
+- A row's `cdf` is its chance plus the chance of every row before it. The last row's `cdf` is
+  exactly 1.
+- The kernel finds a light with a search over `cdf` (`pickLight` in `trace.shade.ts`). It takes
+  that light's chance as its `cdf` less the `cdf` of the row before (`direct`).
+
+The chance of the types that M3 adds belongs to the record that adds them.
 
 The two uniform blocks, which replace M1's `TraceParams`:
 
@@ -178,7 +203,11 @@ size, not the scene the owner has in mind.
 `trace.shade.ts`:
 
 - **Ray against box**: the slab test with precomputed `1 / d` per ray, in the space the box is
-  in. A division is a `ulp` row of the determinism report. Record 0005 admits it.
+  in. A division is a `ulp` row of the determinism report. Record 0005 admits it. The kernel
+  replaces a component of `d` whose absolute value is below 1e-20 with 1e-20, whatever its sign,
+  so no infinity enters the test (`TINY` in `prepare`). It multiplies the far distance by
+  1.0000004 (`SLAB_SLACK` in `enters`), to keep the rounding of the test from culling a hit on a
+  box's face.
 - **Ray against triangle**: the watertight test of Woop, Benthin and Wald (2013). Its shear
   constants are computed once per ray per space. It leaves no crack along a shared edge, which a
   shadow ray toward a light would otherwise pass through. Its one division is the final `1 / det`.
@@ -192,11 +221,23 @@ size, not the scene the owner has in mind.
   It is a second function, not a flag.
 - **Depth**: the builder makes a leaf at depth 30, whatever the surface area heuristic says, so
   32 entries hold any tree.
-- **The hit**: `Hit { t, instance, triangle, b1, b2 }`. `surface(hit, dir)` computes the point,
-  the geometric normal (`normalize(cross(e1, e2))`, outward for counter-clockwise), the shading
-  normal (the vertices' normals interpolated and transformed by the inverse transposed, which is
-  rows `[3..5]`'s columns), the uv, and the material index. The front face is the side the
-  geometric normal points to. Emission leaves the front face only, as M1's quads do.
+- **The hit**: `Hit { t, instance, triangle, b1, b2 }`. `instance` is a slot in `instances`.
+  `triangle` is an absolute index ("The GPU layout"). `b1` and `b2` are the weights of the
+  triangle's second and third vertex. `surface(hit, dir)` computes the point, the geometric
+  normal, the shading normal, the uv, and the material index.
+- **The surface of a point**: `surfaceAt(instance, triangle, b1, b2, dir)` gives the same
+  `Surface` for any point that its instance, triangle and weights name, met by a ray along `dir`.
+  `surface` calls it for a hit. Next-event estimation calls it for the point it samples on a
+  light (`direct` in `trace.shade.ts`), with the direction from the shaded point to that point.
+- **The normals**: the geometric normal is `cross(p1 - p0, p2 - p0)` in the geometry's space. The
+  kernel moves it to world space by the inverse transposed (`instanceNormalToWorld`) and then
+  normalises it. It points outward for a counter-clockwise triangle. A mirrored instance, whose
+  world matrix has a negative determinant, keeps its outside. The shading normal is the vertices'
+  normals interpolated, and transformed by the inverse transposed, which is rows `[3..5]`'s
+  columns. The front face is the side the geometric normal points to.
+- **Emission**: a material emits from its front face. It emits from its back face too when its
+  "double sided" flag is on (bit 9 of `[2].w` in the material record of record 0004). Both
+  faces emit the same colour (`emission` in `materials.shade.ts`).
 
 ### The build
 
@@ -212,11 +253,25 @@ size, not the scene the owner has in mind.
   primitives' indices in leaf order. The packer writes `triangles` in that order, so a leaf's
   primitives are contiguous and the triangle buffer is permuted once.
 - The TLAS uses the same builder over instance boxes, one primitive per instance, with the
-  same leaf size, so a TLAS of 4 or fewer instances is one leaf.
+  same leaf size, so a TLAS of 4 or fewer instances is one leaf. It differs in one rule: no TLAS
+  leaf holds more than 4 instances, so it splits every node of more than 4 (`buildTlas` in
+  `bvh.ts`). It splits such a node as follows:
+  1. Bin the instances on the longest axis of their centroid box, as for a BLAS. Find the split
+     of least cost. The leaf's cost does not count.
+  2. Take that split when its larger side can reach leaves of 4 by depth 30. A side of m
+     instances can when the child's depth, plus the halvings from m down to 4 or fewer, is at
+     most 30. Each halving rounds up.
+  3. Otherwise split at the median. Do the same when the centroids lie at one point, or when no
+     bin split separates the instances.
+  4. The median split sorts the node's instances by centroid on the longest axis, ties by
+     instance index. The first half, rounded down, goes to the left child. A median split halves
+     the count, so the depth stays at 30 or under.
 - `bvh.test.ts` holds it: every primitive in exactly one leaf. Every box contains its
   primitives' boxes. The root box is the geometry's. A node's children lie in it. The depth
   stays under 31. And, on 1,000 random rays against a random mesh, the traversal on the oracle
-  (`compileModuleJs`) finds the same nearest triangle as a brute-force loop in TypeScript.
+  (`compileModuleJs`) finds the same nearest triangle as a brute-force loop in TypeScript. For the
+  TLAS it also holds, on the boxes of its tests, that no leaf holds more than 4 instances and
+  that the depth stays at 30 or under.
 
 Build time is the host's. A 262,000-triangle mesh is expected to build in about one second in
 JavaScript (an inference from the binned algorithm's cost, measured at step 4). A worker is
@@ -254,6 +309,9 @@ and M2a measures (record 0002, the benchmark).
 A geometry removed from the scene keeps its BLAS in the pack until `dispose()` or until the
 pack's `release(geometry)` is called. Record 0003 names `dispose()` as the public form.
 
+A mesh whose geometry has an empty index draws nothing. The pack drops that geometry's BLAS and
+writes the three geometry buffers again (`#update` in `scene-pack.ts`).
+
 ### Tiles and the watchdog
 
 Plan §3.1 item 1: a dispatch over two seconds loses the device on Windows. The renderer
@@ -263,10 +321,50 @@ dispatches the frame in tiles. `tile` says which pixels a dispatch covers. An in
 stays free of atomics and the order of a pixel's samples stays fixed (record 0005).
 
 `PathTracerParameters` gains `watchdogBudget` (milliseconds, default 50). The renderer sizes the
-tile so that `tile pixels x samplesPerFrame x the last measured nanoseconds per path` stays
-under the budget, starting from the whole frame and one sample, and records every dispatch's
-time in `info`. A frame is still one `rt.frame()` and one `submit()`. The dispatches inside it
-are as many as the tiles.
+tile so that `tile pixels x the frame's samples x the last frame's nanoseconds per path` stays
+under the budget (`tileFrame` in `tiles.ts`). The last frame's nanoseconds per path is its
+`frameTime` over the paths it traced. A frame is still one `rt.frame()` and one `submit()`. The
+dispatches inside it are as many as the tiles.
+
+**What `info` holds.** `info` holds `frameTime` (the last frame's time in milliseconds),
+`pathsPerSecond`, `frames` (the count of frames traced), `dispatches` (the last frame's count of
+tiles), `tilePixels` (the pixels of its largest tile) and `dispatchTime`. `dispatchTime` is
+`frameTime` over `dispatches`, a mean. It is not the measured time of one dispatch. The runtime
+submits the dispatches of a frame together and reports no time for one (record 0006, item 5).
+
+**The first frame and the smallest tile.** The nominal tile is the pixel count that `tileFrame`
+computes from the budget, before it forms rows. The rules below are a proposal. Decision 9 holds
+the number 4,096, which the owner accepts or changes.
+
+1. The first frame, which the renderer traces before it measures a speed, takes one sample. Its
+   nominal tile is 4,096 pixels.
+2. The nominal tile of any frame is never under 4,096 pixels.
+3. A tile is whole rows when a row fits in it, and part of one row when it does not. A tile that
+   whole rows or the frame's edge make smaller may hold fewer pixels than the nominal tile.
+4. A tile of the smallest size may pass the budget at the last measured speed and the frame's
+   samples. The tile then keeps its size, and the dispatch passes the budget.
+
+At `main` 6ad088d, `tileFrame` follows rule 3, and the first frame already takes one sample. It
+does not follow the size of 4,096 pixels in rules 1, 2 and 4. When `nsPerPath` is undefined,
+`tileFrame` makes one tile of the whole frame, cut to `MAX_TILE_PIXELS` (4,194,240 pixels). A 4K
+frame (3840 by 2160, 8,294,400 pixels) then takes 2 tiles. The smallest tile is `WORKGROUP`, 64
+pixels. A 4K frame at that size takes 129,600 dispatches.
+
+A nominal tile of 4,096 pixels covers a 4K frame in 2,025 tiles (8,294,400 over 4,096). Whole
+rows and edges change that count. At one sample, such a tile stays under the 50 ms budget at
+81,920 paths a second or more. It stays under the watchdog's 2 s at 2,048 paths a second or
+more. These numbers are arithmetic. No device gave them.
+
+No measure of the host time of one dispatch exists. Inference: 2,025 dispatches take less host time
+than 129,600 dispatches.
+
+Open question for the owner: when a tile of 4,096 pixels passes the budget, does the renderer
+take fewer samples in that frame, down to 1? This amendment does not decide it. `samplesPerFrame`
+stays as the author sets it.
+
+Owed: a later pull request with `Design: 0001` changes `tileFrame` and `tiles.test.ts` to these
+rules. The tests "is one tile of the whole frame before any frame is measured" and "never makes a
+tile smaller than a workgroup or larger than one dispatch" change with it.
 
 WebGPU's `maxComputeWorkgroupsPerDimension` is 65,535. With a workgroup of 64 that is 4,194,240
 invocations in one dimension, under a 4K frame's 8,294,400 pixels. Tiling covers it: a tile is
@@ -312,6 +410,14 @@ scene. Nothing in the oracle knows the layout. It knows the pack.
 - **Why tiles now.** The watchdog is plan §3.1's first constraint and M1 ignores it: a 1080p
   frame at 64 samples is one dispatch. With a BVH each path costs more, and the first user on
   Windows with an integrated GPU loses the device.
+- **Why the chance of a light follows its power.** A light of more power gives more of the
+  image's light. A chance that follows the power picks it more often. Inference: the same chance
+  for every light picks a small dim triangle as often as a large bright one, which adds noise.
+  This record does not measure the difference.
+- **Why a smallest tile.** Each dispatch has a cost on the host that this record has not
+  measured. A tile of 64 pixels makes 129,600 dispatches on a 4K frame. A first tile of 4,096
+  pixels stays under the watchdog at 2,048 paths a second or more: arithmetic, in "Tiles and the
+  watchdog".
 
 Alternatives considered and not taken:
 
@@ -342,9 +448,10 @@ Alternatives considered and not taken:
   byte offsets against the manifest's layout). `scene-pack.test.ts` (a change to one
   geometry re-writes three buffers and no other. A moved transform writes instances, nodes
   and lights. An unchanged scene writes nothing. The limit check throws with the sentence
-  above). `kernels.test.ts` gains the intersection tests on the oracle (a ray through a
-  shared edge hits exactly one of the two triangles. A transformed instance is hit where its
-  matrix puts it).
+  above). `intersect.test.ts`, next to the module it tests, holds the intersection tests on the
+  oracle (a ray through a shared edge meets at least one of the two triangles. A transformed
+  instance is hit where its matrix puts it). `kernels.test.ts` keeps the tests of the sampler, of
+  `trace.shade.ts`, of the seven bindings and of the tiles.
 
 ## Implementation, in steps
 
@@ -394,6 +501,11 @@ record is implemented at step 5.
 6. Tiling with a `watchdogBudget` of 50 ms by default.
 7. `QuadGeometry` is renamed `PlaneGeometry`, and `BoxGeometry` is added, for three.js parity
    (record 0003 decides names, this record depends on it).
+8. A light's chance is its share of the emitted power: its area in world space times the mean of
+   its emissive colour ("The GPU layout", the light table). Amendment 2 adds this decision.
+9. The first frame, traced before the renderer measures a speed, takes one sample, and no tile's
+   nominal size is under 4,096 pixels ("Tiles and the watchdog"). The number 4,096 is a proposal
+   of Amendment 2. The owner accepts or changes it.
 
 ## Record
 
@@ -404,61 +516,114 @@ order says that each child pair follows its parent. The traversal says that the 
 pushed first. A TLAS leaf holds up to 4 instances, and `a` is a slot in the TLAS's leaf order
 that the packer makes the index into `instances`.
 
+**Amendment 2** (2026-10-06, UTC). Step 3 is on `main` as 9f2cf1a (typeshade/radiance#18). Its
+pull request listed deviations from this record. This record's own list, "Deviations of step 3"
+below, listed more. Each rule below was in the code and not in the record. This amendment states
+each one in the section it belongs to. Where the code has no rule, it proposes one.
+
+The merge of the pull request that carries this amendment is the owner's acceptance of every
+disposition. "Made part of the record" means that the section named states the rule as the code at
+`main` 6ad088d has it. The numbers: the Cornell box pack holds 8 instances, 1,924 triangles, 1,130
+vertices, 1,093 nodes (5 of them the TLAS) and 2 lights. A 4K frame takes 2 tiles in its first frame
+and 129,600 tiles at the smallest tile.
+
+1. **TLAS leaves.** Made part of the record. "The build" states how the TLAS splits a node of
+   more than 4 instances (`buildTlas` and `build` in `bvh.ts`).
+2. **The triangle index of a hit and of a light.** Made part of the record. "The GPU layout"
+   states that `Hit.triangle` and `bits(triangle)` are absolute indices into `triangles`. Decision 4
+   stands.
+3. **A light's chance.** Made part of the record, with decision 8 for the owner. "The GPU layout"
+   states the light table: a chance is a share of the emitted power, the rows are in slot order
+   then triangle order, and no triangle of area 0 is a light (`#lightTable` in `scene-pack.ts`).
+4. **The geometric normal in world space.** Made part of the record. "Traversal" states that the
+   kernel moves the cross product to world space by the inverse transposed (`surfaceAt` in
+   `intersect.shade.ts`).
+5. **Double-sided emission.** Made part of the record. "Traversal" names bit 9 of the type and
+   flags word (`MATERIAL_DOUBLE_SIDED` and `emission` in `materials.shade.ts`). Record 0004 defines
+   the bit.
+6. **The surface of a point on a light.** Made part of the record. "Traversal" names `surfaceAt`
+   beside `surface`, and the call in `direct` (`trace.shade.ts`).
+7. **The slab test's edge cases.** Made part of the record. "Traversal" states the floor of 1e-20
+   on a component of the direction and the factor 1.0000004 on the far distance (`TINY` and
+   `SLAB_SLACK` in `intersect.shade.ts`).
+8. **The first frame and the count of tiles.** Proposed. The owner accepts or changes the number
+   4,096 with decision 9. "Tiles and the watchdog" states rules 1 to 4: the first frame takes one
+   sample in nominal tiles of 4,096 pixels, and no nominal tile is smaller. The code does not
+   follow them yet. `tileFrame` in `tiles.ts` and `tiles.test.ts` must follow them in a later pull
+   request with `Design: 0001`. The old text said that the first frame takes one tile of the whole
+   frame. That is true only for a frame of 4,194,240 pixels or fewer. Open: whether a frame takes
+   fewer samples when the smallest tile passes the budget.
+9. **The time of a dispatch.** Made part of the record. "Tiles and the watchdog" states what
+   `info` holds, and that `dispatchTime` is `frameTime` over `dispatches` (`PathTracer.ts`). A
+   measured time for each dispatch waits on record 0006, item 5.
+10. **The file of the intersection tests.** Made part of the record. "What it touches" names
+    `intersect.test.ts`. The same sentence said that a ray through a shared edge hits exactly one
+    triangle. The test holds "at least one", because a ray that meets the edge where an edge
+    function is exactly 0 meets both. The sentence now says "at least one".
+11. **An emptied geometry.** Closed at 7b4494f, a commit of the pull request's branch. "Change
+    tracking and upload" now states the rule that the fix made.
+
+This amendment also changes two entries below: "Deviations of step 3" names a disposition for each
+open entry, and "Configuration and validation record" names the merged pull request of step 3.
+
 **Approval and plan record.** Accepted on 2026-10-05 (UTC). The owner approved the merge of typeshade/radiance#6 in the conversation, which merged this record as `draft` at 9e8b479. The owner then said to implement the records with Opus 5.5 and Sonnet 5.5, and that go-ahead is the acceptance. Every entry of "Decisions for the owner" stands as proposed.
 
-**Deviations of step 3** (2026-10-05, UTC). Step 3 is on the branch `wt/W1` from bc99533, and
-its pull request is to follow. Each entry gives the difference and its disposition.
+**Deviations of step 3** (2026-10-05, UTC). Step 3 is on `main` as 9f2cf1a
+(typeshade/radiance#18). Each entry gives a difference between the record before Amendment 2 and
+the code, and its disposition. Amendment 2 (2026-10-06, UTC) gives a disposition to each entry
+that was open.
 
 - **TLAS leaves.** The builder made one TLAS leaf of any size when no split beat the leaf's
   cost. The Cornell box's TLAS was one leaf of 8 instances, against Amendment 1. Closed at
   0c3c0aa: `buildTlas` splits every node of more than 4 instances. The record does not say how.
   The builder takes the least-cost split while the larger side can reach leaves of 4 by depth
-  30, else the median of the centroids. Open: the owner accepts this rule, or an amendment
-  states another.
+  30, else the median of the centroids. Made part of the record by Amendment 2, item 1.
 - **An emptied geometry.** A geometry whose index was set to an empty array kept its old BLAS,
   and its mesh still drew the old triangles. Closed at 7b4494f: the geometry leaves the pack, as
-  `release()` makes it, and the update writes the buffers again.
+  `release()` makes it, and the update writes the buffers again. Amendment 2, item 11, states
+  the rule.
 - **The triangle index of a hit and of a light.** `Hit.triangle` is the index into `triangles`,
   with the instance's `primBase` added. The light table's `bits(triangle)` is the same index.
   The record names both fields and does not say relative or absolute. Decision 0001.2 makes a
-  layout change an amendment. Open: an amendment states the absolute index.
+  layout change an amendment. Made part of the record by Amendment 2, item 2.
 - **A light's chance.** The record says that `cdf` is the cumulative probability of a light, and
   not what the probability follows. A light's chance is its share of the emitted power: its
   world-space area times the mean of its emitted colour. The table is in slot order, then in
-  triangle order, and holds no triangle of area 0. Open: the owner accepts it, or an amendment
-  states another rule.
+  triangle order, and holds no triangle of area 0. Made part of the record by Amendment 2,
+  item 3.
 - **The geometric normal in world space.** The record gives `normalize(cross(e1, e2))` and does
   not say in which space. The kernel moves the cross product to world space by the inverse
-  transposed, as it moves the shading normal. A mirrored instance then keeps its outside. Open.
+  transposed, as it moves the shading normal. A mirrored instance then keeps its outside. Made
+  part of the record by Amendment 2, item 4.
 - **Double-sided emission.** "Traversal" says that emission leaves the front face only, as M1's
   quads do. `emission` also lets a material emit from its back face when the "double sided" bit
-  of record 0004 is set. Open: an amendment to "Traversal" names the bit.
+  of record 0004 is set. Made part of the record by Amendment 2, item 5.
 - **The surface of a point on a light.** `intersect.shade.ts` exports
   `surfaceAt(instance, triangle, b1, b2, dir)`. `surface(hit, dir)` calls it, and next-event
   estimation calls it for the point it samples on a light. The record names `surface` alone.
-  Open.
+  Made part of the record by Amendment 2, item 6.
 - **The slab test's edge cases.** A component of the direction whose absolute value is below
-  1e-20 is taken as 1e-20, so no infinity enters the test. The far distance is multiplied by 1.0000004, so the rounding of a
-  box culls no hit on its face. The record says neither. Open.
+  1e-20 is taken as 1e-20, so no infinity enters the test. The far distance is multiplied by
+  1.0000004, so the rounding of a box culls no hit on its face. The record says neither. Made
+  part of the record by Amendment 2, item 7.
 - **The first frame.** The first frame traces one sample over one tile of the whole frame, as
   "Tiles and the watchdog" says. No speed is known before it, so the budget does not size that
-  tile. Inference: on a slow device, that first dispatch can pass the watchdog. Open: the owner
-  decides on a smaller first tile.
+  tile. Inference: on a slow device, that first dispatch can pass the watchdog. Proposed by
+  Amendment 2, item 8, for the owner to accept or change.
 - **The time of a dispatch.** The record says that the renderer records the time of every
   dispatch in `info`. The runtime submits the dispatches of a frame together and gives no time
-  for one. `info.dispatchTime` is the frame's time over its dispatches, a mean. Open: a time for
-  each dispatch needs a timer in the runtime.
+  for one. `info.dispatchTime` is the frame's time over its dispatches, a mean. Made part of the
+  record by Amendment 2, item 9. A time for each dispatch needs a timer in the runtime.
 - **The count of tiles.** No limit holds the count of tiles. Tiles of 64 pixels make 129,600
   tiles on a 4K frame, each one dispatch. Inference: a slow device at many samples a frame issues
-  that many dispatches a frame. Open: the owner decides on a smallest tile or fewer samples in a
-  dispatch.
+  that many dispatches a frame. Proposed by Amendment 2, item 8, for the owner to accept or change.
 - **The file of the intersection tests.** "What it touches" names `kernels.test.ts` for the
   intersection tests on the oracle. They are in `src/kernels/intersect.test.ts`, next to the
-  module they test. Open.
+  module they test. Made part of the record by Amendment 2, item 10.
 
 **Configuration and validation record.** Steps 1 to 3 are delivered, at the compiler pin
 e923a34. Step 1 is d9b4d2f (typeshade/radiance#9) and step 2 is a1ea798 (typeshade/radiance#10),
-both on `main`. Step 3 is on the branch `wt/W1` from bc99533, and its pull request is to follow.
+both on `main`. Step 3 is 9f2cf1a (typeshade/radiance#18), on `main`.
 At step 3, the Cornell box gate of record 0002 runs on spheres of 960 triangles. On SwiftShader,
 at 16 by 16 pixels and 1,024 samples, the mean relative difference to the oracle is 3.27e-7.
 The largest is 2.86e-6. `ORACLE.mean` is 3.3e-6, ten times the mean, rounded up, and `abs` and
