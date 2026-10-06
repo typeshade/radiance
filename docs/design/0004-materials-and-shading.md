@@ -168,13 +168,13 @@ the pull request that implements step 7. The rules follow:
 - **The texture coordinates of a `Sphere`.** The uv is the spherical parameterisation of three.js's
   `SphereGeometry`, in the sphere's own space. That space is the world space turned by the rows
   `[3]` to `[5]` of its instance (record 0001, "The analytic sphere"). The texture turns and
-  mirrors with the sphere. The point `q` is the unit vector from the centre, in the sphere's own
-  space, and `rho` is `sqrt(q.x * q.x + q.z * q.z)`:
-  - `phi = atan2(q.z, -q.x)`, from -pi to pi. `u` is `phi / (2 * pi)`, plus 1 when that is
+  mirrors with the sphere. The point `qo` is the unit vector from the centre, in the sphere's own
+  space (not the world-space `q` of `Hit`), and `rho` is `sqrt(qo.x * qo.x + qo.z * qo.z)`:
+  - `phi = atan2(qo.z, -qo.x)`, from -pi to pi. `u` is `phi / (2 * pi)`, plus 1 when that is
     below 0. The seam is the half-axis of -x, where `u` is 0 and 1. `u` is 0 at a pole.
-  - `theta = atan2(rho, q.y)`, from 0 to pi. `v` is `1 - theta / pi`. `v` is 1 at the north pole
+  - `theta = atan2(rho, qo.y)`, from 0 to pi. `v` is `1 - theta / pi`. `v` is 1 at the north pole
     (+y), as in three.js.
-  - `dpdu` is the radius times `2 * pi * (q.z, 0, -q.x)`, moved from the sphere's space to world
+  - `dpdu` is the radius times `2 * pi * (qo.z, 0, -qo.x)`, moved from the sphere's space to world
     space as a direction. It is 0 at a pole, and the fallback frame about `ns` then applies. `dpdv` is not
     stored. Step 3 states the footprint of a texture read, and it may need `dpdv`.
 
@@ -427,8 +427,8 @@ optional and `dpdu` from the triangle is exact for a triangle). Texture atlases 
      flag set, `ns` equals `ng` bit for bit on 1,000 of 1,000 hits. With the flag clear, the same
      rays give `dot(ns, ng)` below 0.99999 on at least 950 of the 1,000. The 950 is an inference,
      and the pull request records the count.
-   - `materials.test.ts`: a mirror sample at the hit of 100,000 primary rays across the silhouette
-     of that flat mesh sphere never has `dot(wi, ng)` of 0 or less: 0 of 100,000.
+   - `materials.test.ts`: the flat mesh sphere gives 100,000 primary rays across its silhouette.
+     A mirror sample at each hit never has `dot(wi, ng)` of 0 or less: 0 of 100,000.
    - `GLTFLoader.test.ts`: a material that the loader makes has `flatShading` false: 1 of 1. The
      loader keeps the normals of the file.
    - The GPU half is the `spheres` scene of record 0002, step 9. Its middle ball has `flatShading`,

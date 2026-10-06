@@ -339,10 +339,10 @@ M3).
 3. Speed is a recorded row, not a gate, until a real GPU runner exists.
 4. A scene per feature in the differential, with its thresholds derived by the rule above.
 5. The stills stay the site's pictures and are not goldens.
-6. The `Sphere` is held by instruments that do not share its pack: an `f64` reference, a probe of
-   the hit on the GPU, the goldens and the radius probes. The differential gate alone cannot hold
-   it. The Cornell box's spheres become `Sphere` objects. A unit test holds the agreement of the kernel and the oracle on a hit. A wrong radius fails the gate. This is the owner's decision
-   of 2026-10-06 (final). A scene `spheres` joins the differential scenes. That part is decided by
+6. The `Sphere` is held by instruments that do not share its pack. They are an `f64` reference,
+   a probe of the hit on the GPU, the goldens and the radius probes. The differential gate alone cannot hold
+   it. The Cornell box's spheres become `Sphere` objects. A unit test holds the agreement of the kernel and the oracle on a hit. A wrong radius fails the gate. This is the owner's
+   decision of 2026-10-06 (final). A scene `spheres` joins the differential scenes. That part is decided by
    default. Amendment 5 adds this decision.
 
 ## Record

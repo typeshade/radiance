@@ -107,7 +107,7 @@ neither adds a row to the lists:
 
 1. **Which rules.** The quadratic uses `+`, `-`, `*`, `/`, `sqrt`, `dot`, `normalize`, `select` and
    comparisons. Its first step is one subtraction, the origin from the centre. Rule 3 admits all of
-   them. `sphereUv` uses `+`, `-`, `*`, `/`, `sqrt` and comparisons. It calls neither `atan2` nor `acos`. Rule 2 does not list `sqrt`. It lists `sin`,
+   them. `sphereUv` and its helper `atan2p` use `+`, `-`, `*`, `/`, `sqrt`, `abs`, `min`, `max` and comparisons. `abs`, `min` and `max` are exact. It calls neither `atan2` nor `acos`. Rule 2 does not list `sqrt`. It lists `sin`,
    `cos`, `exp`, `exp2`, `log`, `log2`, `pow`, `fract`, `tan`, `atan`, `atan2`, `asin` and `acos`.
 2. **What `sqrt` is.** Fact: the compiler's report gives `sqrt` the kind `inherited`, from
    `1 / inverseSqrt(x)`. It gives `inverseSqrt` the kind `ulp`, at 2 ULP. It gives `/` the kind `ulp`, at 2.5 ULP (`vendor/typeshade/src/core/passes/determinism.ts`, at the pin 596c805). So two
@@ -129,7 +129,7 @@ neither adds a row to the lists:
    within the error of the series (3.81e-7 rad). So a different rounding moves the value by
    that error and does not move a path.
 6. **The lint.** The report of `intersect.shade.ts` gains no row outside `ALLOWED`. Its `/` and
-   `sqrt` rows name `hitSphere` and `sphereUv` among their functions. `ALLOWED` and `VALUE_ONLY`
+   `sqrt` rows name `hitSphere` and `atan2p`, the functions that hold them, among their functions. `ALLOWED` and `VALUE_ONLY`
    do not change.
 
 **The lint.** `packages/radiance/src/kernels/determinism.test.ts` (record 0002, step 3)

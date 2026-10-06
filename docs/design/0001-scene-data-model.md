@@ -14,6 +14,18 @@ touches:
   - site/examples
   - scripts/oracle.ts
   - scripts/gates.mjs
+  - packages/radiance/src/objects
+  - packages/radiance/src/materials
+  - packages/radiance/src/index.ts
+  - packages/radiance/__api__
+  - scripts/gates
+  - scripts/probes
+  - scripts/harness-entry.ts
+  - scripts/scenes.ts
+  - scripts/__goldens__
+  - site/public/stills
+  - site/src/content/docs
+  - docs/benchmarks.md
 compiler: ['0006-1', '0006-2', '0006-3']
 ---
 
@@ -300,7 +312,7 @@ A uniform scale of any sign, a turn, and a mirror all pass the check. A mirror, 
 
 The refusal is `RangeError: a Sphere needs a uniform scale and no shear: its world axes have lengths 1, 2 and 3`. The message names the three lengths. A `radius` that is not above 0 and finite throws `RangeError: a Sphere's radius must be above 0 and finite: -1`. Both are thrown by `ScenePack.update`, and the render stops at it.
 
-**How the BVH holds it.** The sphere is a leaf of the TLAS, as every instance is. A TLAS leaf entry whose instance has `flags` bit 0 set runs the sphere test and walks no BLAS. The box of the entry is the exact box of the sphere: the centre plus and minus the radius on each axis. The packer computes it in `f64`. It rounds the lower corner down and the upper corner up to `f32`. The record compares three ways to hold a sphere:
+**How the BVH holds it.** The sphere is a leaf of the TLAS, as every instance is. A TLAS leaf entry whose instance has `flags` bit 0 set runs the sphere test and walks no BLAS. The box of the entry is the exact box of the sphere: the centre plus and minus the radius on each axis. The packer computes it in `f64` from the `f32` words of the centre and the radius, the values the kernel tests. It rounds the lower corner down and the upper corner up to `f32`. The record compares three ways to hold a sphere:
 
 | Option                         | Bytes per sphere  | Nodes added | Cost in the hot loop                                              | Buffer change     |
 | ------------------------------ | ----------------- | ----------- | ----------------------------------------------------------------- | ----------------- |
@@ -774,7 +786,7 @@ Each step is one pull request with `Design: 0001` in its commit message. The gat
     2 deep, and it has no front wall. Its floor, ceiling and back wall are white, at y = 0, y = 2
     and z = -1. The left wall is red, at x = -1.8. The right wall is green, at x = 1.8. The
     colours are those of `createCornellBox`. The lamp is a `PlaneGeometry(1.2, 0.4)` of that
-    box's emissive colour, at (0, 1.98, 0), facing down. The three balls stand at (-1, 0.4, 0),
+    box's emissive colour, at (0, 1.98, 0), facing down. The lamp is two-sided, as the lamp of that box is since a89aaa1. The three balls stand at (-1, 0.4, 0),
     (0, 0.4, 0) and (1, 0.4, 0), all with a `MirrorMaterial`. The left ball is a
     `SphereGeometry(0.4, 32, 16)` mesh with smooth normals. The middle ball is the same geometry
     with a material whose `flatShading` is true. The right ball is a `Sphere`. The camera is a
