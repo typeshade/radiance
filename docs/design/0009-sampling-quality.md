@@ -420,3 +420,73 @@ Alternatives. Heitz et al. (2019): it needs tables and a binding, and no binding
 
 1. **The tests see a wrong permutation.** Plant the fault of setting entry 5 of `PERM4` to `(0, 0, 1, 2)`. The bijection test must fail with the first repeated index in its message. Plant the fault of taking `higher` from `i` alone. One of the two tests of step 5.1 must fail. The pull request names which.
 2. **The quality tool sees white noise.** Plant the fault of using `hash(px, py)` in place of the Morton code. The blur ratio at 4 samples must rise to about 1/3, and the unfaulted ratio must be under it. Inference: the ratio of the faulted kernel falls between 0.28 and 0.38 on a frame of 64 by 64 pixels. Step 5.3 measures it. If it does not, the tool does not measure what it names.
+
+## Part 6: an 8-wide compressed BVH for the BLAS
+
+### What changes (part 6)
+
+The host collapses each geometry's binary BVH into a BVH with up to 8 children in a node. It stores each node in 80 bytes, with child boxes quantized to 8 bits (Ylitie et al. 2017). The kernel walks it with `countOneBits` and `firstLeadingBit`. The TLAS stays binary. The nearest hit stays the same, and a tie in `t` breaks by primitive index.
+
+**Before.** These are facts at `main` 55bde46.
+
+- **The node.** A node is two `vec4`, 32 bytes (`NODE_STRIDE` is 2, `layout.shade.ts` line 19). `nodeBounds(i)` and `nodeWords(i)` read at `i * NODE_STRIDE` (lines 116 to 127). The BLAS and the TLAS share this layout.
+- **The walk.** `nearest` (`intersect.shade.ts`, lines 182 to 256) holds two stacks of 32 `u32` (lines 191 and 192). One is for the TLAS and one is for the BLAS being walked. It tests the box of each popped node with `enters` (lines 197 and 223). It pushes the farther child first.
+- **The leaf.** A leaf holds at most 4 triangles (`BVH_LEAF_SIZE`, `bvh.ts` line 32). The loop of lines 238 to 251 tests them in order. `hitTriangle` returns a miss when `at >= limit` (line 170), so the first of two triangles at one `t` wins.
+- **The bases.** An instance holds `nodeBase` in nodes (`instances[6].x`). `tlasBase` is the count of the BLAS nodes (`scene-pack.ts`, lines 565 and 625). `params.scene.x` holds it.
+- **The sizes.** `nodes` holds at most 4,194,304 nodes under the 134,217,728 byte binding limit (record 0001, "Sizes under the limits"). The tile rules (record 0001, "Tiles and the watchdog") size a tile by the last frame's nanoseconds for each path. A 4K frame takes 2,160 tiles at the slowest speed (`tiles.ts`, line 12).
+
+**After.** These are the contract and the code that follows from it.
+
+- **The node in bytes.** A wide node is 5 `vec4`, 80 bytes, and `WIDE_STRIDE` is 5. Its alignment is 16 bytes, and it has no padding. The words are:
+  - `[0] = (p.x, p.y, p.z, bits(e.x | e.y << 8 | e.z << 16 | imask << 24))`. `p` is the lower corner of the node's box. `e` holds three exponents biased by 127. `imask` has bit `i` set when slot `i` is an inner node.
+  - `[1] = (bits(childBase), bits(triBase), bits(meta0..3), bits(meta4..7))`. `childBase` is the first inner child, in nodes, relative to the BLAS's first node. `triBase` is the first triangle of the node's leaves, relative to `primBase`. Each `meta` is one byte.
+  - `[2] = (qlox0..3, qlox4..7, qhix0..3, qhix4..7)`, one byte for each child and bound. `[3]` holds the same for y and `[4]` for z.
+- **The meta byte.** 0 is an empty slot. An inner child has the top 3 bits `001` and the low 5 bits `24 + r`, where `r` is the rank of the child among the inner children. A leaf child has its triangle count in the top 3 bits, as `001`, `011` or `111` for 1, 2 or 3 triangles. Its low 5 bits are the offset of its first triangle from `triBase`, 0 to 23. This is the paper's format, which this record has not read. Step 6.2 reads it and amends the bytes where they differ.
+- **The box.** The scale of axis `k` is `2^(e_k - 127)`. The exponent `e_k` is the least integer with `255 * 2^(e_k - 127) >= extent_k`. The scale is exact in f32, and the kernel makes it with `bitcast<f32>`. The bounds of child `i` are `p + q * scale`. A child's `qlo` is the floor and its `qhi` is the ceiling of its true bound in units of the scale.
+- **The conservative rule.** The decode `p + q * scale` rounds once in f32. So the host decodes each bound with `Math.fround`, and it widens the quantized bound by one unit until the decoded box holds the child's box. A test holds the rule (step 6.1). The slab test keeps `SLAB_SLACK`.
+- **The collapse.** `collapse(bvh)` is a new function in `accel/wide.ts`. It takes a binary BVH from `buildBlas` and gives a wide one. It chooses the children of each node by a dynamic program over the binary tree, for the least cost with at most 8 children. The cost is `bvh.ts`'s: `TRAVERSAL_COST` and the count of primitives for a leaf. This is the paper's method, as the survey describes it, and step 6.2 reads it.
+- **The leaf.** A leaf of a wide node holds at most 3 triangles. The collapse splits a binary leaf of 4 triangles into two leaves of 2. The binary builder and `BVH_LEAF_SIZE` do not change, because the TLAS needs them. Decision 18 holds this choice.
+- **The order of triangles.** The collapse writes its own `order`. The triangles of the leaf children of one node are consecutive, in slot order. The packer writes `triangles` in that order, as it does now.
+- **The slots.** The host assigns the children to the 8 slots. Bit `k` of a child's slot is 1 when its centroid is above the node's centroid on axis `k`. Two children for one slot: the later one takes the free slot of least Hamming distance, ties by lower slot. A ray of octant `o` then visits the slots in the order of `s ^ o`. The build uses no random number, so it gives one tree for one input.
+- **The traversal.** The BLAS loop of `nearest` and of `occluded` follows the paper. It tests the 8 children of a node and makes a bit field of the hits. `firstLeadingBit` takes the nearest set bit. `countOneBits` of `imask` below the slot gives the child's rank. A stack entry is two words: the child base and the pending hit field. The BLAS stack holds 32 entries, which is 64 `u32`. The depth is at most 31. A wide level covers at least one binary level, and the collapse adds one for a leaf of 4. Step 6.3 writes the code. The TLAS loop does not change.
+- **The bases.** `nodeBase` and `tlasBase` count `vec4`, not nodes. The wide node `k` of a BLAS is at `nodeBase + k * WIDE_STRIDE`. The TLAS node `k` is at `tlasBase + k * NODE_STRIDE`. `nodeBounds` and `nodeWords` take a `vec4` offset. The offset of the TLAS may be odd, so the packer adds no padding.
+- **The ties.** `nearest` accepts a triangle when `t < hit.t`, or when `t == hit.t` and its pair (instance slot, triangle index) is less than the held pair. So `hitTriangle` returns a miss when `at > limit`. The shadow ray in `occluded` takes any hit and has no tie. The rule makes the hit independent of the visit order. Rule 3 of record 0005 holds, and Amendment K adds the tie rule. Decision 19 holds this choice.
+- **The sizes.** A wide node is 80 bytes, so `nodes` holds at most 1,677,721 wide nodes in 134,217,728 bytes. Inference: the wide tree has fewer nodes than the binary tree, and each node is 2.5 times larger. Step 6.4 measures the bytes of `nodes` for each triangle on `bunny` and `materials`, before and after.
+- **The tiles.** The tile rules depend on the pixel count and on `nsPerPath`. The new walk changes `nsPerPath` only. The floor of 4,096 pixels and the count of 2,160 tiles for a 4K frame at that floor do not change. A faster walk raises the nominal tile and lowers the count. A slower walk on one device could lengthen the first frame's dispatch. Step 6.4 records `info.dispatches`, `info.tilePixels` and `info.dispatchTime` before and after.
+
+### Why (part 6)
+
+Inference: the walk is a large share of the cost of a path. No profile in this record shows the share. A wide node tests 8 boxes with one read of 80 bytes. The quantized boxes make the node small, so more of the tree stays in cache. The paper's claim, from the survey: it is the best software traversal without ray tracing cores. It is about 2 times faster on incoherent secondary rays. That buys about 2 times the samples at equal time. This record has not read the paper's numbers. The gain on SwiftShader, a CPU, is not the gain on a GPU. Step 6.4 records the SwiftShader rows, and the owner's GPU row stays open until the owner measures it (decision 20).
+
+Alternatives. Keep the binary BVH and add a short stack (Vaidyanathan et al. 2019): the survey says to do it right after this part. A wide TLAS: the TLAS holds few nodes, so the gain is small. A second buffer for the wide nodes: no storage binding is free (record 0001, rule 1).
+
+### What it touches (part 6)
+
+- **Files.** `accel/wide.ts` (new). `layout.shade.ts` (`WIDE_STRIDE`, the decoders, the meaning of the bases). `intersect.shade.ts` (`nearest`, `occluded`, `enters`, `hitTriangle`). `scene-pack.ts` (the wide BLAS, `WIDTH.nodes`, `#concatenateGeometry`, `#placeInstances`). `internal.ts`. The header comments of the kernel files.
+- **Records.** Record 0001: the node layout, the bases, the limits, the stacks (Amendment J). Record 0005: the tie rule (Amendment K). Record 0002: the bench rows (Amendment L).
+- **Tests.** `layout.test.ts` (the stride and the 80 bytes). `bvh.test.ts` and a new `wide.test.ts`. `intersect.test.ts`.
+- **Gates.** The differential and determinism gates at their bounds. The render gate with no golden rewritten, except where a tie moves a pixel. `bun run bench` rows.
+- **The site.** The guide page `scene-graph.mdx` (line 51) says that a BVH is built once for each geometry. That stays true.
+- **Not touched.** The sampler, the materials and the TLAS builder.
+
+### Steps (part 6)
+
+1. **Step 6.1: the tie rule on the binary BVH.** Change `hitTriangle` and `nearest` as "The ties" says. Test on a scene of 64 coincident triangles in different leaves, with rays from both sides. The hit is the least pair whatever the visit order. Verifies Design 0009.19. Done when the test passes. List each golden that changes.
+2. **Step 6.2: `collapse`, the encoder and their tests.** Read Ylitie et al. (2017). Write `accel/wide.ts` and the layout constants. Write the paper's format into the comments where it differs. Tests in `wide.test.ts`:
+   - Every triangle is in exactly one leaf. A node has at most 8 children, and a leaf at most 3 triangles. The depth is at most 31.
+   - The decoded f32 box of every child holds the child's true box, for 5 random meshes of 1,000 triangles and for the gate scenes. Verifies Design 0009.18.
+   - A node is 80 bytes. `imask` has one bit for each inner child. The triangle ranges partition the node's triangles.
+     Done when the tests pass.
+3. **Step 6.3: the kernel.** Change the BLAS loop, the decoders, the bases and the packer. Tests through `compile()` on the oracle and through the language service:
+   - 100,000 pairs of a ray and a box: the wide test passes whenever the exact test passes. Verifies Design 0009.18.
+   - 10,000 random rays on 3 meshes: the wide walk finds the triangle of a brute-force loop with the tie rule. Verifies Design 0009.17.
+   - `determinism.test.ts` reports no new row. `bun run check:shaders` reports no diagnostic.
+     Done when the tests pass.
+4. **Step 6.4: the numbers.** Run `bun run gate:differential` and `bun run gate:determinism` before and after. Run `bun run gate:render` and list any golden that changes. Run `bun run bench --scene cornell,bunny,materials` before and after, three runs each. Record `BVH ms`, `frame ms`, `paths/s`, the bytes of `nodes` for each triangle and the three `info` numbers of "The tiles". Add the rows to `docs/benchmarks.md`. Done when the pull request shows the table.
+
+### Prove the instrument (part 6)
+
+1. **The containment test fails on a wrong rounding.** Plant the fault of rounding each bound to the nearest unit. The test of step 6.2 must fail with the node, the child and the axis in its message.
+2. **The tie test fails without the rule.** Remove the pair comparison, so that the first triangle found wins. The test of step 6.1 must fail for at least one ray of the scene.
+3. **The equality test sees a wrong child.** Plant the fault of adding 1 to `childBase` of every node. The brute-force test of step 6.3 must fail, and `bun run gate:differential` must fail its `mean` bound on `triangles`. The pull request records both.
+4. **The bench sees a traversal change.** Plant the fault of setting the octant to 0, so the order of the slots ignores the ray. The `paths/s` of `bunny` must differ from the unfaulted row by more than the spread of the three runs. If it does not, the bench cannot show the gain of this part.
