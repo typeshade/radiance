@@ -203,11 +203,12 @@ size, not the scene the owner has in mind.
 `trace.shade.ts`:
 
 - **Ray against box**: the slab test with precomputed `1 / d` per ray, in the space the box is
-  in. A division is a `ulp` row of the determinism report. Record 0005 admits it. The kernel
-  replaces a component of `d` whose absolute value is below 1e-20 with 1e-20, whatever its sign,
-  so no infinity enters the test (`TINY` in `prepare`). It multiplies the far distance by
-  1.0000004 (`SLAB_SLACK` in `enters`), to keep the rounding of the test from culling a hit on a
-  box's face.
+  in. A division is a `ulp` row of the determinism report. Record 0005 admits it. `prepare`
+  replaces a component of `d` whose absolute value is below 1e-20 with 1e-20, whatever its sign
+  (`TINY`). No infinity then enters the test. `prepare` runs for the world ray and, through
+  `rayIn`, for each instance-space ray, so the floor holds in both spaces. The kernel multiplies
+  the far distance by 1.0000004 (`SLAB_SLACK` in `enters`), to keep the rounding of the test from
+  culling a hit on a box's face.
 - **Ray against triangle**: the watertight test of Woop, Benthin and Wald (2013). Its shear
   constants are computed once per ray per space. It leaves no crack along a shared edge, which a
   shadow ray toward a light would otherwise pass through. Its one division is the final `1 / det`.
@@ -229,12 +230,14 @@ size, not the scene the owner has in mind.
   `Surface` for any point that its instance, triangle and weights name, met by a ray along `dir`.
   `surface` calls it for a hit. Next-event estimation calls it for the point it samples on a
   light (`direct` in `trace.shade.ts`), with the direction from the shaded point to that point.
-- **The normals**: the geometric normal is `cross(p1 - p0, p2 - p0)` in the geometry's space. The
-  kernel moves it to world space by the inverse transposed (`instanceNormalToWorld`) and then
-  normalises it. It points outward for a counter-clockwise triangle. A mirrored instance, whose
-  world matrix has a negative determinant, keeps its outside. The shading normal is the vertices'
-  normals interpolated, and transformed by the inverse transposed, which is rows `[3..5]`'s
-  columns. The front face is the side the geometric normal points to.
+- **The normals**: the outward normal is `cross(p1 - p0, p2 - p0)` in the geometry's space. For a
+  counter-clockwise triangle it points out of the surface. The kernel moves it to world space by
+  the inverse transposed (`instanceNormalToWorld`) and then normalises it. A mirrored instance,
+  whose world matrix has a negative determinant, keeps its outside. The shading normal is the
+  vertices' normals interpolated, and transformed by the inverse transposed, which is rows
+  `[3..5]`'s columns. The front face is the side the outward normal points to. `Surface.ng` of
+  record 0004 is the outward normal turned toward the ray: `surfaceAt` negates it when the ray
+  meets the back face.
 - **Emission**: a material emits from its front face. It emits from its back face too when its
   "double sided" flag is on (bit 9 of `[2].w` in the material record of record 0004). Both
   faces emit the same colour (`emission` in `materials.shade.ts`).
@@ -309,8 +312,9 @@ and M2a measures (record 0002, the benchmark).
 A geometry removed from the scene keeps its BLAS in the pack until `dispose()` or until the
 pack's `release(geometry)` is called. Record 0003 names `dispose()` as the public form.
 
-A mesh whose geometry has an empty index draws nothing. The pack drops that geometry's BLAS and
-writes the three geometry buffers again (`#update` in `scene-pack.ts`).
+A mesh whose geometry has an empty index draws nothing. When the pack held a BLAS for that
+geometry, it drops the BLAS and writes the three geometry buffers again (`#update` in
+`scene-pack.ts`).
 
 ### Tiles and the watchdog
 
@@ -333,8 +337,8 @@ tiles), `tilePixels` (the pixels of its largest tile) and `dispatchTime`. `dispa
 submits the dispatches of a frame together and reports no time for one (record 0006, item 5).
 
 **The first frame and the smallest tile.** The nominal tile is the pixel count that `tileFrame`
-computes from the budget, before it forms rows. The rules below are a proposal. Decision 9 holds
-the number 4,096, which the owner accepts or changes.
+computes from the budget, before it forms rows. Decision 9 sets the smallest nominal tile at 4,096
+pixels. The rules below follow it.
 
 1. The first frame, which the renderer traces before it measures a speed, takes one sample. Its
    nominal tile is 4,096 pixels.
@@ -351,9 +355,9 @@ frame (3840 by 2160, 8,294,400 pixels) then takes 2 tiles. The smallest tile is 
 pixels. A 4K frame at that size takes 129,600 dispatches.
 
 A nominal tile of 4,096 pixels covers a 4K frame in 2,025 tiles (8,294,400 over 4,096). Whole
-rows and edges change that count. At one sample, such a tile stays under the 50 ms budget at
-81,920 paths a second or more. It stays under the watchdog's 2 s at 2,048 paths a second or
-more. These numbers are arithmetic. No device gave them.
+rows and edges change that count. At one sample, such a tile takes 50 ms or less at 81,920 paths a
+second or more. It takes 2 s or less, the watchdog's limit, at 2,048 paths a second or more. These
+numbers are arithmetic. No device gave them.
 
 No measure of the host time of one dispatch exists. Inference: 2,025 dispatches take less host time
 than 129,600 dispatches.
@@ -416,8 +420,8 @@ scene. Nothing in the oracle knows the layout. It knows the pack.
   This record does not measure the difference.
 - **Why a smallest tile.** Each dispatch has a cost on the host that this record has not
   measured. A tile of 64 pixels makes 129,600 dispatches on a 4K frame. A first tile of 4,096
-  pixels stays under the watchdog at 2,048 paths a second or more: arithmetic, in "Tiles and the
-  watchdog".
+  pixels takes 2 s or less, the watchdog's limit, at 2,048 paths a second or more: arithmetic, in
+  "Tiles and the watchdog".
 
 Alternatives considered and not taken:
 
@@ -501,11 +505,11 @@ record is implemented at step 5.
 6. Tiling with a `watchdogBudget` of 50 ms by default.
 7. `QuadGeometry` is renamed `PlaneGeometry`, and `BoxGeometry` is added, for three.js parity
    (record 0003 decides names, this record depends on it).
-8. A light's chance is its share of the emitted power: its area in world space times the mean of
-   its emissive colour ("The GPU layout", the light table). Amendment 2 adds this decision.
-9. The first frame, traced before the renderer measures a speed, takes one sample, and no tile's
-   nominal size is under 4,096 pixels ("Tiles and the watchdog"). The number 4,096 is a proposal
-   of Amendment 2. The owner accepts or changes it.
+8. A light's chance is its share of the emitted power. The share is its area in world space times
+   the mean of its emissive colour ("The GPU layout", the light table). Amendment 2 adds this
+   decision.
+9. The first frame, traced before the renderer measures a speed, takes one sample. The smallest
+   nominal tile is 4,096 pixels ("Tiles and the watchdog"). Amendment 2 adds this decision.
 
 ## Record
 
@@ -518,12 +522,15 @@ that the packer makes the index into `instances`.
 
 **Amendment 2** (2026-10-06, UTC). Step 3 is on `main` as 9f2cf1a (typeshade/radiance#18). Its
 pull request listed deviations from this record. This record's own list, "Deviations of step 3"
-below, listed more. Each rule below was in the code and not in the record. This amendment states
-each one in the section it belongs to. Where the code has no rule, it proposes one.
+below, listed more. Most rules below were in the code and not in the record. This amendment
+states each one in the section it belongs to. Where the code has no rule, it states one as the
+record's new text.
 
 The merge of the pull request that carries this amendment is the owner's acceptance of every
 disposition. "Made part of the record" means that the section named states the rule as the code at
-`main` 6ad088d has it. The numbers: the Cornell box pack holds 8 instances, 1,924 triangles, 1,130
+`main` 6ad088d has it. "The record's new text" means that the section states a rule that the code
+at `main` 6ad088d does not follow. The merge accepts the rule, and a later pull request makes the
+code follow it. The numbers: the Cornell box pack holds 8 instances, 1,924 triangles, 1,130
 vertices, 1,093 nodes (5 of them the TLAS) and 2 lights. A 4K frame takes 2 tiles in its first frame
 and 129,600 tiles at the smallest tile.
 
@@ -535,7 +542,7 @@ and 129,600 tiles at the smallest tile.
 3. **A light's chance.** Made part of the record, with decision 8 for the owner. "The GPU layout"
    states the light table: a chance is a share of the emitted power, the rows are in slot order
    then triangle order, and no triangle of area 0 is a light (`#lightTable` in `scene-pack.ts`).
-4. **The geometric normal in world space.** Made part of the record. "Traversal" states that the
+4. **The outward normal in world space.** Made part of the record. "Traversal" states that the
    kernel moves the cross product to world space by the inverse transposed (`surfaceAt` in
    `intersect.shade.ts`).
 5. **Double-sided emission.** Made part of the record. "Traversal" names bit 9 of the type and
@@ -546,13 +553,14 @@ and 129,600 tiles at the smallest tile.
 7. **The slab test's edge cases.** Made part of the record. "Traversal" states the floor of 1e-20
    on a component of the direction and the factor 1.0000004 on the far distance (`TINY` and
    `SLAB_SLACK` in `intersect.shade.ts`).
-8. **The first frame and the count of tiles.** Proposed. The owner accepts or changes the number
-   4,096 with decision 9. "Tiles and the watchdog" states rules 1 to 4: the first frame takes one
-   sample in nominal tiles of 4,096 pixels, and no nominal tile is smaller. The code does not
-   follow them yet. `tileFrame` in `tiles.ts` and `tiles.test.ts` must follow them in a later pull
-   request with `Design: 0001`. The old text said that the first frame takes one tile of the whole
-   frame. That is true only for a frame of 4,194,240 pixels or fewer. Open: whether a frame takes
-   fewer samples when the smallest tile passes the budget.
+8. **The first frame and the count of tiles.** The record's new text, accepted by the merge.
+   "Tiles and the watchdog" states rules 1 to 4, and decision 9 holds the number: the first frame
+   takes one sample in nominal tiles of 4,096 pixels, and no nominal tile is smaller. The code does
+   not follow them yet. `tileFrame` in `tiles.ts` and `tiles.test.ts` must follow them in a later
+   pull request with `Design: 0001`. The old text said that the first frame takes one tile of the
+   whole frame. That is true only for a frame of 4,194,240 pixels or fewer. Open: when a tile of
+   4,096 pixels passes the budget, does the renderer take fewer samples in that frame, down to 1?
+   No rule answers it yet.
 9. **The time of a dispatch.** Made part of the record. "Tiles and the watchdog" states what
    `info` holds, and that `dispatchTime` is `frameTime` over `dispatches` (`PathTracer.ts`). A
    measured time for each dispatch waits on record 0006, item 5.
@@ -591,7 +599,7 @@ that was open.
   world-space area times the mean of its emitted colour. The table is in slot order, then in
   triangle order, and holds no triangle of area 0. Made part of the record by Amendment 2,
   item 3.
-- **The geometric normal in world space.** The record gives `normalize(cross(e1, e2))` and does
+- **The outward normal in world space.** The record gives `normalize(cross(e1, e2))` and does
   not say in which space. The kernel moves the cross product to world space by the inverse
   transposed, as it moves the shading normal. A mirrored instance then keeps its outside. Made
   part of the record by Amendment 2, item 4.
@@ -608,22 +616,26 @@ that was open.
   part of the record by Amendment 2, item 7.
 - **The first frame.** The first frame traces one sample over one tile of the whole frame, as
   "Tiles and the watchdog" says. No speed is known before it, so the budget does not size that
-  tile. Inference: on a slow device, that first dispatch can pass the watchdog. Proposed by
-  Amendment 2, item 8, for the owner to accept or change.
+  tile. Inference: on a slow device, that first dispatch can pass the watchdog. Amendment 2, item
+  8, states a new rule, and the merge accepts it. The code does not follow it yet.
 - **The time of a dispatch.** The record says that the renderer records the time of every
   dispatch in `info`. The runtime submits the dispatches of a frame together and gives no time
   for one. `info.dispatchTime` is the frame's time over its dispatches, a mean. Made part of the
   record by Amendment 2, item 9. A time for each dispatch needs a timer in the runtime.
 - **The count of tiles.** No limit holds the count of tiles. Tiles of 64 pixels make 129,600
   tiles on a 4K frame, each one dispatch. Inference: a slow device at many samples a frame issues
-  that many dispatches a frame. Proposed by Amendment 2, item 8, for the owner to accept or change.
+  that many dispatches a frame. Amendment 2, item 8, states a new rule, and the merge accepts it.
+  The code does not follow it yet.
 - **The file of the intersection tests.** "What it touches" names `kernels.test.ts` for the
   intersection tests on the oracle. They are in `src/kernels/intersect.test.ts`, next to the
   module they test. Made part of the record by Amendment 2, item 10.
 
-**Configuration and validation record.** Steps 1 to 3 are delivered, at the compiler pin
+**Configuration and validation record.** Steps 1 and 2 are delivered, at the compiler pin
 e923a34. Step 1 is d9b4d2f (typeshade/radiance#9) and step 2 is a1ea798 (typeshade/radiance#10),
-both on `main`. Step 3 is 9f2cf1a (typeshade/radiance#18), on `main`.
+both on `main`. Step 3 is delivered as 9f2cf1a (typeshade/radiance#18), on `main`. The pin of
+9f2cf1a is fd39ba3, because typeshade/radiance#22 (632c661) moved the pin before #18 merged. The
+branch of step 3 was verified at 23cbc51, on `main` bc99533, with the pin e923a34, as the
+Verification of #18 says. The gate numbers below come from that run on the branch.
 At step 3, the Cornell box gate of record 0002 runs on spheres of 960 triangles. On SwiftShader,
 at 16 by 16 pixels and 1,024 samples, the mean relative difference to the oracle is 3.27e-7.
 The largest is 2.86e-6. `ORACLE.mean` is 3.3e-6, ten times the mean, rounded up, and `abs` and
