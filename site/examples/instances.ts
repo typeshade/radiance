@@ -98,9 +98,8 @@ export default async function instances(canvas: HTMLCanvasElement): Promise<Exam
   const renderer = await new PathTracer({ canvas, seed: 1, targetFrameTime: 30 }).init();
   const controls = new OrbitControls(camera, canvas);
   controls.target.set(0, 0.3, 0);
-  controls.minDistance = 2;
-  controls.maxDistance = 12;
-  controls.maxPolarAngle = Math.PI / 2 - 0.05;
+  controls.minDistance = 0.05;
+  controls.maxDistance = 50;
   controls.update();
   controls.saveState();
 
