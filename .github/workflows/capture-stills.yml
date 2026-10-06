@@ -46,6 +46,8 @@ jobs:
       - run: node scripts/capture-stills.mjs ${{ inputs.examples }}
         env:
           RADIANCE_GPU: '1'
+          # Headless Chromium does not take the GPU: the window of the runner's desktop session does.
+          RADIANCE_HEADED: '1'
       - name: commit the stills that changed
         shell: bash
         run: |
