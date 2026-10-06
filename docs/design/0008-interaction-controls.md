@@ -8,7 +8,9 @@ touches:
   - packages/radiance/src/accel
   - packages/radiance/src/core
   - packages/radiance/src/math
+  - packages/radiance/src/materials
   - packages/radiance/src/renderers/scene-pack.ts
+  - packages/radiance/src/renderers/scene-pack.test.ts
   - packages/radiance/__api__
   - packages/addons/src/index.ts
   - packages/addons/src/controls
@@ -19,6 +21,7 @@ touches:
   - site/examples
   - site/src
   - scripts/harness.mjs
+  - scripts/material-panel.test.ts
   - docs/design/0003-public-api.md
   - docs/plan.md
   - README.md
@@ -163,7 +166,7 @@ The engine and the addons import nothing from the DOM beyond events, `HTMLElemen
 
 **The drag mathematics.** All numbers are `number`, which is f64. Units are world units for a position and radians for an angle. A `fov` is in degrees. Let `E` be the camera's eye. Let `F`, `R` and `U` be its unit forward, right and up axes, as `cameraFrame` makes them. Let `lens` be the `lens` that `cameraFrame` makes. Let `tanY = lens.y` and `A = lens.x / lens.y`.
 
-`tanY` is `tan(fov * PI / 360)`, with `fov` in degrees as `PerspectiveCamera` holds it. `A` is the camera's `aspect`, and it does not come from the canvas size. For a camera that is not a `PerspectiveCamera`, `cameraFrame` uses a `fov` of 50 and an `aspect` of 1.
+`tanY` is `tan(fov * PI / 360)`, with `fov` in degrees as `PerspectiveCamera` holds it. `A` is the camera's `aspect`. The map reads `A` from the camera and never computes W / H itself. An example sets `aspect` from the canvas in its `resize`, as `cornell-box.ts` does. For a camera that is not a `PerspectiveCamera`, `cameraFrame` uses a `fov` of 50 and an `aspect` of 1.
 
 ```ts
 // A pixel (px, py) in a W by H canvas, in CSS pixels, to a ray.
@@ -276,6 +279,96 @@ class InteractionControls extends EventDispatcher<InteractionControlsEvents> {
 
 **What does not change.** The render gate and the determinism check call an example's function on a canvas. They never create the stage's controls. The capture loads the page, so the stage creates its controls there. The capture sends no pointer event and takes a screenshot of the canvas element. Playwright captures the page area of that element, overlay included. The overlay holds no child until an object is selected, so the picture shows the canvas alone. So no golden and no still changes. The kernels, the seven buffers and the pack's rules stay as record 0001 has them. `OrbitControls` keeps its code and its surface line.
 
+### The material inspector
+
+On 2026-10-06 the owner made a second request. In English it reads: "I would like to change materials directly at run time and watch how the render changes." This section answers it. The stage gains a panel. The panel edits the material of the selected mesh, and the path tracer shows the result.
+
+#### Before the inspector
+
+- `Mesh.material` is a plain field. `Material` (`packages/radiance/src/materials/Material.ts`) keeps `color`, `emissive` and `doubleSided` behind getters and setters. Nothing on the stage calls them.
+- Each setter adds 1 to `version`. `version` is a public number field that starts at 0. A setter adds 1 even when the new value equals the old one. The getter of `color` returns the live `Color`, so `material.color.r = 0.1` adds nothing.
+- The pack does not rely on `version` alone. `ScenePack.update` packs the record of each visible mesh's material on every call (`scene-pack.ts`, `#update`, part 2). It compares the 32 words of the record with the last ones (`sameBits`), and it compares `version`. So an edit in place reaches the next frame too.
+- `DiffuseMaterial` holds `color`, `emissive` and `doubleSided`. Its constructor takes `emissiveIntensity` and multiplies it into `emissive`. The class stores no intensity.
+- `MirrorMaterial` holds `color`, and its constructor takes no emission. `EmissiveMaterial` is a black diffuse. Its constructor takes `color` and `intensity`, and the class stores their product in `emissive`.
+- `PhysicalMaterial` exists at the pin. It holds `color`, `emissive`, `emissiveIntensity`, `doubleSided`, `metalness`, `roughness`, `ior`, `transmission` and `specularIntensity`.
+- The path tracer stores the last five of those and renders the material as a diffuse of its colour (record 0004, step 1). The principled BSDF is step 2 of record 0004, at M3. Textures are step 3.
+- `Color` is linear RGB, and its components are not clamped. An emission may exceed 1: the Cornell box lamp is (17, 12, 4). `Color.setHex` decodes sRGB. No `Color` function encodes to a hex number.
+- An edit of `color`, `emissive` or `doubleSided` writes the `materials` buffer. It also writes `lights` when the words of the light table change. The tests "writes the materials alone when a colour changes in place" and "writes the materials and the lights when an emission changes" hold this.
+- The TLAS builds only when the instance array or a geometry changes (`#update`, part 3). So a field edit builds no TLAS. `PathTracer.render` restarts the accumulation when the pack wrote any buffer.
+- A mesh that takes a new material instance changes the instance array, because each instance holds the index of its material. The pack then builds the TLAS again and writes `instances`, `lights`, `materials` and `nodes`. The test "writes the materials and the instances when a mesh takes another material" holds this.
+- The pack never frees a table index. A material that no mesh holds stays in `materials` until the pack forgets its state. Each replaced instance leaves 128 bytes. This is a reading of `scene-pack.ts`, and no run measured it.
+- `createCornellBox` gives one `DiffuseMaterial`, `white`, to `floor`, `ceiling`, `back` and `ball`. So four meshes share it. The red wall, the green wall, the lamp and the mirror ball have one mesh each.
+
+#### After the inspector
+
+The stage gains a panel, `[data-material-panel]`. The panel is DOM that the page owns, as the page owns the overlay of the gizmo. The engine and the addons gain nothing: no class, no event and no export. The panel is not a mode. So the rule "No mode changes `scale`, the camera or a material" stays true. Only a viewer's input in the panel changes a material.
+
+**When the panel shows.**
+
+- The panel shows when the mode is `select`, `selected` is a `Mesh` and the example returned `scene` and `camera`. In every other case the panel is not in the DOM.
+- A `Group` or an `Object3D` as the selection shows no panel. A later record can list the meshes of a `Group`.
+- `determinism.ts` returns no `scene`, so it has no modes and no panel. The front page's compact stage has none. The render gate and the capture create no panel, because the capture sends no pointer event and the selection stays empty.
+- The panel sits over the top right of the canvas. It takes no row of the stage grid, so the canvas keeps its size. It is 224 CSS pixels wide.
+- On a stage under 560 CSS pixels wide the panel starts collapsed to one header line. The header button (`aria-expanded`) opens it.
+
+**What the panel holds.** A header names the mesh (its `name`) and the type of its material. A line "Shared by N meshes" shows when N is above 1. A `<select>` holds the type. One control for each field of the class follows, from this table.
+
+| Class              | `color` | `emissive` | `emissiveIntensity` | `doubleSided` |
+| ------------------ | ------- | ---------- | ------------------- | ------------- |
+| `DiffuseMaterial`  | yes     | yes        | yes                 | yes           |
+| `MirrorMaterial`   | yes     | no         | no                  | no            |
+| `EmissiveMaterial` | no      | yes        | yes                 | yes           |
+| `PhysicalMaterial` | yes     | yes        | yes                 | yes           |
+
+- `color` and `emissive` are `<input type="color">`. `emissiveIntensity` is `<input type="number">` with `min` 0, `max` 1000 and `step` 0.1. `doubleSided` is `<input type="checkbox">`.
+- `MirrorMaterial` has no emission, so it has no `doubleSided`. The flag changes only the emission of a back face (`materials.shade.ts`). `EmissiveMaterial` has no `color`, because its `color` is black by definition.
+- `PhysicalMaterial`'s `metalness`, `roughness`, `ior`, `transmission` and `specularIntensity` get number inputs when step 2 of record 0004 lands. Before that, an edit would change no pixel. Textures get no control until step 3.
+- A colour input holds sRGB `#rrggbb`. A write decodes it with `Color.setHex`. A read encodes the linear value with the sRGB transfer function and rounds to 8 bits. So a `#rrggbb` value round-trips, and a channel above 1 shows as 255.
+- The panel splits the radiance `r` of a surface into an intensity and a hue. Here `r` is `emissive`, times `emissiveIntensity` for a `PhysicalMaterial`. The intensity is the largest channel of `r`. The hue is `r` over the intensity, by channel.
+- With no emission, the hue input shows `#ffffff`. A hue write sets `emissive` to the new hue, scaled to a largest channel of 1, times the intensity. With an intensity of 0 it uses 1. A black hue sets `emissive` to (0, 0, 0).
+- An intensity write keeps the hue and sets the largest channel to the new intensity. For a `PhysicalMaterial`, both writes also set `emissiveIntensity` to 1, because the pack stores the product.
+- Each input has `data-field`: `type`, `color`, `emissive`, `emissiveIntensity` or `doubleSided`. It also has `data-value`, the material's own value: `#rrggbb`, `Number#toString`, `true` or `false`, or a class name.
+- The root has `data-material-type`, `data-shared` and `data-version`. `data-material-type` is one of the four class names. The panel finds it with `instanceof`, because a minified build can rename a class. `data-version` is `material.version`.
+
+**The path of a field edit.**
+
+1. The viewer changes one input, and the browser sends an `input` event.
+2. The panel clamps a number to the `min` and `max` of its input. A value that is not finite ends the path.
+3. The panel assigns a new value through the setter of the material. It assigns a new `Color`, and it never changes a `Color` in place. The setter adds 1 to `version`.
+4. At the next frame, `ScenePack.update` sees the new words. It writes `materials`, and `lights` when the light table's words change. It builds no TLAS and writes no `nodes`.
+5. `PathTracer.render` restarts the accumulation, because the pack wrote a buffer. The samples return to 0.
+6. The panel reads every field again from the material. It writes `data-value` and `data-version`, and it writes each input that has no focus.
+
+The panel reads from the material and never from the input. So a value that the material changed, or that an example changed in a frame, shows at once. The panel reads the material again at every animation frame while it shows.
+
+**The path of a type change.**
+
+- The `<select>` lists `DiffuseMaterial`, `MirrorMaterial` and `EmissiveMaterial`. `PhysicalMaterial` is not an option until step 2 of record 0004 lands, because it would render as a diffuse. A mesh that holds one shows it as the current value.
+- The panel builds one instance of the chosen class. It takes `name` from the old instance. For each field the new class lists, it takes `color`, the radiance of `emissive` and `doubleSided` from the old instance.
+- The new instance omits a field that its class lacks, and a change back does not restore it. A parameter that the old class lacks takes the default of the constructor.
+- The panel assigns the new instance to `mesh.material` of every mesh that held the old one. So the meshes keep sharing one instance. The new instance has `version` 0.
+- `ScenePack.update` finds an instance it does not know. It gives the instance the next table index and writes `materials`. The instance array changes, so it builds the TLAS again from the same boxes. It writes `nodes`, `instances` and `lights` too. It builds no BLAS.
+- This is the code path of a transform change in "Before". Inference: the host cost has the same size. That is 0.50 ms for the Cornell box and 1.03 ms for the bunny. Each writes `nodes` whole, with 34,976 and 1,296,896 bytes, plus one device write. Step 8 measures both.
+
+**Shared materials.**
+
+- Proposed: an edit applies to the material instance, so it applies to every mesh that holds the instance. The panel counts those meshes in `ExampleRun.scene`, visible or not. It shows N and sets `data-shared` to N.
+- In the Cornell box, an edit of the white ball's colour also changes `floor`, `ceiling` and `back`. The scene graph says so, because the four meshes are one material. The panel says so too, so the change does not surprise.
+- The alternative is to clone on edit. The first edit of a shared material gives the selected mesh its own copy, and the other meshes keep the old one. It matches what the viewer clicked. It costs the path of a type change once, and it ends the sharing for that mesh. Decision 25 asks the owner.
+
+**Edits and the other parts.**
+
+- The panel does not set `run.editing`. Each edit restarts the accumulation at the full frame size. A slow device may call for a preview during an edit, so step 8 measures the restart (decision 26).
+- While the toolbar's Pause is on, an edit restarts the accumulation and the paused tracer draws nothing. This is the open item on Pause in "Record".
+- A key press in the panel's inputs does not reach the canvas, because the handlers of the modes and of `OrbitControls` listen on the canvas. A press of `w` in a number input does not change the mode.
+- A wheel turn over the panel does not dolly the camera. A click on the panel does not clear the selection.
+
+Alternatives considered for the inspector:
+
+- **A class in the addons.** The addons import events, `HTMLElement` and `SVGSVGElement`, and no widgets. A panel needs labels, styles and a theme. Those belong to the page. Rejected.
+- **Ant Design controls.** Ant Design has no native colour input. The harness fills native inputs. Rejected for the fields. The page's other controls stay Ant Design.
+- **A panel in the grid row of `ExampleRun.panel`.** The row would resize the canvas when it shows, and a resize restarts the accumulation. Rejected for the overlay.
+
 ## Why
 
 - **Why a host cast.** The path tracer traces only inside `render`. A pick through the GPU needs a kernel for primary ray ids, a dispatch and a read-back, on each tier. A host cast needs none of them. It runs in `bun test` with no device, before `init()` and after a device loss. It is the same on the WebGPU and the WebGL2 tier (record 0007).
@@ -303,13 +396,18 @@ Alternatives considered:
 - **Record 0003.** This record amends it. Its list "The public surface at 0.1.0" gains eight names: `Raycaster`, `Intersection` and the six names of the addons rows of the table above. The list has `Group` already, and step 1 only exports it. Steps 1, 3 and 4 each add their names to that list in the pull request that re-bakes the surface (`bun run bake:api-surface`). If 0.1.0 is tagged before a step merges, that step's names belong to the list of the release that carries them. The Amendment entry says which. `scripts/gates/api.mjs` fails when a bake and the tree differ. Record 0003's Record section gains an Amendment entry that cites this record.
 - **Site.** `site/src/islands/ExampleStage.tsx`, `site/examples/types.ts`, the nine examples that have controls, `site/src/i18n/en.ts`, `site/src/styles/custom.css` (the gizmo's colours and cursors), `site/src/content/docs/guide/object-controls.mdx` (new).
 - **Scripts.** `scripts/harness.mjs` (the interaction check of section 6).
+- **Material inspector.** `site/src/islands/MaterialPanel.tsx` and `site/src/lib/material-fields.ts` (new). The second file holds pure functions: the fields of a class, the reads and writes, the type change, the sharing count and the sRGB encode. `site/src/islands/ExampleStage.tsx` mounts the panel. `site/src/i18n/en.ts`, `site/src/styles/custom.css` and the guide page `object-controls.mdx` gain the labels, the styles and one section. `packages/radiance` gains tests and no code. No export appears, so `bun run bake:api-surface` changes nothing.
 - **Documents.** `docs/plan.md` changes three rows. They are the L3 row and the L2 row of section 3 (the addons and the engine's classes), and the picking row of section 7. `README.md`: its row of `packages/addons` (it names `OrbitControls`, `GLTFLoader` and the Cornell box scene) gains `TransformControls` and `InteractionControls`. Its row of `packages/radiance` gains the ray cast.
 - **Tests owed.**
   - `src/accel/cast.test.ts` and `src/core/Raycaster.test.ts`. A ray along -z from the camera (0, 1, 3.4) meets `back` at 4.4. A ray from the camera at the white ball's centre (0.45, 0.4, 0.3) meets the ball. The distance lies from 2.7894 to 2.7933. The ideal sphere gives 2.78944. A face of 32 by 16 segments lies at most 0.0039 below it. The mirror ball's centre (-0.45, 0.4, -0.35) gives 3.4243 to 3.4282 the same way. A mirrored instance with a non-uniform scale returns a normal that faces the ray. 1,000 random rays give the same nearest mesh and triangle as the oracle's `nearest`, and a distance within 1e-5. A ray from the camera (0, 1, 3.4) through the centre of the white ball returns two entries, in this order. The first is `ball`, at a distance from 2.7894 to 2.7933. The second is `back`, at 4.52694 (the plane z = -1) within 1e-5. The test asserts the length of the list as 2. The parity test compares the slots. The cast lists the meshes in the pack's order, with the pack's skip rules. It builds its TLAS from the same f64 boxes by the same code. So `tlas.order` and the slots agree. The test asserts that the two orders are equal before it compares. A hidden mesh, a mesh under a hidden ancestor and an instance with no inverse meet nothing. A mesh with an emptied geometry meets nothing and throws nothing. `near` and `far` cut the list. With `far` at 3, that ray lists `ball` alone. With `near` at 3, it lists `back` alone. A `direction` of length 3 gives the same `distance` as the unit one. So does a write of length 3 to `ray.direction` after `set`. `recursive` set to `false` skips the descendants.
   - `packages/addons/src/controls/picking.test.ts`: a glTF built by hand with one mesh of two primitives. The node also has a child node with one mesh, and another child node with no mesh and a child mesh. A ray at the second primitive returns its `Mesh`, and the selection rule gives the `Group`. A ray at the child's mesh returns that mesh, and the rule gives the mesh. The same holds for the mesh under the node with no mesh.
-  - `packages/addons/src/controls/transform-math.test.ts`: the pixel to ray and world to pixel maps invert each other within 1e-9 pixel. Another test fixes their scale. The Cornell box camera is at (0, 1, 3.4) with `fov` 40 and `aspect` 1, and the canvas is 512 by 512. The centre of the white ball (0.45, 0.4, 0.3) projects to the pixel (358.0998, 392.1331) within 0.001. The pixel to ray map at that pixel gives the unit vector from the eye to the centre within 1e-6. The test also forms the kernel's primary ray from `cameraFrame`'s `lens` by the formula of `trace.shade.ts` (lines 212 to 218). It compares that ray with the map within 1e-12. An axis drag returns the exact offset for a pointer that moves along the axis line, and 0 for a pointer that does not move. A disc drag keeps the depth. A ring drag in each regime returns the angle that a pointer on the ring has turned, within 1e-9 in regime A. A pointer ray may be parallel to a ring's plane, or it may meet the plane behind the eye. In regime A it then starts no drag, and a move keeps the last angle. A ring at the regime boundary, with `|dot(a, v)|` near 0.25, gives angles of one sign in both regimes for the same pointer turn. A pointer ray parallel to the axis starts no drag, even where the axis is 25 degrees off `F`. `Euler` from a matrix round-trips 1,000 random rotations within 1e-12, and the gimbal lock case. The local transform of an object under a mirrored parent puts its world position where the drag asked. A parent that shears refuses a rotation.
+  - `packages/addons/src/controls/transform-math.test.ts`: the pixel to ray and world to pixel maps invert each other within 1e-9 pixel. Another test fixes their scale. The Cornell box camera is at (0, 1, 3.4) and aimed at (0, 1, 0). Its `fov` is 40 and its `aspect` is 1. The canvas is 512 by 512. The centre of the white ball (0.45, 0.4, 0.3) projects to the pixel (358.0998, 392.1331) within 0.001. The pixel to ray map at that pixel gives the unit vector from the eye to the centre within 1e-6. The test also forms the kernel's primary ray from `cameraFrame`'s `lens` by the formula of `trace.shade.ts` (lines 212 to 218). It compares that ray with the map within 1e-12. An axis drag returns the exact offset for a pointer that moves along the axis line, and 0 for a pointer that does not move. A disc drag keeps the depth. A ring drag in each regime returns the angle that a pointer on the ring has turned, within 1e-9 in regime A. A pointer ray may be parallel to a ring's plane, or it may meet the plane behind the eye. In regime A it then starts no drag, and a move keeps the last angle. A ring at the regime boundary, with `|dot(a, v)|` near 0.25, gives angles of one sign in both regimes for the same pointer turn. A pointer ray parallel to the axis starts no drag, even where the axis is 25 degrees off `F`. `Euler` from a matrix round-trips 1,000 random rotations within 1e-12, and the gimbal lock case. The local transform of an object under a mirrored parent puts its world position where the drag asked. A parent that shears refuses a rotation.
   - `scripts/harness.mjs`: the interaction check of step 6.
   - The repository has no DOM library (`package.json`). So the harness check holds the pointer and key handlers, and `bun test` does not. `bun test` holds the pure functions that the handlers call.
+  - `packages/radiance/src/materials/Material.test.ts` (new). Each setter of `Material` and of `PhysicalMaterial` adds 1 to `version`. A setter adds 1 for an equal value. A write to `color.r` adds 0.
+  - `packages/radiance/src/renderers/scene-pack.test.ts`. After a setter edit of `color`, `emissive` or `doubleSided`, `update` writes `materials` and writes none of `nodes`, `instances`, `triangles` and `vertices`. It writes `lights` only when the words of the light table change. `pack.arrays.nodes` is the same array object before and after, so no TLAS built. After `mesh.material = new MirrorMaterial()`, `update` writes `instances`, `lights`, `materials` and `nodes`, and `pack.counts.materials` is one more.
+  - `scripts/material-panel.test.ts` (new), on the pure functions of `site/src/lib/material-fields.ts`. The fields of each class match the table of "The material inspector". A `#rrggbb` value round-trips for each of the 256 levels of a channel. The intensity and hue split, and the two writes, give the radiance that the rules state for `DiffuseMaterial`, `EmissiveMaterial` and `PhysicalMaterial`. A type change carries the fields that the rules name. The sharing count of the Cornell box is 4 for `white` and 1 for `red`, and it counts a hidden mesh.
+  - `scripts/harness.mjs`: the material check of step 8.
 - **Gates.** `bun run gate:api`, `bun run gate:site`, `bun run gate:render` (no golden changes), `bun run check:boundary`, `bun run check:ste`, `bun run check:prose` and `bun run harness`.
 
 ## Implementation, in steps
@@ -326,19 +424,46 @@ Each step is one pull request with `Design: 0008` in its commit message. Each te
    2. Press `Shift+q`. Read `data-mode` as `select`.
    3. Press `Shift+w`. Read `data-mode` as `translate`.
    4. Press `Home`. `OrbitControls` resets the view, which the earlier steps of the site check turned.
-   5. Compute the pixel of the white ball's centre. Use the camera (0, 1, 3.4) with `fov` 40, the canvas's client size and the world to pixel map of "The drag mathematics".
-   6. Click that pixel. Read `data-selection` as `object` and `data-selected` as `ball`. Read `data-position`.
-   7. Drag the `translate-x` handle by 50 CSS pixels along its screen direction. Read the status `Preview` during the drag.
-   8. Release. Read `data-position`. Read that `x` rose. Read that `y` and `z` moved by 1e-6 or less. Read that the samples fell below their earlier count.
-   9. Drag the `translate-x` handle again by 50 CSS pixels. Press `Escape` before the release. Read that `data-position` equals the string of action 8.
-   10. Press `q`, then press `o`. Read `data-mode` as `orbit`.
-   11. Compute the pixel of the mirror ball's centre (-0.45, 0.4, -0.35) in the same way. Click it. Read that `data-selected` is still `ball`.
+   5. Take the camera at (0, 1, 3.4), aimed at the look point (0, 1, 0), with `fov` 40.
+   6. Compute the pixel of the white ball's centre with the map of "The drag mathematics" and the canvas's client size.
+   7. Click that pixel. Read `data-selection` as `object` and `data-selected` as `ball`. Read `data-position`.
+   8. Drag the `translate-x` handle by 50 CSS pixels along its screen direction. Read the status `Preview` during the drag.
+   9. Release. Read `data-position`. Read that `x` rose. Read that `y` and `z` moved by 1e-6 or less. Read that the samples fell below their earlier count.
+   10. Drag the `translate-x` handle again by 50 CSS pixels. Press `Escape` before the release. Read that `data-position` equals the string of action 9.
+   11. Press `q`, then press `o`. Read `data-mode` as `orbit`.
+   12. Compute the pixel of the mirror ball's centre (-0.45, 0.4, -0.35) in the same way. Click it. Read that `data-selected` is still `ball`.
 
    The ball's parent is the scene, and the scene has no transform. So the local `position` is the world position in this check.
 
    Record the cost of the restart on SwiftShader, labelled as such. SwiftShader is not a hardware GPU, and the record holds no hardware number. Done when `bun run harness` passes in CI.
 
 7. **Documents and close.** Change `docs/plan.md` as "What it touches" says. This pull request waits for the owner's "merge" in the conversation. A change to the plan waits for it even inside an accepted record (`CLAUDE.md`, Merging). Change the row of section 7 to read "picking by a host ray cast (`Raycaster`, record 0008)". The old text was "picking (`examples/id-pick`'s way)". The rest of the row stays. Its milestone cell stays `M1`. The `L3` row of the addons gains `TransformControls` and `InteractionControls`. The `L2` row of the engine gains `Raycaster`. Change `README.md` as "What it touches" says. Set `status: implemented`. Record the commits, the pin, each gate's result and the numbers of steps 1, 5 and 6.
+
+8. **The material inspector.** Add `MaterialPanel` and `site/src/lib/material-fields.ts`. Mount the panel in the stage. Add the guide section and the tests of "Tests owed". Add the material check to the site step of `scripts/harness.mjs`. It follows the check of step 6 and runs these actions.
+
+   Step 8 stands apart from step 5, which already carries the stage, the nine examples and the guide page. It needs steps 4 and 5 and follows step 6. Step 7 sets `status: implemented` only after step 8 merges. Step 7 then records the numbers of step 8 too.
+
+   The check of step 6 ends in mode `orbit` with `ball` selected. Action 1 relies on both.
+
+   1. Press `q`. Read `data-mode` as `select`. Read `data-selected` as `ball`.
+   2. Read `data-material-type` as `DiffuseMaterial`. Read `data-shared` as 4.
+   3. Wait for 4 samples. Take a screenshot of the canvas.
+   4. Fill the `color` input with `#ff0000`.
+   5. Wait for `data-samples` to fall below 4. This is the restart.
+   6. Read `data-value` of the `color` field as `#ff0000`. Read that `data-version` rose by 1.
+   7. Wait for 2 samples. Read that the canvas differs from the screenshot of action 3.
+   8. Fill the `emissive` input with `#00ff00`.
+   9. Read `data-value` of `emissive` as `#00ff00`. Read `data-value` of `emissiveIntensity` as 1.
+   10. Click the centre of the canvas. The ray meets `back`. Read `data-selected` as `back` and `data-shared` as 4.
+   11. Read `data-value` of `color` as `#ff0000`. The edit of the ball reached the wall that shares its material.
+   12. Click the pixel of the mirror ball's centre. Read `data-material-type` as `MirrorMaterial`. Read `data-shared` as 1.
+   13. Read `data-value` of `color` as the string `c`.
+   14. Select `DiffuseMaterial` in the `type` field.
+   15. Read `data-material-type` as `DiffuseMaterial`. Read `data-value` of `color` as `c`.
+
+   If the owner chooses to clone on edit (decision 25), three reads change. After action 4, `data-shared` of `ball` reads 1. Action 10 reads `data-shared` as 3. Action 11 reads `data-value` of `color` as the colour of `white` before the edit.
+
+   Record the cost of the restart after a field edit and after a type change on SwiftShader, labelled as such. Record the host time and the written bytes of both, from the pack with no device. Record the panel's width and height at 1440 and at 390 CSS pixels, open and collapsed. Done when `bun run check` and `bun run harness` pass in CI, `bun run gate:site` and `bun run gate:render` pass, no golden changed and `bun run gate:api` shows no new export.
 
 ## Decisions for the owner
 
@@ -362,12 +487,18 @@ Each step is one pull request with `Design: 0008` in its commit message. Each te
 18. The math lives in the addons as private functions of `transform-math.ts`. The engine gains no `Quaternion`, no `Matrix4.invert` and no `Euler` reader now. Proposed: yes.
 19. Every example that returns `scene` and `camera` gets the modes. `determinism` opts out. The front page's compact stage gets none. `scene-graph` stays in, and its motion pauses during a drag. Proposed: yes.
 20. The record serves no milestone, so `milestones` is empty. It is a change to the engine's core (the ray cast), the addons and the site. `docs/plan.md` section 4 has no item for it, so the owner sets its place in the order. Proposed: after the Sponza example, and before the image-quality changes that the owner approved on 2026-10-06 (the output transform, the sampler and the sphere tessellation).
+21. The material inspector is a panel of the page, in the DOM over the top right of the canvas. It shows in `select` mode for a selected `Mesh`. It adds no export. Proposed: yes.
+22. The panel lists the fields that exist at the pin, by class: `color`, `emissive`, `emissiveIntensity` and `doubleSided`. It splits the emission into an intensity and a hue. `PhysicalMaterial`'s five parameters wait for step 2 of record 0004, and textures for step 3. Proposed: yes.
+23. A field edit assigns through the setter of the material, which adds 1 to `version`. The pack then writes `materials`, and `lights` when its words change, and builds no TLAS. The panel reads each value back from the material. Proposed: yes.
+24. A type change replaces `mesh.material` with a new instance of the chosen class. The instance carries `name`, `color`, the emission and `doubleSided`. The path costs as a transform change does, and the old table entry stays. `PhysicalMaterial` is no option before step 2 of record 0004. Proposed: yes.
+25. An edit applies to every mesh that shares the material instance, and the panel shows how many. The alternative is a clone on the first edit, for the selected mesh alone. Proposed: share.
+26. The panel does not set `run.editing`. Each edit restarts the accumulation at the full frame size. Step 8 measures the restart. Proposed: yes.
 
 ## Record
 
 **Approval and plan record.** This record is a draft and does not yet apply. The owner's request of 2026-10-06 prompted it. It is not an approval. The record is accepted when the owner's review or go-ahead merges it with `status: accepted`. Every entry of "Decisions for the owner" then stands as proposed, unless the merge says otherwise.
 
-**Configuration and validation record.** This record does not yet apply. Implementation will record the commits of the seven steps, the pin and each gate's result. It will also record the numbers that "Before" and the steps label as measured later.
+**Configuration and validation record.** This record does not yet apply. Implementation will record the commits of the eight steps, the pin and each gate's result. It will also record the numbers that "Before" and the steps label as measured later.
 
 **Open items at authorship.**
 
@@ -381,4 +512,9 @@ Each step is one pull request with `Design: 0008` in its commit message. Each te
 - **Wheel over a handle.** A handle is above the canvas, so a wheel turn over it does not reach `OrbitControls`. Disposition: open. Next action: step 3 forwards `wheel` from a handle to the canvas, or the owner accepts it.
 - **Listener order.** `InteractionControls` and `OrbitControls` both listen for `pointerdown` on the canvas. This design depends on neither stopping the other. `OrbitControls` calls `preventDefault` and `setPointerCapture` and does not stop propagation. Disposition: closed by reading `#onPointerDown`. Step 6 holds it.
 - **Not measured.** The cost of one cast, the toolbar's size, and the device write of a transform change. Steps 1, 5 and 6 measure them. A hardware GPU number does not exist.
+- **Not measured, inspector.** Step 8 measures four numbers. They are the host time and bytes of a field edit and of a type change, the restart on SwiftShader and the panel's size. The type change numbers in "The material inspector" are an inference.
 - **Deferred, and not proposed.** Keyboard nudging of the selection, a numeric field for a position, undo, and a world-or-local space switch. None is in a step.
+- **The second request.** The owner asked on 2026-10-06 to change materials at run time and watch the render. "The material inspector" and step 8 answer it. Status: not started. Disposition: open. Next action: the owner reviews decisions 21 to 26.
+- **Shared materials.** In the Cornell box, `white` serves four meshes, so an edit of the ball also changes three walls. Decision 25 proposes this and names the clone on edit as the alternative. Disposition: open. Next action: the owner chooses.
+- **Table growth.** The pack never frees an index of `materials`. Each type change leaves 128 bytes. Disposition: open. Next action: the owner accepts it, or a later record makes the pack reuse the indexes.
+- **Deferred by the inspector, and not proposed.** Some items wait for later records. The first is `PhysicalMaterial`'s five parameters (record 0004, step 2). Then come textures (step 3), a panel for the meshes of a `Group`, undo and the controls of a light. None is in a step.
