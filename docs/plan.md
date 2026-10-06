@@ -145,12 +145,12 @@ of record 0001's layout holds on WebGL2.
    - a storage texture format that WebGL2 cannot render to
 
    Change 0054 will report each one with a reason and run it on the CPU tier. Inference: the
-   renderer has no CPU tier at the pin. M4's reference mode (L3) runs the same kernels on the CPU
-   oracle. Unless it serves as the fallback, a scene past one of these limits will not render on
-   WebGL2.
+   renderer has no CPU tier at the pin. M4's reference mode (L3) will run the same kernels on the
+   CPU oracle. Inference: unless that mode serves as the fallback, a scene past one of these limits
+   will not render on WebGL2.
 
-   Change 0054 specifies one `R32UI` texel for each 4-byte lane. Every `u32` buffer uses `R32UI`
-   on any context. An `f32` buffer may use `R32F` or `RGBA32F` when the context has
+   Change 0054 specifies one `R32UI` texel for each 4-byte lane. Every `u32` buffer will use
+   `R32UI` on any context. An `f32` buffer may use `R32F` or `RGBA32F` when the context has
    `EXT_color_buffer_float`. The figures here assume `R32UI`. The OpenGL ES 3.0 minimum for
    `MAX_TEXTURE_SIZE` is 2048. At that minimum, one buffer holds 4,194,304 lanes, which is
    16 MiB. Record 0006, row 1, assumes 128 MiB for each buffer on WebGPU. A device may report a
@@ -319,19 +319,25 @@ done when each of these holds. Each item names what checks it:
 - The pin carries steps 1 to 4 of change 0054's implementation (its "Draft impact estimate"),
   and `compiler-changes.md` records 0054. A reviewer checks both in the pull request that moves
   the pin. Change 0054 names `typeshade.github.io` and `vscode-typeshade` in its `downstream`
-  list. It does not name `radiance`. So the `compiler bump impact` job does not report 0054, and
-  the reviewer adds the `- 0054` item to `compiler-changes.md` by hand. If the compiler adds
-  `radiance` to the `downstream` list of 0054, the job reports 0054 on a pin that implements it,
-  until the item exists.
+  list, but not `radiance`. So the `compiler bump impact` job does not report 0054. The reviewer
+  adds an item to `compiler-changes.md` by hand: `0054`, then the pull request that did the work.
+  If the compiler adds `radiance` to the `downstream` list of 0054, the job reports 0054 on a pin
+  where its `status` is `implemented`, until the item exists.
 - `tshc check` reports no `TS8015` on the kernels. `bun run check:shaders` runs it in the
   `format + boundary + typecheck + test` job. It reports `TS8015` as a warning and exits 0, so no
   CI job fails on `TS8015`. A reviewer reads the output of `bun run check:shaders` in the job log.
   This is also 0054's own evidence for `trace.shade.ts` ("What it touches").
 - The renderer runs on a WebGL2 context when the browser has no WebGPU, through
-  `typeshade/runtime` alone. `bun run check:boundary` holds the boundary in the same job. The
-  `harness` job runs Chromium with WebGPU present. So the three gates below show a WebGL2 render.
-  They do not show that the renderer chooses WebGL2 without WebGPU. The tier's design record names
-  the test that removes WebGPU (for example, `navigator.gpu` undefined) and checks the fallback.
+  `typeshade/runtime` alone. `bun run check:boundary` holds the boundary in the same job. A gate
+  run that forces the WebGL2 context does not show that the renderer chooses WebGL2 without WebGPU.
+  The tier's design record names the test that removes WebGPU (for example, `navigator.gpu`
+  undefined) and checks the fallback.
+- The three gates below run on WebGL2. At `main` 5df5042, `launchBrowser` in
+  `scripts/gates/_browser.mjs` starts Chromium with `--enable-unsafe-webgpu`, so the `harness` job
+  renders on WebGPU. A WebGL2 run needs a `launchBrowser` option that starts Chromium without
+  WebGPU, or a `createRuntime` option that forces WebGL2. Change 0054 leaves the shape of
+  `RuntimeOptions` open (decision 2), and the tier's design record chooses one. Each gate run fails
+  when the tier that `Runtime` reports is not `webgl2`.
 - The Cornell box on WebGL2, in headless Chromium on SwiftShader, is within the `ORACLE` bounds
   (`scripts/gates.mjs`) of the oracle's render. This is the `differential` gate of record 0002. It
   runs in the `harness` job.
