@@ -217,25 +217,52 @@ export function buildRecords(files = trackedFiles()): RecordItem[] {
 
 /**
  * A line of an item's text that makes Doorstop 3.2's publisher loop forever. Its HTML and LaTeX
- * publishers read every line that matches `^\\s*[*+-]\\s` or `^\\s*\\d+\\.\\s` as a list item, inside a
- * code fence too. A list whose first item is indented sets the list's depth to that indent and
- * its indent step to zero, and the loop that closes the list at the next blank line subtracts
- * zero from the depth forever (`doorstop/core/publishers/base.py`, `_check_for_list_end`). A
- * JSDoc block whose continuation lines start with ` * ` did this to CI's traceability job
- * (typeshade/radiance#14). Returns the offending line, or null.
+ * publishers read every line that matches `^\s*[*+-]\s` (a bullet) or `^\s*\d+\.\s` (a step) as a
+ * list item, inside a code fence too. An HTML line is a rendered one, so a list line that Markdown
+ * keeps as text counts.
+ *
+ * The publisher keeps the state of each kind apart (`process_lists` in
+ * `doorstop/core/publishers/base.py`). A list line that no line of its own kind has opened sets
+ * the list's depth to its indent and the list's indent step to zero. The loop that closes the list
+ * at the next blank line then subtracts zero from the depth forever (`_check_for_list_end`).
+ *
+ * The rule here is stricter than the publisher, because Markdown decides which lines the
+ * publisher sees and a guard in TypeScript cannot run Markdown. A list line at the margin passes.
+ * An indented list line passes only when the nearest list line above it has the same kind: a
+ * bullet under a bullet, or a step under a step. A blank line, a fence line or a line that starts
+ * with `<p>` ends the nearest list line. The first line inside a fence does not start one,
+ * because HTML joins it to `<pre><code>`, and a marker with no text after it does not either,
+ * because Markdown reads no item there. The rule refuses some text that HTML publishes (steps
+ * indented four spaces under a bullet, which LaTeX hangs on). A probe of 5,247 random item texts
+ * found no text that hangs one of the two publishers and passes the rule.
+ *
+ * Two shapes did this to CI's traceability job: a JSDoc block whose continuation lines start with
+ * ` * ` (typeshade/radiance#14), and steps indented two spaces under a bullet with no blank line
+ * between (typeshade/radiance#29). Returns the offending line, or null.
  */
 export function doorstopListHazard(text: string): string | null {
-  const bullet = /^(\s*)(?:[*+-]|\d+\.)\s/;
-  let open = false;
+  const kinds = [/^\s*[*+-]\s/, /^\s*\d+\.\s/];
+  let last = -1; // the kind of the nearest list line since the last boundary, or -1
+  let fence = ''; // the marker of the open code fence, or ''
+  let joined = false; // the line is the first inside a fence, which HTML joins to `<pre><code>`
   for (const line of text.split('\n')) {
-    if (line.trim() === '' || line.startsWith('<p>')) {
-      open = false;
+    const hidden = joined;
+    joined = false;
+    const marker = /^(`{3,}|~{3,})(.*)$/.exec(line);
+    if (marker && (fence === '' || (marker[2]!.trim() === '' && marker[1]![0] === fence[0]))) {
+      fence = fence === '' ? marker[1]! : '';
+      joined = fence !== '';
+      last = -1;
       continue;
     }
-    const m = bullet.exec(line);
-    if (!m) continue;
-    if (!open && m[1]!.length > 0) return line;
-    open = true;
+    if (line.trim() === '' || line.startsWith('<p>')) {
+      last = -1;
+      continue;
+    }
+    const kind = kinds.findIndex((re) => re.test(line));
+    if (kind < 0) continue;
+    if (kind !== last && /^\s/.test(line)) return line;
+    if (!hidden && /\S/.test(line.replace(kinds[kind]!, ''))) last = kind;
   }
   return null;
 }
@@ -350,7 +377,7 @@ export function render(records = buildRecords()): Map<string, string> {
       const line = doorstopListHazard(text);
       if (line !== null) {
         throw new Error(
-          `${uid} (${r.file}): the line ${JSON.stringify(line)} starts an indented list, which Doorstop's publish reads as a list without an indent step and never ends. Start the list at the margin, or write the line so that it does not begin with a bullet or a number.`,
+          `${uid} (${r.file}): the line ${JSON.stringify(line)} starts an indented list, which Doorstop's publish reads as a list without an indent step and never ends. A list line of the other kind above it, a bullet or a step, does not open it. Put a blank line above the list and start it at the margin, or write the line so that it does not begin with a bullet or a number (reqs/README.md, "Text that hangs the publisher").`,
         );
       }
     }
