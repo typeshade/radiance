@@ -51,9 +51,8 @@ export default async function firstScene(canvas: HTMLCanvasElement): Promise<Exa
   const renderer = await new PathTracer({ canvas, seed: 1, targetFrameTime: 30 }).init();
   const controls = new OrbitControls(camera, canvas);
   controls.target.set(0, 0.5, 0);
-  controls.minDistance = 1.5;
-  controls.maxDistance = 8;
-  controls.maxPolarAngle = Math.PI / 2 - 0.05;
+  controls.minDistance = 0.05;
+  controls.maxDistance = 50;
   controls.update();
   controls.saveState();
 

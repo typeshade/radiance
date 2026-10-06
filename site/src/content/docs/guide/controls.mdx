@@ -46,8 +46,10 @@ A turn let go with speed keeps turning and slows down, as a turntable does, whil
 | `minAzimuthAngle`, `maxAzimuthAngle` | the turn about +y, in radians             |
 | `targetBounds`                       | a `Box3` the target stays in when panning |
 
-The Cornell box example keeps the camera on the open side of the box with the azimuth and
-polar limits, so a drag never puts the eye behind a wall.
+The polar angle keeps a margin of 0.01 radian from each pole, so the view never flips. The azimuth
+has no limit. The examples set only the distance, from 0.05 to 50 scene units, so a drag can
+look at a scene from below, from the side and from behind, and a wheel turn can go inside the
+Cornell box or far outside it.
 
 ## Events and state
 
