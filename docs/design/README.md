@@ -80,7 +80,7 @@ pull request), and these sections:
 | [0005](0005-determinism.md)           | Determinism: the promise, the kernel rules, and the lint that holds them                                      | accepted | M2, M4      |
 | [0006](0006-compiler-boundary.md)     | The compiler boundary: what the engine needs from the runtime, as proposals                                   | accepted | M2 to M5    |
 | [0007](0007-webgl2-tier.md)           | The WebGL2 tier: the same kernels, no WebGL call in the engine, and gates for both tiers                      | draft    | M8          |
-| [0008](0008-interaction-controls.md)  | Interaction controls: a host ray cast, four modes (orbit, select, translate, rotate) and a material inspector | draft    | none        |
+| [0008](0008-interaction-controls.md)  | Interaction controls: a host ray cast, four modes (orbit, select, translate, rotate) and a material inspector | accepted | none        |
 
 The order of implementation is 0001 and 0002 first, in parallel, because M2 is written on them.
 0003 is done before the first npm release. 0004 and 0005 are needed before M3. 0006 is a list
