@@ -11,30 +11,37 @@ touches:
   - packages/radiance/src/kernels/intersect.shade.ts
   - packages/radiance/src/kernels/determinism-lists.ts
   - packages/radiance/src/accel/bvh.ts
+  - packages/radiance/src/accel/wide.ts
+  - packages/radiance/src/kernels/gmon.shade.ts
+  - packages/radiance/src/internal.ts
+  - packages/radiance/__api__
   - packages/radiance/src/renderers/PathTracer.ts
   - packages/radiance/src/renderers/scene-pack.ts
   - scripts/gates.mjs
   - scripts/gates/differential.mjs
   - scripts/oracle.ts
+  - scripts/quality.mjs
+  - scripts/sz-matrices.ts
   - scripts/__goldens__
   - docs/benchmarks.md
   - docs/design/0001-scene-data-model.md
   - docs/design/0002-verification.md
+  - docs/design/0003-public-api.md
   - docs/design/0005-determinism.md
 compiler: []
 ---
 
 **Document control**
 
-| Field         | Value                                                                                                                                                                      |
-| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Identity      | Design record 0009, status `draft`                                                                                                                                         |
-| Date          | 2026-10-06 (UTC), the date of authorship. The owner approved the quality wave on the same date                                                                             |
-| Author        | Written in an agent session for the owner. The owner's review is the approval                                                                                              |
-| Applicability | The kernels in `packages/radiance/src/kernels`, the host in `packages/radiance/src/accel` and `src/renderers`, and the gates in `scripts/`. No site page, no public export |
-| Baseline      | `main` at 55bde46. The compiler pinned at 596c805. Every line number below is a line of that commit                                                                        |
-| Source        | The papers survey of 2026-10-06 (Top 12 items 2, 3, 4, 10, 11 and 12, and its "avoid" list). The survey is a working file and is not in the tree                           |
-| Pull request  | Not opened yet. The pull request that carries this record is its review                                                                                                    |
+| Field         | Value                                                                                                                                                                                                                 |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Identity      | Design record 0009, status `draft`. Six parts, 21 decisions, 12 amendments owed (A to L). Branch `wt/Q`                                                                                                               |
+| Date          | 2026-10-06 (UTC), the date of authorship. The owner approved the quality wave on the same date                                                                                                                        |
+| Author        | Written in an agent session for the owner. The owner's review is the approval                                                                                                                                         |
+| Applicability | The kernels in `packages/radiance/src/kernels`, the host in `packages/radiance/src/accel` and `src/renderers`, and the gates in `scripts/`. No site page. One public member, `PathTracer.fireflyFilter` (decision 11) |
+| Baseline      | `main` at 55bde46. The compiler pinned at 596c805. Every line number below is a line of that commit. `main` has since moved to 13b9e88, and the lines are not checked against it                                      |
+| Source        | The papers survey of 2026-10-06 (Top 12 items 2, 3, 4, 10, 11 and 12, and its "avoid" list). The survey is a working file and is not in the tree                                                                      |
+| Pull request  | Not opened yet. The pull request that carries this record is its review. The parts were committed one by one on branch `wt/Q`, from 10677bb                                                                           |
 
 ## What changes
 
@@ -66,11 +73,12 @@ Each part below gives the contract before and after. The table lists the parts a
 | 5    | Blue-noise diffusion by hierarchical pixel ordering  | Ahmed et al. 2020 (ZSobol) | The sample index in `sampler.shade.ts` and `trace` | No. Only the error's pattern changes                     |
 | 6    | An 8-wide compressed BVH                             | Ylitie et al. 2017         | `bvh.ts`, `layout.shade.ts`, `intersect.shade.ts`  | No. The nearest hit stays the same                       |
 
-**The order.** The parts are independent in code. Three couplings set the order of merging.
+**The order.** The parts are independent in code. Four couplings set the order of merging.
 
 1. Parts 2 and 5 both change `sampler.shade.ts`. Part 5 builds on part 2's function names, so part 2 merges first.
-2. Parts 3 and 4 change the images the goldens hold. Merge each one with its own golden update, and never two in one pull request.
+2. Parts 1, 2, 3 and 5 change the images the goldens hold. Merge each one with its own golden update, and never two in one pull request. Part 6 moves a golden only where a tie in `t` is decided otherwise.
 3. Part 6 changes the layout that record 0001 fixes. Merge it last, because it is the largest change. It also needs the instrument of "The instrument" to measure its gain.
+4. Parts 4 and 5 use different words of `TraceParams.path`: part 4 uses `path.z` and part 5 uses `path.w`. So their order does not change the layout.
 
 The default order is 1, 2, 3, 5, 4, 6. Decision 1 asks the owner to approve it.
 
@@ -490,3 +498,132 @@ Alternatives. Keep the binary BVH and add a short stack (Vaidyanathan et al. 201
 2. **The tie test fails without the rule.** Remove the pair comparison, so that the first triangle found wins. The test of step 6.1 must fail for at least one ray of the scene.
 3. **The equality test sees a wrong child.** Plant the fault of adding 1 to `childBase` of every node. The brute-force test of step 6.3 must fail, and `bun run gate:differential` must fail its `mean` bound on `triangles`. The pull request records both.
 4. **The bench sees a traversal change.** Plant the fault of setting the octant to 0, so the order of the slots ignores the ray. The `paths/s` of `bunny` must differ from the unfaulted row by more than the spread of the three runs. If it does not, the bench cannot show the gain of this part.
+
+## Amendments owed
+
+Each amendment below is text to paste into a record's "Record" section. The implementer pastes it in its own pull request, before the part that needs it (decision 21). Replace `N` with the next free number of that record and `DATE` with the date of the merge. The text is the record's own voice, and it stays under the STE caps.
+
+| Part | Record 0001       | Record 0002 | Record 0003 | Record 0005       |
+| ---- | ----------------- | ----------- | ----------- | ----------------- |
+| 0    | none              | A           | none        | none              |
+| 1    | none              | A           | none        | B (fallback only) |
+| 2    | C (fallback only) | A           | none        | none              |
+| 3    | none              | A           | none        | none              |
+| 4    | D                 | G           | F           | E                 |
+| 5    | H                 | A           | none        | I                 |
+| 6    | J                 | L           | none        | K                 |
+
+Parts 1 to 3 owe no other text. Their changes to the header comments of the kernel files are not amendments.
+
+**Amendment A (record 0002, step 0).** Paste this before part 1.
+
+> **Amendment N** (DATE, UTC). Record 0009 adds a measure of error against a reference. The tool is `bun run quality` (`scripts/quality.mjs`). It renders a scene on the GPU at a list of sample counts. It prints the relative root-mean-square error of each render against the reference. It also prints the samples that reach a target error. The references are raw f32 files in `scripts/__goldens__/reference/`. They hold 16,384 samples a pixel for the four differential scenes at 16 by 16. The table of gates gains the row `quality`: a recorded number, held by no bound, run by hand. A pull request that changes the expected image renders its own reference. Each part that rewrites a golden shows the old and the new picture of each golden in its pull request.
+
+**Amendment B (record 0005, part 1, fallback only).** Paste this only when decision 2 admits `atan2`.
+
+> **Amendment N** (DATE, UTC). Rule 2 admits `atan2` in one function: `solidAngle` in `trace.shade.ts`. The result is the solid angle of a light's triangle. It sets the sampled direction by its value. It feeds no comparison, no index and no loop bound. `VALUE_ONLY` in `determinism-lists.ts` gains `solidAngle: ['atan2']`. The differential gate's `rel` and `mean` bound the result.
+
+**Amendment C (record 0001, part 2, fallback only).** Paste this only when the last fallback of part 2 runs.
+
+> **Amendment N** (DATE, UTC). `TraceParams` gains `sz: array<vec4u, 32>` after `path`. It holds the 128 column words of the SZ matrices, 512 bytes. The block grows from 144 to 656 bytes. `scene-pack.ts` fills it from the table that `scripts/sz-matrices.ts` prints. `layout.test.ts` holds the new size.
+
+**Amendment D (record 0001, part 4).** Paste this before part 4.
+
+> **Amendment N** (DATE, UTC). `accum` holds `k` buckets for each pixel. An element is one `vec4`: the sum of the radiance in `xyz` and the count in `w`. The element of bucket `b` of pixel `p` is at `b * pixels + p`. `pixels` is the width times the height of the traced frame. `k` is `min(8, floor(134,217,728 / (width * height * 16)))`. The buffer is `k * width * height * 16` bytes. `path.z` of `TraceParams` is the bucket of the dispatch. `PresentParams` gains `accum: vec4u = (k, mode, pixels, 0)` and grows from 16 to 32 bytes. Mode 0 is the plain mean and mode 1 is the G-MoN output. The table row of `accum` and the sentence "Unchanged from M1" change with this text.
+
+**Amendment E (record 0005, part 4).** Paste this before part 4.
+
+> **Amendment N** (DATE, UTC). Rule 4 holds for the buckets. An invocation adds its sum to one bucket of its pixel, once in a frame. The bucket is the number of the frame since the last restart, modulo `k`. The bits of the plain mean depend on the split. The G-MoN output depends on it more, because bucket `b` holds the frames `b`, `b + k` and so on. The promise holds for the G-MoN output of one seed, one device, one driver, one split and one `k`. `k` follows the frame's size.
+
+**Amendment F (record 0003, part 4).** Paste this before part 4.
+
+> **Amendment N** (DATE, UTC). `PathTracer` gains the member `fireflyFilter: boolean`, default `false`. When it is `true`, the canvas and `readPixels()` show the G-MoN output. `readRadiance()` always returns the plain mean. The name takes the plan's word "firefly" (rule 3). The bake of `packages/radiance/__api__/surface.md` changes with this text.
+
+**Amendment G (record 0002, part 4).** Paste this before part 4.
+
+> **Amendment N** (DATE, UTC). The render, differential and determinism gates read the plain mean. The render gate leaves `fireflyFilter` off. The determinism gate gains one check. Two renders with the filter on, one seed and one split, give the same bits in `readPixels()`. `gmon.test.ts` holds the function of the G-MoN output.
+
+**Amendment H (record 0001, part 5).** Paste this before part 5.
+
+> **Amendment N** (DATE, UTC). `path.w` of `TraceParams` is `L`, the log2 of the sample budget. The host sets it at each restart of the accumulation. The word was unused. The block keeps its 144 bytes.
+
+**Amendment I (record 0005, part 5).** Paste this before part 5.
+
+> **Amendment N** (DATE, UTC). Rule 1 holds. The sampler is still the only source of random numbers. `pixelSeed` is the seed of a block of pixels and not of one pixel. The sample index of a pixel is a scrambled Morton index of its code and its place in the epoch. The promise gains two conditions. The image depends on `L`, so on `maxSamples` at the last restart. It also depends on the size of the frame, through the side of the block.
+
+**Amendment J (record 0001, part 6).** Paste this before part 6.
+
+> **Amendment N** (DATE, UTC). A BLAS node is a wide node of 5 `vec4`, 80 bytes, with up to 8 children. Each child box has 8-bit bounds in the scale `2^(e - 127)` of its node. The TLAS node is still 2 `vec4`. The two share `nodes`. `nodeBase` and `tlasBase` count `vec4`. `nodes` holds at most 1,677,721 wide nodes. `collapse` in `accel/wide.ts` makes the wide tree from the binary one. A BLAS stack has 32 entries of two words. The sections "Traversal" and "The build" change with this text.
+
+**Amendment K (record 0005, part 6).** Paste this before part 6.
+
+> **Amendment N** (DATE, UTC). `nearest` breaks a tie in `t` by the pair (instance slot, triangle index), the least first. So the nearest hit does not depend on the visit order. `hitTriangle` accepts a `t` equal to its limit. The determinism report gains no row, because `countOneBits` and `firstLeadingBit` are integer operations.
+
+**Amendment L (record 0002, part 6).** Paste this before part 6.
+
+> **Amendment N** (DATE, UTC). Part 6 adds the `bench` rows for `cornell`, `bunny` and `materials`, before and after, to `docs/benchmarks.md`. The differential gate keeps its bounds. A pull request that cannot keep a bound re-derives it by this record's rule and shows the measurement. The render gate lists each golden that a tie moves.
+
+## Implementation, in steps
+
+Each step is one pull request or more. Each implementing commit carries the line `Design: 0009`. A test that verifies a decision carries `Verifies: Design 0009.k` in a comment. The numbers of each part are in the part's own steps.
+
+1. **Merge this record.** The owner merges it as `draft`, then answers the decisions. That answer is the acceptance.
+2. **Step 0: the instrument.** Paste Amendment A. Write `scripts/quality.mjs`, the four references and the "Quality" heading of `docs/benchmarks.md`.
+3. **Part 1.** Steps 1.1 to 1.4. Amendment B only if decision 2 admits `atan2`. Step 1.5 waits for decision 5.
+4. **Part 2.** Steps 2.1 to 2.4. Amendment C only if the last fallback runs.
+5. **Part 3.** Steps 3.1 to 3.4. The pull request carries the new stills.
+6. **Part 5.** Paste Amendments H and I. Then steps 5.1 to 5.4.
+7. **Part 4.** Paste Amendments D, E, F and G. Then steps 4.1 to 4.4.
+8. **Part 6.** Paste Amendments J, K and L. Then steps 6.1 to 6.4.
+9. **Close the record.** Set `status: implemented`. Write the commits, the pin, each gate's result and each part's numbers in "Record".
+
+Three rules hold for every step:
+
+- A part merges alone. Two parts never share a pull request.
+- A part that rewrites goldens carries its own goldens and its own stills.
+- A part that reaches past this record amends the record first, in its own pull request.
+
+## Decisions for the owner
+
+1. The parts merge in the order 1, 2, 3, 5, 4, 6. Part 2 comes before part 5, and part 6 comes last. Proposed: yes. This asks the owner, because the order changes.
+2. Part 1 writes `arcTan` from sums, products and one division, and it does not change rule 2. The fallback is a longer polynomial. Admitting `atan2` for `omega` (Amendment B) needs the owner's go-ahead. Proposed: the polynomial.
+3. `OMEGA_MIN` is 1e-4 sr. Under it, `direct` samples the light by area. Proposed: yes. This is a default.
+4. No part has a minimum gain. Each part shows its measured numbers in its pull request, and the owner judges them. Part 6 has its own condition (decision 20). Proposed: yes. This is a default.
+5. Peters's projected solid angle (step 1.5) waits for the owner's go-ahead after step 1.4 gives its number. Proposed: wait.
+6. Part 2 uses SZ groups of four dimensions, the pair numbering `2 + bounce * 4`, and a table of 128 words in `sampler.shade.ts`. The fallbacks are a `select` tree, then the uniform block (Amendment C). Proposed: yes. This is a default.
+7. Part 3 replaces the box filter with a tent filter. The image becomes softer, so the owner judges the look. A tabulated filter and a Gaussian are not used. Proposed: tent. This asks the owner.
+8. `FILTER_RADIUS` is 1.0 pixel. The alternative is 0.5 pixel, which is sharper and gains less. Proposed: 1.0.
+9. A preview frame, traced at a lower resolution, is blurred over its blocks. Proposed: accept.
+10. The accumulator has at most 8 buckets. The G-MoN output needs at least 4. A frame over 2,097,152 pixels has fewer than 4 buckets, so it gets the plain mean only. A frame over 1,048,576 pixels gets fewer than 8. Proposed: yes. This asks the owner, because it costs memory.
+11. `PathTracer` gains the public member `fireflyFilter`, default `false`. Amendment F amends record 0003, and the bake of the API changes. Proposed: yes. This asks the owner, because it adds an export.
+12. The bucket of a frame is its number since the last restart, modulo `k`. The first frame of one sample keeps the place that record 0005 gives it. The alternative is the bucket with the fewest samples. Proposed: modulo `k`. This is a default.
+13. The blend of the G-MoN output has the four properties P1 to P4. The default weight is the normalized Gini coefficient through a smoothstep from 0.25 to 0.5. Step 4.1 may replace the formula by the paper's. Proposed: yes. This is a default.
+14. Part 4 uses `path.z` for the bucket, and part 5 uses `path.w` for `L`. `PresentParams` grows from 16 to 32 bytes, and `TraceParams` keeps 144 bytes. The alternative is a new `vec4u`, which adds 16 bytes. Proposed: the words. This is a default.
+15. The sample budget `L` is `ceil(log2(maxSamples))`, at most 16, and 10 when `maxSamples` is infinite. A render past the budget starts a new epoch. A frame wider than a block uses independent blocks. Proposed: yes. This is a default.
+16. Part 5 permutes the base-4 digits with a table of 24 entries, 96 bytes. The fallback is arithmetic on the factorial number system. The hash includes the shift of the digit. Proposed: yes. This is a default.
+17. Part 6 collapses the BLAS only. The TLAS stays binary, the two kinds of node share `nodes`, and the bases count `vec4`. Proposed: yes. This asks the owner, because it changes a layout.
+18. A wide leaf holds at most 3 triangles. A child box has 8-bit bounds, widened until the f32 decode holds the true box. Proposed: yes. This is a default.
+19. A tie in `t` breaks by the pair (instance slot, triangle index), and `hitTriangle` accepts a `t` equal to its limit. A golden that a tie moves is listed. Proposed: yes. This is a default.
+20. Part 6 merges when its tests and gates pass and its SwiftShader rows are recorded. The owner's GPU row stays open. It has no minimum gain on SwiftShader. Proposed: yes. This asks the owner, because SwiftShader may not show the gain.
+21. Each amendment of "Amendments owed" goes into its record in its own pull request, before the part that needs it. The owner's "merge" is its approval. Proposed: yes. This is a default from `CLAUDE.md`.
+
+## Record
+
+**Approval and plan record.** This record does not yet apply. It is `draft`. The owner approved a quality wave of six techniques on 2026-10-06 (UTC), in the conversation, and asked for this record. The owner has not yet said to merge it. The owner's answer to the decisions will be the acceptance.
+
+**Configuration and validation record.** This record does not yet apply. Implementation will record the commits of each part, the pin, each gate's result and each part's numbers. This record is documentation only. It ran no gate, no test and no benchmark. The documentation checks of the authoring session are in the pull request.
+
+**Status of the requests at authorship.** The request was a record of six parts. All six are written. The status of the record is `draft`. The status of each part's implementation is not started.
+
+**Open items at authorship.**
+
+- **The papers.** No paper was read for this record. Every claim about a paper comes from the papers survey of 2026-10-06, and each is labelled so. Disposition: open. Next action: the first step of each part reads its paper and amends this record where the paper differs.
+- **The numbers.** No gain is measured. The cost of the new sampler, of the buckets and of the wide node is arithmetic or inference. Disposition: open. Next action: the steps called "the numbers" measure them.
+- **The blend formula.** The default weight of part 4 is a proposal. The survey gives no formula. Disposition: open. Next action: step 4.1.
+- **The buckets and the memory.** A frame over 1,048,576 pixels has fewer than 8 buckets, and a 4K frame has 1. Disposition: open. Next action: the owner answers decision 10.
+- **The first frame.** The first frame takes one sample, which shifts the later frames by one index. This lowers the stratification that parts 4 and 5 rely on. Disposition: open. Next action: step 5.3 measures it. A change of the split needs an amendment of record 0005.
+- **The public export.** The overview said "no public export". Part 4 adds one member. The text of the overview is changed. Disposition: open. Next action: the owner answers decision 11.
+- **The table in the sampler.** Part 2 and part 5 read a module constant array with a runtime index. This is not checked in any of the three outputs. Disposition: open. Next action: step 2.2.
+- **The line numbers.** They are lines of `main` 55bde46. `main` has moved to 13b9e88. Disposition: open. Next action: re-read each named file when the record is accepted.
+- **Stale prose.** Part 2 makes the phrase "an Owen-scrambled Sobol sequence" in `PRODUCT.md` (line 77) and in `checked-on-the-cpu.mdx` (line 42) less exact. Disposition: open. Next action: part 2's pull request reads both and amends them.
+- **Not proposed.** EARS (Rath et al. 2022), the reweighting of firefly samples (Zirr et al. 2018), the short stack (Vaidyanathan et al. 2019), ART-Owen (Ahmed et al. 2023) and the denoisers of the survey. Disposition: deferred, and none is in a step.
