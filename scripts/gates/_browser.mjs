@@ -68,18 +68,23 @@ export async function serve(root, extra = () => undefined) {
 }
 
 /** Chromium with a WebGPU device on SwiftShader, as the compiler's user journeys run it.
- *  RADIANCE_CHROMIUM names the executable; RADIANCE_HEADED=1 shows the window. */
+ *  RADIANCE_CHROMIUM names the executable; RADIANCE_HEADED=1 shows the window. RADIANCE_GPU=1
+ *  drops the SwiftShader flags, so Chromium takes the machine's GPU: the still capture on a
+ *  machine with one (.github/workflows/capture-stills.yml). The gates stay on SwiftShader. */
 export function launchBrowser() {
+  const gpu = process.env.RADIANCE_GPU === '1';
   return chromium.launch({
     executablePath: process.env.RADIANCE_CHROMIUM || undefined,
     headless: process.env.RADIANCE_HEADED !== '1',
-    args: [
-      '--enable-unsafe-webgpu',
-      '--enable-unsafe-swiftshader',
-      '--use-angle=swiftshader',
-      '--use-vulkan=swiftshader',
-      '--enable-features=Vulkan',
-    ],
+    args: gpu
+      ? ['--enable-unsafe-webgpu', '--ignore-gpu-blocklist']
+      : [
+          '--enable-unsafe-webgpu',
+          '--enable-unsafe-swiftshader',
+          '--use-angle=swiftshader',
+          '--use-vulkan=swiftshader',
+          '--enable-features=Vulkan',
+        ],
   });
 }
 
