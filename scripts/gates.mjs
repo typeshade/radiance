@@ -22,10 +22,15 @@ export const GATE = { size: [16, 16], samples: 1024, perFrame: 64, seed: 1 };
  *
  * The spheres then grew to 64 by 32 segments, 3,968 triangles each (createCornellBox). On
  * SwiftShader the mean was 3.03e-7 and the largest difference 2.86e-6, with 0 channels out of
- * bounds. Record 0002 re-derives the bound when the scene changes, so `mean` is ten times the
- * measured 3.03e-7, rounded up to 3.1e-6 as 3.27e-7 was rounded up to 3.3e-6. Before, it was 3.3e-6.
+ * bounds. Record 0002 re-derives the bound when the scene changes, so `mean` was ten times the
+ * measured 3.03e-7, rounded up to 3.1e-6 as 3.27e-7 was rounded up to 3.3e-6.
+ *
+ * The lamp then became two-sided (createCornellBox), so the ceiling takes light from it by next-event
+ * estimation. On SwiftShader the mean was 1.91e-6 and the largest difference 7.31e-5, with 0
+ * channels out of bounds. So `mean` is ten times the measured 1.91e-6, rounded up to 2e-5.
+ * Before, it was 3.1e-6.
  */
-export const ORACLE = { abs: 1e-3, rel: 0.05, mean: 3.1e-6 };
+export const ORACLE = { abs: 1e-3, rel: 0.05, mean: 2e-5 };
 
 /** Half floats carry 11 bits of mantissa: what the display gate admits per channel. */
 export const HALF = 2e-3;
