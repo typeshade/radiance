@@ -226,9 +226,7 @@ size, not the scene the owner has in mind.
   constants are computed once per ray per space. It leaves no crack along a shared edge, which a
   shadow ray toward a light would otherwise pass through. Its one division is the final `1 / det`.
 - **Two-level traversal**: `nearest(origin, dir, limit)` walks the TLAS with a stack of
-  `array<u32, 32>`. At an instance leaf it transforms the ray into the instance's space with
-  rows `[3..5]` (the direction is not normalised, so `t` stays a world-space parameter), walks
-  that BLAS with a second `array<u32, 32>`, and continues the TLAS. The nearer child is walked
+  `array<u32, 32>`. At an instance leaf it transforms the ray into the instance's space with rows `[3..5]`. The direction is not normalised, so `t` stays a world-space parameter. It walks that BLAS with a second `array<u32, 32>`, and then continues the TLAS. The nearer child is walked
   first: the farther child, on the side of `axis` the ray's direction points toward, is pushed
   first, so the stack pops the nearer one first. A leaf's primitives are tested in order. An
   instance whose `flags` bit 0 is set is a `Sphere`. `nearest` tests it as "The analytic sphere"
@@ -288,7 +286,7 @@ The packer builds the words from the `Sphere`'s `matrixWorld` and `radius`. It c
 1. Take the upper 3 by 3 part of `matrixWorld`. Call its columns `c0`, `c1` and `c2`.
 2. Take `s`, the length of `c0`.
 3. Draw nothing for this sphere when `s` is 0 or not finite. A mesh whose matrix has no inverse is dropped in the same way.
-4. Throw the `RangeError` of the next paragraph when a length of `c1` or `c2` differs from `s` by more than `1e-5 * s`. Throw it too when two columns have a dot product above `1e-5 * s * s` in absolute value.
+4. Throw the `RangeError` of the next paragraph when the length of `c1` or `c2` is not `s` within `1e-5 * s`. Throw it too when two columns have a dot product above `1e-5 * s * s` in absolute value.
 5. Write the translation column as the centre, and `radius * s` as the radius.
 6. Write `c0 / s`, `c1 / s` and `c2 / s` as the three rows of `[3]` to `[5]`.
 
@@ -334,7 +332,7 @@ const q = normalize(oc + d * t); // the hit point from the centre, put back on t
 
 The form of `disc` and `k` is the one of Haines, "Precision Improvements for Ray/Sphere Intersection" (Ray Tracing Gems, 2019). It computes the discriminant from the distance of the line to the centre. The textbook form `b * b - a * cc` cancels when the origin is far from the sphere. `k` takes the sign of `b`, so no subtraction of near equal numbers feeds `t1`. `t2` is the other root, by the product of the roots. The form works in world units. It does not divide the ray by the radius, so it adds no rounding for the scale.
 
-**The precision rule.** A throwaway script measured the form above, with every operation rounded to `f32` and none fused, against `f64` on the same `f32` inputs. The unit is `ulp(S)`, the spacing of `f32` at `S = max(1, the largest |oc_k| / r)`. The measure of an error is `|t - t_ref| * |d| / r`, a length in radii. The impact parameter of a ray is the distance of its line to the centre, in radii. The rule:
+**The precision rule.** A throwaway script measured the form above against `f64` on the same `f32` inputs. It rounded every operation to `f32` and fused none. The unit is `ulp(S)`, the spacing of `f32` at `S = max(1, the largest |oc_k| / r)`. The measure of an error is `|t - t_ref| * |d| / r`, a length in radii. The impact parameter of a ray is the distance of its line to the centre, in radii. The rule:
 
 1. For a ray whose impact parameter is at most 0.9 radii, the error is at most `16 * ulp(S)`. The measured worst case was 7.12 over 1,200,000 rays. Their radii ran from 0.01 to 100. Their centres lay within 1,000 of the origin. Their origins lay 1.0001 to 10^5 radii from the centre. Their directions had lengths from 10^-3 to 10^3.
 2. `abs(length(q) - 1)` is at most 4e-7. The measured worst case was 1.43e-7 over 300,000 hits.
@@ -374,7 +372,7 @@ A `Sphere` is an `Object3D`. Its position is the centre. Its rotation turns its 
 
 **Limits.** The instance limit of "The GPU layout" (1,048,576) bounds the spheres. The precision rule holds for the class that the measure covers. Its radii run from 0.01 to 100. Its centres lie within 1,000 of the origin. Its origins lie up to 10^5 radii from the centre. Outside it, the record claims no bound. The `OFFSET` of record 0004 is 1e-4 times the largest of 1 and the point's largest absolute coordinate. For a sphere whose radius is under 1e-3 times that factor, the offset passes a tenth of the radius. The record does not refuse such a sphere. Inference: its contact shadows and reflections move by about the offset.
 
-The offset can also be too small. Precision rule 3 needs an origin at least 1.00005 radii out, so the offset needs at least 5e-5 radii. That fails when the radius is above 2 times the factor. Example: a sphere of radius 100 and a hit point near the origin, where the factor is 1, gets an offset of 1e-6 radii. This case lies inside the measured class. Inference: a grazing secondary ray from such a point may meet the sphere again (a self-hit). The record does not change the offset. Step 6 does not test this case.
+The offset can also be too small. Precision rule 3 needs an origin at least 1.00005 radii out, so the offset needs at least 5e-5 radii. That fails when the radius is above 2 times the factor. Example: a sphere of radius 100 and a hit point near the origin, where the factor is 1, has an offset of 1e-6 radii. This case lies inside the measured class. Inference: a grazing secondary ray from such a point may meet the sphere again (a self-hit). The record does not change the offset. Step 6 does not test this case.
 
 **The oracle.** `scripts/oracle.ts` needs no change. It binds the arrays of the pack and runs `trace.shade.ts`, so the sphere test runs there too. This has a cost. The GPU and the oracle read one pack and run one formula. So the differential gate cannot see a wrong radius in the packer or a wrong term in the formula. Record 0002 adds checks that do not share them: a test against an independent `f64` reference, and the render gate's goldens and probe.
 
@@ -550,9 +548,7 @@ scene. Nothing in the oracle knows the layout. It knows the pack.
   primitive type in the leaves is a second intersection routine, a second surface routine and a
   branch in the hottest loop. The product viewer is glTF (plan §4), which is triangles. Fact: on
   2026-10-06 the owner decided that the engine gains an analytic sphere, after a survey of other
-  renderers ("The analytic sphere"). The kernel holds the sphere as an instance with a
-  flag, so it adds no branch to a loop that tests triangles and no second hierarchy. A coarse mirror ball is where a mesh
-  shows its facets, and a sphere is the one shape the demos draw that a triangle cannot give.
+  renderers ("The analytic sphere"). The kernel holds the sphere as an instance with a flag. It adds no branch to a loop that tests triangles, and no second hierarchy. A coarse mirror ball is where a mesh shows its facets. A sphere is the one shape the demos draw that a triangle cannot give.
   Mitsuba, pbrt and Embree keep it for the same reason. Quads stay triangles.
 - **Why a separate kind, `Sphere`, and not a mode of `SphereGeometry`.** Fact: the owner decided it
   on 2026-10-06. pbrt and Mitsuba name the shape `Sphere`. A tessellated sphere improves with
@@ -602,12 +598,7 @@ Alternatives considered and not taken:
   `src/accel/bvh.ts`, `src/renderers/scene-pack.ts`, `src/renderers/limits.ts`,
   `src/renderers/PathTracer.ts` (tiles, the new uniforms, the pack), `src/kernels/layout.shade.ts`,
   `src/kernels/intersect.shade.ts`, `src/kernels/trace.shade.ts`, `src/index.ts`.
-  `packages/addons/src/loaders/GLTFLoader.ts`. Amendment 3 adds `src/objects/Sphere.ts`,
-  `src/kernels/layout.shade.ts` (`INSTANCE_SPHERE`, `instanceFlags` and the sphere's decoders),
-  `src/kernels/intersect.shade.ts` (`hitSphere`, `sphereSurfaceAt`, `sphereUv`, `Hit.q`),
-  `src/kernels/materials.shade.ts` (`MATERIAL_FLAT_SHADING`), `src/materials/Material.ts`
-  (`flatShading`), `src/renderers/scene-pack.ts` (the sphere's words, its box, the refusals, and the
-  flag bit) and `packages/addons/src/scenes/CornellBox.ts`.
+  `packages/addons/src/loaders/GLTFLoader.ts`. Amendment 3 adds `src/objects/Sphere.ts`. It changes `src/kernels/layout.shade.ts` (`INSTANCE_SPHERE`, `instanceFlags` and the sphere's decoders). It changes `src/kernels/intersect.shade.ts` (`hitSphere`, `sphereSurfaceAt`, `sphereUv`, `Hit.q`). It changes `src/kernels/materials.shade.ts` (`MATERIAL_FLAT_SHADING`) and `src/materials/Material.ts` (`flatShading`). It changes `src/renderers/scene-pack.ts` (the sphere's words, its box, the refusals and the flag bit) and `packages/addons/src/scenes/CornellBox.ts`.
 - **Removed.** `src/renderers/pack.ts`, `QuadGeometry` (renamed), the analytic branches of the
   kernel. `packScene`, `cameraUniforms`, `PackedScene` and `CameraUniforms` leave the public
   surface (record 0003).
@@ -620,14 +611,10 @@ Alternatives considered and not taken:
   byte offsets against the manifest's layout). `scene-pack.test.ts` (a change to one
   geometry re-writes three buffers and no other. A moved transform writes instances, nodes
   and lights. An unchanged scene writes nothing. The limit check throws with the sentence
-  above). `intersect.test.ts`, next to the module it tests, holds the intersection tests on the
-  oracle (a ray through a shared edge meets at least one of the two triangles. A transformed
-  instance is hit where its matrix puts it). `kernels.test.ts` keeps the tests of the sampler, of
+  above). `intersect.test.ts` sits next to the module it tests. It holds the intersection tests on the oracle. A ray through a shared edge meets at least one of the two triangles. A transformed instance is hit where its matrix puts it. `kernels.test.ts` keeps the tests of the sampler, of
   `trace.shade.ts`, of the seven bindings and of the tiles. Amendment 3 owes the tests that steps
   6 and 7 list, the scene test of step 8 and the example of step 10.
-- **Scripts and the site, from Amendment 3.** `scripts/scenes.test.ts`, `scripts/scenes.ts`,
-  `scripts/gates.mjs` (`ORACLE` and `ORACLE_SPHERES`), `scripts/gates/differential.mjs` (`SCENES`, the row `sphere-hit` and `compareHits`), `scripts/gates/render.mjs` (the
-  radius probe), `scripts/probes/hit-sphere.shade.ts` and `scripts/harness-entry.ts`. The goldens and stills of the three examples that call
+- **Scripts and the site, from Amendment 3.** Amendment 3 changes `scripts/scenes.test.ts` and `scripts/scenes.ts`. It changes `scripts/gates.mjs` (`ORACLE` and `ORACLE_SPHERES`) and `scripts/gates/differential.mjs` (`SCENES`, the row `sphere-hit` and `compareHits`). It changes `scripts/gates/render.mjs` (the radius probe) and `scripts/harness-entry.ts`. It adds `scripts/probes/hit-sphere.shade.ts`. The goldens and stills of the three examples that call
   `createCornellBox`: `cornell-box`, `determinism` and `scene-graph`. `site/examples/scene-graph.ts`,
   whose test `child.geometry instanceof SphereGeometry` no longer finds the Cornell box's spheres.
   The new scene `SpheresScene.ts`, the new example `site/examples/spheres.ts`, its golden and its
@@ -635,8 +622,7 @@ Alternatives considered and not taken:
   `site/src/content/docs/guide/scene-graph.mdx` (its geometry table and its Materials
   section) and `docs/benchmarks.md`. The `geometries` example does not change.
 - **Other records.** Records 0002, 0003, 0004 and 0005 carry an amendment of the same date. Record
-  0008 does not. Its cast throws a `TypeError` for a geometry that is not a `BufferGeometry`
-  (record 0008, "What the cast skips"), and it casts at `Mesh` objects alone. It finds no `Sphere`
+  0008 does not. Its cast throws a `TypeError` for a geometry that is not a `BufferGeometry` (record 0008, "What the cast skips"). It casts at `Mesh` objects alone. It finds no `Sphere`
   until record 0008 is amended. Open: the amendment of record 0008 is owed before its step 1
   starts. It adds the sphere test in `f64` and a parity test with the kernel. Record 0007 needs
   none: the added kernel code uses `f32` arithmetic, `sqrt` and `normalize`, and no new binding.
@@ -674,20 +660,15 @@ Each step is one pull request with `Design: 0001` in its commit message. The gat
 5. **Sponza.** Part of Sponza renders (M2's acceptance). The benchmark row is recorded
    (record 0002, the benchmark). Done when the gate and the benchmark script run.
 6. **The kernel and the oracle** (Amendment 3, record 0002, record 0004, record 0005). In
-   `layout.shade.ts`, add `INSTANCE_SPHERE` (1), `instanceFlags(i)` and the decoders of the
-   sphere's words: the centre, the radius, and the move of a vector by the rows of `R^T`. In
+   `layout.shade.ts`, add `INSTANCE_SPHERE` (1) and `instanceFlags(i)`. Add the decoders of the sphere's words: the centre, the radius and the move of a vector by the rows of `R^T`. In
    `intersect.shade.ts`, add `hitSphere`, `sphereSurfaceAt`, `sphereUv` and `Hit.q`. Branch
    `nearest`, `occluded` and `surface` on the flag. The pack does not change. A helper in
    `intersect.test.ts` builds the `nodes` and `instances` arrays of one sphere by hand. Tests, each
    with its number:
    - `layout.test.ts`: `INSTANCE_SPHERE` is 1, and the strides do not change.
-   - `intersect.test.ts`, on the oracle, the precision rule. 100,000 random rays of the classes of
-     the rule, with an impact parameter of at most 0.9, give a worst case of at most 16 units of
-     `ulp(S)` against an independent `f64` formula. `abs(length(q) - 1)` is at most 4e-7. 100,000
+   - `intersect.test.ts`, on the oracle, the precision rule. 100,000 random rays of the classes of the rule have an impact parameter of at most 0.9. Their worst case is at most 16 units of `ulp(S)` against an independent `f64` formula. `abs(length(q) - 1)` is at most 4e-7. 100,000
      rays from an origin at least 1.00005 radii out, pointing away, hit it 0 times.
-   - `intersect.test.ts`, the silhouette. 256 by 256 rays through the plane at unit distance, over
-     the square from -0.2 to 0.2, from an eye 3.4 from a sphere of radius 0.4, hit 18,072 times
-     within 0.5 % of 18,060 (the area of the silhouette, in cells).
+   - `intersect.test.ts`, the silhouette. 256 by 256 rays go through the plane at unit distance, over the square from -0.2 to 0.2. They start at an eye 3.4 from a sphere of radius 0.4. They hit 18,072 times. That is within 0.5 % of 18,060, the area of the silhouette in cells.
    - `intersect.test.ts`, the probe of the instrument. The same rays at radius 0.404 count 18,440
      in `f64`, 2.1 % above 18,060. The test asserts that the 0.5 % tolerance rejects it.
    - `intersect.test.ts`, the walk. `occluded` agrees with `nearest` on 10,000 rays: 10,000 of
@@ -701,8 +682,7 @@ Each step is one pull request with `Design: 0001` in its commit message. The gat
    - `intersect.test.ts`, `sphereUv` against `atan2` and `acos` in `f64` at 100,000 points: `u`
      within 2e-7 and `v` within 2e-7. A throwaway script measured 8.93e-8 and 1.23e-7 at 300,000
      points. `u` is compared on the circle, because 0 and 1 are one point.
-   - `materials.test.ts`: a mirror sample taken at the hit of 100,000 primary rays across the
-     silhouette of a sphere never has `dot(wi, ng)` of 0 or less: 0 of 100,000. Record 0004
+   - `materials.test.ts`: 100,000 primary rays cross the silhouette of a sphere. A mirror sample at each hit never has `dot(wi, ng)` of 0 or less: 0 of 100,000. Record 0004
      measured 0.416 % of the area of a mesh sphere under `ng` before its fold.
    - `determinism.test.ts`: it passes with `ALLOWED` and `VALUE_ONLY` unchanged. The report has 0
      rows outside the lists. The rows `sqrt` and `/` name `hitSphere` among their functions
@@ -771,32 +751,23 @@ Each step is one pull request with `Design: 0001` in its commit message. The gat
    ball and the white ball `Sphere(0.4, material)` at the same centres. Change the comment that
    says every shape is triangles. `scenes.test.ts` holds these counts for the box: 8 instances, 4
    triangles, 8 vertices, 2 lights and 7 nodes. The nodes are 2 for the two plane BLASes and 5 for
-   the TLAS. The 5 is from a throwaway script on the boxes of the spheres, and the sum is an
-   inference until the test runs. Today the same scene counts 1,924 triangles, 1,130 vertices and
+   the TLAS. The 5 is from a throwaway script on the boxes of the spheres. The sum is an inference until the test runs. Today the same scene counts 1,924 triangles, 1,130 vertices and
    1,093 nodes (Amendment 2). Re-derive `ORACLE.mean` by record 0002's rule. The pull request
    records the old value, the measured mean, the largest difference, and the new value. Rewrite the
    goldens with `UPDATE_GOLDENS=1 bun run gate:render`, and commit only the goldens that change.
    The candidates are `cornell-box`, `determinism` and `scene-graph`, the three examples that call
    `createCornellBox`. Show each old and new picture in the pull request. Recapture the stills of
    the same three with `bun run capture:stills`, and commit their `.sha256` files. Change the test
-   in `site/examples/scene-graph.ts` so that it also removes a `Sphere`. Add the probe of record
-   0002 to the render gate: it renders `cornell-box` with the `radius` of every `Sphere` times
-   1.01, and asserts that `comparePictures` fails against the golden. Done when five things hold.
+   in `site/examples/scene-graph.ts` so that it also removes a `Sphere`. Add the probe of record 0002 to the render gate. It renders `cornell-box` with the `radius` of every `Sphere` times 1.01. It asserts that `comparePictures` fails against the golden. Done when five things hold.
    The counts are as above. The differential gate passes on the new `ORACLE.mean`. The render gate
    passes on the committed goldens. The probe fails the gate at a radius 1 % too large. The pull
-   request shows a crop of the mirror ball at 768 pixels, before and after. It sets no number on
-   the brightness of the rim, because the open front of the box also darkens a reflection there
-   (inference). The count of record 0004 holds instead (step 6 of this record). The step starts
-   after the scene pull request that holds the 64 by 32 sphere tessellation and the two-sided lamp
-   has merged. If that pull request merges first, this step replaces its two sphere meshes and
+   request shows a crop of the mirror ball at 768 pixels, before and after. It sets no number on the brightness of the rim. The open front of the box also darkens a reflection there (inference). The count of record 0004 holds instead (step 6 of this record). The step starts after the scene pull request has merged. That pull request holds the 64 by 32 sphere tessellation and the two-sided lamp. If that pull request merges first, this step replaces its two sphere meshes and
    keeps its lamp. The commit names `Design: 0001`, `Design: 0002` and `Design: 0004`.
 9. **The `flatShading` flag** (Amendment 3, record 0003, record 0004, step 8 there). Add
    `Material.flatShading` and `MaterialParameters.flatShading`. Add `MATERIAL_FLAT_SHADING` to
    `materials.shade.ts`, and set bit 11 of `[2].w` in `packMaterial`. In `surfaceAt`, take `ns` as
    `ng` for a material that has the bit. Run `bun run bake:api-surface`. Tests, each with its
-   number, are in record 0004, step 8. They hold the default, the byte 45 of the record, the
-   kernel's `ns` and the oracle's `ns` on 1,000 of 1,000 hits, and the fold on a flat mesh sphere:
-   0 of 100,000. The render gate passes with no golden changed, because no example sets the flag
+   number, are in record 0004, step 8. They hold the default and the byte 45 of the record. They hold the kernel's `ns` and the oracle's `ns` on 1,000 of 1,000 hits. They hold the fold on a flat mesh sphere: 0 of 100,000. The render gate passes with no golden changed, because no example sets the flag
    yet. The commit names `Design: 0001`, `Design: 0003` and `Design: 0004`.
 10. **The comparison example and the docs** (Amendment 3, record 0002, step 9). Add
     `createSpheresScene` in `packages/addons/src/scenes/SpheresScene.ts`, and the example `spheres`
@@ -820,8 +791,7 @@ Each step is one pull request with `Design: 0001` in its commit message. The gat
     the box on `Sphere`. Add the golden `spheres.png` and the still `spheres.webp` with its
     `.sha256`, and no other golden or still. Done when five things hold. `gate:site`, `gate:api`
     and `gate:render` pass. The differential gate and the determinism gate pass on `spheres`: 0
-    differing floats for one seed. The three balls add 3 instances, 960 triangles and 561
-    vertices to the pack, beyond the room's own, because the two mesh balls share one geometry.
+    differing floats for one seed. The three balls add 3 instances, 960 triangles and 561 vertices to the pack, beyond the room's own. The two mesh balls share one geometry.
     The pull request records the measured mean and the largest difference. It shows the three
     balls at 768 pixels. The goldens of all other examples are unchanged in this step. A plan
     change stays out: `docs/plan.md` (section 3.2 and the M6 row) is its own pull request. The
@@ -928,9 +898,7 @@ matrix. It holds 1,091 nodes, 3 of them the TLAS. A 4K frame takes 2 tiles in it
 This amendment also changes two entries below. "Deviations of step 3" names a disposition for each
 open entry. "Configuration and validation record" names the merged pull request of step 3.
 
-**Amendment 3** (2026-10-06, UTC). The owner decided on 2026-10-06, after a survey of other
-renderers, that the engine gains an analytic sphere primitive, and decided five points of its
-shape (listed under "The analytic sphere"). This record said "triangles only" (decision 1). This
+**Amendment 3** (2026-10-06, UTC). The owner decided on 2026-10-06, after a survey of other renderers, that the engine gains an analytic sphere primitive. The owner also decided five points of its shape (listed under "The analytic sphere"). This record said "triangles only" (decision 1). This
 amendment adds the primitive. It settles how the sphere is stored, held by the BVH, intersected,
 packed, tracked and bounded. It changes these places:
 
@@ -956,17 +924,13 @@ first and adds an amendment moves these numbers.
 
 The first draft of this amendment, at 598a23c, held the sphere as an ellipsoid, a flag on a
 `Mesh` with an `AnalyticSphereGeometry`. The owner's decisions replace that shape. The measures of
-the draft ran at `main` 55bde46. No commit between 55bde46 and 13b9e88 touches a kernel, the pack
-or the Cornell box (`git diff 55bde46 13b9e88 --stat`: record 0008, the Sponza example, the
-benchmark rows, the README and the research notes).
+the draft ran at `main` 55bde46. No commit between 55bde46 and 13b9e88 touches a kernel, the pack or the Cornell box. `git diff 55bde46 13b9e88 --stat` lists record 0008, the Sponza example, the benchmark rows, the README and the research notes.
 
 The configuration is `main` at 13b9e88, the compiler pinned at 596c805, bun 1.3.14 and node
 v22.22.0, on 2026-10-06. The measures below come from throwaway scripts in a scratch directory.
 This pull request does not keep them, and no test holds them. Each one is an observed result:
 
-- **The precision of the form.** A script rounded every operation of "The ray and the sphere" to
-  `f32`, fused none, and compared the result with the same formula in `f64` on the same `f32`
-  inputs. For an impact parameter of at most 0.9 the worst case was 7.12 units of `ulp(S)` over
+- **The precision of the form.** A script rounded every operation of "The ray and the sphere" to `f32` and fused none. It compared the result with the same formula in `f64` on the same `f32` inputs. For an impact parameter of at most 0.9 the worst case was 7.12 units of `ulp(S)` over
   1,200,000 rays. For an impact parameter of at most 0.999 it was 20.62, with 10 missed hits of
   1,199,955. The worst `abs(length(q) - 1)` was 1.43e-7 over 300,000 hits. A ray from at least
   1.00005 radii out, away from the sphere, hit it 0 times in 126,199. The draft's form divided the
@@ -974,8 +938,7 @@ This pull request does not keep them, and no test holds them. Each one is an obs
 - **The uv.** A script built `sphereUv` of record 0004 from `+`, `-`, `*`, `/` and `sqrt`, with
   every operation rounded to `f32`. Against `atan2` and `acos` in `f64` at 300,000 points, the
   worst angle error was 3.81e-7 rad. The worst error of `u` was 8.93e-8 and of `v` was 1.23e-7.
-- **The silhouette.** In `f64`, 256 by 256 rays over the square from -0.2 to 0.2 at unit distance,
-  from 3.4 from a sphere of radius 0.4, hit 18,072 times. The area of the silhouette is 18,060
+- **The silhouette.** In `f64`, 256 by 256 rays hit 18,072 times. They went over the square from -0.2 to 0.2 at unit distance, from 3.4 from a sphere of radius 0.4. The area of the silhouette is 18,060
   cells. A radius of 0.404 gave 18,440 and a radius of 0.396 gave 17,708.
 - **The fold.** A script took 4,000,000 points spread evenly over the disc that a sphere covers
   from far away. Each point gave one mirror reflection about `ng`, in `f32`. It gave 0 reflections
@@ -984,17 +947,14 @@ This pull request does not keep them, and no test holds them. Each one is an obs
   1,924 triangles, 1,130 vertices and 1,093 nodes. A script built the TLAS over the same eight
   boxes, with the spheres' boxes exact. It gave 5 nodes, the same as the mesh boxes give.
 
-Two inferences follow. First, the differential gate cannot see a wrong radius in the packer or a
-wrong term in the formula, because the GPU and the oracle read one pack and run one formula.
+Two inferences follow. First, the differential gate cannot see a wrong radius in the packer or a wrong term in the formula. The GPU and the oracle read one pack and run one formula.
 Second, one sphere costs 128 bytes, so 1,048,576 spheres fill the instance limit exactly. The
 dispositions:
 
 - **The primitive.** The owner's decision: an analytic sphere, intersected by the quadratic, with
   `ng = ns`, as a separate kind named `Sphere`. A mesh sphere stays, with smooth vertex normals by
   default, and a glTF mesh keeps its normals. Decisions 1, 10 and 15 hold it.
-- **How it is stored and held.** Decided by default: one instance with `flags` bit 0, the centre,
-  the radius and the rotation in its words, a TLAS leaf for the BVH, and no node, triangle or
-  vertex. "The analytic sphere" gives the three options and their costs. Decision 11 holds it.
+- **How it is stored and held.** Decided by default: one instance with `flags` bit 0. Its words hold the centre, the radius and the rotation. The BVH holds it as a TLAS leaf, with no node, triangle or vertex. "The analytic sphere" gives the three options and their costs. Decision 11 holds it.
 - **A non-uniform scale.** Decided by default, as the owner asked the record to decide: refused
   with a `RangeError`. The kernel does not move the ray into the sphere's own space. A mesh draws
   an ellipsoid. Decision 12 holds it. Records 0001 and 0004 agree on it: the sphere's normal is a
@@ -1017,14 +977,11 @@ dispositions:
   ellipsoid and a mirrored ball, and the ellipsoid is refused. The new `spheres` scene is the
   owner's comparison of three balls. It is both the example of step 10 and a differential scene,
   so the GPU holds the flag and the `Sphere` on a picture. This is decided by default.
-- **Open: record 0008.** The cast of record 0008 finds no `Sphere`. Next action: an amendment of
-  record 0008, before its step 1 starts, that adds the sphere test in `f64` and a parity test with
-  the kernel.
+- **Open: record 0008.** The cast of record 0008 finds no `Sphere`. Next action: amend record 0008 before its step 1 starts. The amendment adds the sphere test in `f64` and a parity test with the kernel.
 - **Open: `docs/plan.md`.** Section 3.2 says "triangles only", and the M6 row names the SDF. This
   amendment does not touch the plan. Next action: a plan pull request, which waits for the owner's
   "merge".
-- **Open: the scene pull request.** The pull request that holds the 64 by 32 tessellation and the
-  two-sided lamp changes the spheres that step 8 replaces. Next action: step 8 starts after it
+- **Open: the scene pull request.** One pull request holds the 64 by 32 tessellation and the two-sided lamp. It changes the spheres that step 8 replaces. Next action: step 8 starts after it
   merges, or replaces its sphere meshes.
 
 **Approval and plan record.** Accepted on 2026-10-05 (UTC). The owner approved the merge of typeshade/radiance#6 in the conversation, which merged this record as `draft` at 9e8b479. The owner then said to implement the records with Opus 5.5 and Sonnet 5.5, and that go-ahead is the acceptance. Every entry of "Decisions for the owner" stands as proposed.

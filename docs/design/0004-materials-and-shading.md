@@ -47,11 +47,7 @@ function to differentiate.
 | `[7]` | bits(emissiveMap)   | reserved           | reserved           | reserved             |
 
 - `emissive` is stored already multiplied by `emissiveIntensity`. The kernel reads one colour.
-- `type` is the low 8 bits of `[2].w`: 0 diffuse, 1 mirror, 2 physical. The flags above them:
-  bit 8 "emits" (any channel of `[1].xyz` above 0, computed by the host so the kernel tests one
-  bit), bit 9 "double sided" (the material emits from its back face too, as "The rules of the
-  surface and of emission" says), bit 10 "alpha cutout" (M3), bit 11 "flat shading" (Amendment 3,
-  "Flat shading").
+- `type` is the low 8 bits of `[2].w`: 0 diffuse, 1 mirror, 2 physical. The flags above them are these. Bit 8 is "emits": any channel of `[1].xyz` is above 0. The host computes it, so the kernel tests one bit. Bit 9 is "double sided": the material emits from its back face too, as "The rules of the surface and of emission" says. Bit 10 is "alpha cutout" (M3). Bit 11 is "flat shading" (Amendment 3, "Flat shading").
 - A texture id is `0xffffffff` for none, else `(class << 24) | layer` (the texture plan below).
 - M2 fills `[0]` to `[3]` with the textures all none, and `[4]` to `[7]` zero with `[7].x` none.
   M3 fills the rest. The stride does not change between.
@@ -403,25 +399,19 @@ optional and `dpdu` from the triangle is exact for a triangle). Texture atlases 
    Done when a test sends `0xffffffff` through the oracle's binding and reads it back, the
    Cornell box gate and the render gate pass with no change of a number, and the determinism
    lint passes.
-7. **The fold of a mirror sample.** `sampleBsdf` in `materials.shade.ts` folds a mirror direction
-   under `ng` back across `ng`, as "A direction under the surface" states. `radiance` in
+7. **The fold of a mirror sample.** `sampleBsdf` in `materials.shade.ts` folds a mirror direction under `ng` back across `ng`. "A direction under the surface" states the rule. `radiance` in
    `trace.shade.ts` does not change. A test in `materials.test.ts` calls `sampleBsdf` with a grazing
    `wo` and an `ns` tilted away from `ng`. It asserts that `dot(wi, ng)` is above 0. A second
    assertion covers a mirror sample whose reflection is above `ng`. That sample keeps
-   `reflect(-wo, ns)`. The test carries `Verifies: Design 0004.6`. The pull request measures the
-   fold at the edge of the band on a mirror ball of `SphereGeometry` (radius 0.4, 32 by 16
-   segments) in a Cornell box that the test builds itself. After record 0001, step 8, the shipped
+   `reflect(-wo, ns)`. The test carries `Verifies: Design 0004.6`. The pull request measures the fold at the edge of the band. The mirror ball is a `SphereGeometry` of radius 0.4 and 32 by 16 segments, in a Cornell box that the test builds. After record 0001, step 8, the shipped
    Cornell box has `Sphere` objects and no band. The measure is at 256 and 768 pixels. It shows
    that the radiance has no step there. It measures the alternative too, which reflects about `ng`
    in that case. If it delivers the alternative, it amends this record first. The golden of an
    example whose mirror is a mesh can change. After step 8 of record 0001, `cornell-box` and
-   `determinism` are not candidates, because their mirror is analytic. The pull request finds the
-   candidates by running the render gate, and it lists each golden that changes, with the old and
-   the new picture. `UPDATE_GOLDENS=1 bun run gate:render` rewrites every golden, so the pull
+   `determinism` are not candidates, because their mirror is analytic. The pull request finds the candidates by running the render gate. It lists each golden that changes, with the old and the new picture. `UPDATE_GOLDENS=1 bun run gate:render` rewrites every golden, so the pull
    request commits only the goldens that change. `bun run capture:stills` recaptures the stills of
    every example, so the pull request commits only the stills whose picture changes. The pull
-   request commits the `.sha256` file of each changed still too. The pull request measures the
-   floor caustic again on the same test scene and compares it with the ratio of Amendment 2. It
+   request commits the `.sha256` file of each changed still too. The pull request measures the floor caustic again on the same test scene. It compares the result with the ratio of Amendment 2. It
    names this record on a line of its own, `Design: 0004`. Done when four things hold. The test
    passes. The render gate passes on the goldens that the pull request commits. The differential
    gate passes. The stills match their hashes.
@@ -595,8 +585,7 @@ keep. Each is an observed result:
 - **The fold.** A script took 4,000,000 points spread evenly over the disc that a sphere covers
   from far away. Each gave one mirror reflection about `ng` in `f32`. It gave 0 with `dot(wi, ng)`
   of 0 or less. Amendment 2 measured 0.416 % of the area for a mesh sphere of 32 by 16 segments.
-- **The uv.** The error of `sphereUv` against `f64` was at most 3.81e-7 rad in an angle, 8.93e-8
-  in `u` and 1.23e-7 in `v`, at 300,000 points.
+- **The uv.** The error of `sphereUv` against `f64` at 300,000 points was at most 3.81e-7 rad in an angle. It was at most 8.93e-8 in `u` and 1.23e-7 in `v`.
 - **The cost.** The record gives no measure of the cost of `sphereUv`. It gives an estimate and a
   rule for the case that the estimate is wrong.
 - **The flag's bit.** Fact: bits 8, 9 and 10 of `[2].w` hold "emits", "double sided" and "alpha
@@ -613,8 +602,7 @@ The dispositions:
 - **Flat shading.** The owner's decision: a flag `flatShading`, default false, with `ns = ng`
   when it is true. Decision 10 holds it. The owner's other two decisions leave this record
   unchanged: `SphereGeometry` keeps smooth vertex normals, and a glTF mesh keeps its normals.
-- **Step 7.** Proposed: the fold is measured on a mesh sphere that the test builds, because the
-  shipped Cornell box no longer has one after record 0001, step 8. The step's goldens are the
+- **Step 7.** Proposed: the fold is measured on a mesh sphere that the test builds. The shipped Cornell box no longer has one after record 0001, step 8. The step's goldens are the
   examples whose mirror is a mesh.
 - **Open: the measure of the fold on a mesh.** Amendment 2's numbers hold for a mesh sphere only.
   Next action: step 7, as before.
