@@ -55,18 +55,19 @@ samples in another order, so the last bits can differ.
 These facts set the split. The code is `render` in
 `packages/radiance/src/renderers/PathTracer.ts`:
 
-- The first frame that a renderer draws adds one sample. That frame measures the speed that sizes
-  the tiles (record 0001, "Tiles and the watchdog"). `reset()` and a new `seed` do not bring this
-  rule back.
+- The first frame that a renderer draws adds one sample, whatever its resolution. That frame
+  measures the speed that sizes the tiles (record 0001, "Tiles and the watchdog"). `reset()` and a
+  new `seed` do not bring this rule back.
 - Each later frame adds the value that `samplesPerFrame` has at the start of the frame, rounded
   down and not less than 1.
 - When `maxSamples` is finite, the last frame adds no more than the samples left to reach it.
 - When the caller sets `targetFrameTime`, `render` changes `samplesPerFrame` after each frame. The
-  split then follows the frame times and changes from run to run.
+  split then follows the frame times and can change from run to run.
 - A frame at a lower resolution (`preview` above 1) adds one sample.
 - The tiles of a frame do not change the split. One pixel is one invocation in one dispatch. The
   test "adds the same samples to every pixel whatever the tiles, bit for bit" in
-  `packages/radiance/src/kernels/kernels.test.ts` holds this, with the same frames in each render.
+  `packages/radiance/src/kernels/kernels.test.ts` holds this. Each render in that test has the
+  same frames.
 
 With the same `samplesPerFrame` and `maxSamples`, two first renders of two new renderers have the
 same split. So do two later renders of one renderer. The first render of a renderer and a later
@@ -163,7 +164,7 @@ and no lint (the status quo, which caught the divergence late).
    in each kernel file.
 2. **The guide page** states the promise, the split and a way to check it. An author writes it
    by hand, and typeshade/radiance#21 delivers it with the determinism example.
-3. **The generated report** at M4: a page of the guide, generated from the lint's output, with
+3. **The generated report** at M4: a page of the guide, generated from the lint's output. It has
    the rows of every kernel and the reason for each row.
 
 ## Decisions for the owner
@@ -190,7 +191,9 @@ this record. Two more differences are not in that list: the file of the lists, a
 2026-10-06 about the first frame. This amendment writes entries 1 and 2 and the file of the lists
 into the record, as "made part of the record". It leaves entry 3 and the finding open. The merge of
 the pull request that carries it is the owner's acceptance of each entry marked "made part of the
-record". The merge settles no open entry.
+record". That includes Decision 4 with the first entry and Decision 5 with the second. The merge
+changes the disposition of no open entry. Entry 3 waits for the owner's answer. The finding needs
+no answer from the owner. It closes when the site pull request that its entry names merges.
 
 - **The split** (deviation 1 of #21). The record promised one image for one seed with no
   condition. The kernel adds each frame's sum to the accumulator. Two renders agree bit for bit
@@ -220,13 +223,16 @@ record". The merge settles no open entry.
   different splits. At 6ad088d the example counts 5,404 differing floats of 24,576 for seed 1
   against seed 1 again, and not 0. `PathTracer.ts` at adfbb71, the revision that the pull request
   body measured, gave every frame `samplesPerFrame` samples. The commit 9f2cf1a added the
-  first-frame rule.
-  The sample code of the guide's page has the same fault, by the code: its first render adds 65
-  samples and its second adds 64. Proposed: open. Two ways close it, and decision 4 chooses
-  between them. The site can give the renders of the example and of the sample the same split.
-  Inference: the second and the third render of one renderer have the same split, so an example
-  that draws seed 2 first and then seed 1 twice makes its three counts in three renders and ends
-  on seed 1. Or the kernel can remove the condition.
+  first-frame rule. The sample code of the guide's page has the same fault, by the code: its first
+  render adds 65 samples and its second adds 64. Proposed: open, until a site pull request
+  merges. With Decision 4 accepted, the site closes the finding, because Decision 4 keeps the
+  kernel. That pull request gives the two renders of seed 1 one split in two places. The first
+  is `run()` in `site/examples/determinism.ts`. The second is the sample in
+  `site/src/content/docs/guide/determinism.mdx`. For example, each can render seed 2 first and
+  then seed 1 twice. Inference: the second and the third render of one renderer have the same
+  split, so that order ends on seed 1 in three renders. That is one way to end the example
+  without the fourth render, and entry 3 stays open for the owner's answer. The captions of the
+  panel and the text after the sample follow the new order.
 
 **The numbers of Amendment 2.** A page in the render harness (`scripts/gates/_browser.mjs`)
 measured these on 2026-10-06 at `main` 6ad088d, pin 596c805, bun 1.3.14, Chromium on SwiftShader.
@@ -247,7 +253,7 @@ samples. With it, the first render, the render of 7 samples a frame and the rend
 frame each gave 0 differing floats against the reference render. Seed 2 still gave 765. This is an
 observed result and not a design. Decision 4 does not choose it.
 
-**Approval and plan record.** Accepted on 2026-10-05 (UTC). The owner approved the merge of typeshade/radiance#6 in the conversation, which merged this record as `draft` at 9e8b479. The owner then said to implement the records with Opus 5.5 and Sonnet 5.5, and that go-ahead is the acceptance. Every entry of "Decisions for the owner" stands as proposed.
+**Approval and plan record.** Accepted on 2026-10-05 (UTC). The owner approved the merge of typeshade/radiance#6 in the conversation, which merged this record as `draft` at 9e8b479. The owner then said to implement the records with Opus 5.5 and Sonnet 5.5, and that go-ahead is the acceptance. Entries 1 to 3 of "Decisions for the owner" stand as proposed. Entries 4 and 5 come with Amendment 2.
 
 **Configuration and validation record.** The pull request typeshade/radiance#15 (cb07747)
 delivered step 1. The pull request typeshade/radiance#21 (6ad088d) delivered step 2. The compiler
