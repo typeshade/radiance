@@ -1,13 +1,13 @@
-// The materials M1 has, side by side: diffuse spheres in four colours and a mirror, on a white
-// floor under one wide light. The light is an emissive quad; it is also what the mirror shows.
+// Three lights of one size and three powers, over three spheres. The path tracer lists the
+// triangles of every emissive mesh in a light table, and picks one for each bounce with a chance
+// in proportion to its power: its area times the mean of its colour. The lights here are 1, 4 and
+// 16 in intensity and equal in area, so they are picked about 5 %, 19 % and 76 % of the time.
 
 import {
   Clock,
-  Color,
   DiffuseMaterial,
   EmissiveMaterial,
   Mesh,
-  MirrorMaterial,
   PathTracer,
   PerspectiveCamera,
   PlaneGeometry,
@@ -17,38 +17,38 @@ import {
 import { OrbitControls } from '@typeshade/radiance-addons';
 import type { ExampleRun } from './types.ts';
 
-export default async function materials(canvas: HTMLCanvasElement): Promise<ExampleRun> {
+/** The intensity of each lamp, from left to right. */
+const POWERS = [1, 4, 16] as const;
+
+export default async function lights(canvas: HTMLCanvasElement): Promise<ExampleRun> {
   const scene = new Scene();
 
-  const white = new DiffuseMaterial({ color: new Color(0.8, 0.8, 0.8) });
-  const floor = new Mesh(new PlaneGeometry(8, 6), white);
+  const white = new DiffuseMaterial({ color: 0xd8d8d8 });
+  const floor = new Mesh(new PlaneGeometry(10, 6), white);
   floor.rotation.x = -Math.PI / 2;
-  const back = new Mesh(new PlaneGeometry(8, 4), white);
-  back.position.set(0, 2, -2);
-  const light = new Mesh(new PlaneGeometry(4, 1.5), new EmissiveMaterial({ intensity: 6 }));
-  light.position.set(0, 3, 0.5);
-  light.rotation.x = Math.PI / 2;
-  scene.add(floor, back, light);
+  const wall = new Mesh(new PlaneGeometry(10, 4), white);
+  wall.position.set(0, 2, -2.5);
+  scene.add(floor, wall);
 
-  const spheres = [
-    new DiffuseMaterial({ color: 0xd9534f }),
-    new DiffuseMaterial({ color: 0xf0ad4e }),
-    new MirrorMaterial(),
-    new DiffuseMaterial({ color: 0x5cb85c }),
-    new DiffuseMaterial({ color: 0x428bca }),
-  ];
-  spheres.forEach((material, i) => {
-    const ball = new Mesh(new SphereGeometry(0.45), material);
-    ball.position.set((i - 2) * 1.05, 0.45, 0);
-    scene.add(ball);
+  const ball = new SphereGeometry(0.5);
+  const lamp = new PlaneGeometry(0.9, 0.9);
+  POWERS.forEach((intensity, i) => {
+    const x = (i - 1) * 2.4;
+    const light = new Mesh(lamp, new EmissiveMaterial({ intensity }));
+    light.position.set(x, 2.4, 0);
+    // Face down and toward the camera, so each lamp shows its own brightness.
+    light.rotation.x = 0.9;
+    const sphere = new Mesh(ball, white);
+    sphere.position.set(x, 0.5, 0);
+    scene.add(light, sphere);
   });
 
   const camera = new PerspectiveCamera(35);
-  camera.position.set(0, 1.6, 6.5);
+  camera.position.set(0, 1.6, 7);
 
   const renderer = await new PathTracer({ canvas, seed: 1, targetFrameTime: 30 }).init();
   const controls = new OrbitControls(camera, canvas);
-  controls.target.set(0, 0.6, 0);
+  controls.target.set(0, 1.2, 0);
   controls.minDistance = 0.05;
   controls.maxDistance = 50;
   controls.update();
