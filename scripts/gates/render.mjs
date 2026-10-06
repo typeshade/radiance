@@ -1,11 +1,13 @@
 // === The render gate: each example's picture held to its committed golden ===
 //
 // The gate runs each example of site/examples on a canvas of `RENDER.size`, with `RENDER.seed`,
-// until every pixel has `RENDER.samples` samples. It runs on the harness browser. `RENDER` is in
-// scripts/gates.mjs. The displayed image, `readPixels()`, is quantized to 8 bits as the PNG
-// encoder does. The gate holds it to scripts/__goldens__/<example>.png within the tolerance of
-// `RENDER`. The goldens are 8-bit PNGs. The gate writes them, and the decoder in ./_png.mjs reads
-// them. Docs/design/0002-verification.md lists the gate. Run it alone with `bun run gate:render`.
+// until every pixel has `RENDER.samples` samples. An example that sets its own seeds is held at the
+// seed of the first render that reaches `RENDER.samples` (`OWN_SEED`). It runs on the harness
+// browser. `RENDER` is in scripts/gates.mjs. The displayed image, `readPixels()`, is quantized to 8
+// bits as the PNG encoder does. The gate holds it to scripts/__goldens__/<example>.png within the
+// tolerance of `RENDER`. The goldens are 8-bit PNGs. The gate writes them, and the decoder in
+// ./_png.mjs reads them. Docs/design/0002-verification.md lists the gate. Run it alone with
+// `bun run gate:render`.
 //
 // The site's stills (site/public/stills) are not goldens. A still is the picture a page shows,
 // captured at 64 samples a pixel and hashed (scripts/capture-stills.mjs).
@@ -137,7 +139,9 @@ const firstLine = (compared) => compared.message.split('\n')[0];
  * The seed of the picture the gate reads, for an example that sets its own seeds. The gate sets
  * `RENDER.seed` before the example's first render, and the example replaces it. The determinism
  * example draws seed 2 first (site/examples/determinism.ts), so its picture at `RENDER.samples` is
- * seed 2's. Every other example draws `RENDER.seed`.
+ * seed 2's. Every other example draws `RENDER.seed`. The 2 is a copy of `RENDER.otherSeed` in
+ * site/examples/determinism.ts. A script cannot import that file. When the two differ, the check
+ * of `ran` against `wanted` in `holdExample` fails the example and names both seeds.
  */
 const OWN_SEED = new Map([['determinism', 2]]);
 

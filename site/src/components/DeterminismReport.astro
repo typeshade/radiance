@@ -28,7 +28,7 @@ const kinds = [...new Set(rows.map((row) => row.kind))].filter((kind) => kind in
   {`The page renders the Cornell box three times on your device, at ${RENDER.width} by ${RENDER.height} pixels and ${RENDER.samples} samples a pixel. The first render uses seed ${RENDER.otherSeed}. The second and the third use seed ${RENDER.seed}, with a reset between them. Each render has ${floats} floats: four a pixel. The page reads every float of every render and counts the floats that differ.`}
 </p>
 <p>
-  Two renders of one seed on one device must differ in no float. A different seed must differ in many. Seed {RENDER.otherSeed} goes first because the first frame of a renderer adds one sample, and the two renders of seed {RENDER.seed} need the same split of their samples into frames. The <a href={guide}>guide</a> states the promise and what it needs.
+  Two renders of one seed on one device must differ in no float. A different seed must differ in many. Seed {RENDER.otherSeed} goes first because the first frame of a renderer adds one sample. So the two renders of seed {RENDER.seed} have the same split of their samples into frames. The <a href={guide}>guide</a> states the promise and what it needs.
 </p>
 
 <h2 id="report">What the compiler reports</h2>
@@ -57,5 +57,8 @@ const kinds = [...new Set(rows.map((row) => row.kind))].filter((kind) => kind in
   {kinds.map((kind, i) => <>{i > 0 && ' '}Kind <code>{kind}</code> means {KINDS[kind]}.</>)}
 </p>
 <p>
-  Every row is in the two lists of <a href={record}>design record 0005</a>. The list <code>ALLOWED</code> names the operations a kernel may use anywhere: {allowed.map((op, i) => <>{i > 0 && ', '}<code>{op}</code></>)}. The list <code>VALUE_ONLY</code> names the operations a function may use only to make a value: {pairs.map(([fn, ops], i) => <>{i > 0 && ', '}{ops.map((op, j) => <>{j > 0 && ' and '}<code>{op}</code></>)} in <code>{fn}</code></>)}. {valueOnlyRows.length === 0 ? <>At this pin every row is in <code>ALLOWED</code>, so <code>VALUE_ONLY</code> binds no row.</> : <>At this pin {valueOnlyRows.length} {valueOnlyRows.length === 1 ? 'row is' : 'rows are'} in <code>VALUE_ONLY</code> alone.</>} Rule 3 of the record lets the bounded and inherited operations steer a path. The bounds of the oracle gate hold what they move. Rule 2 lets <code>exp2</code> and <code>pow</code> make a value, as the tone map does, and keeps them from choosing a path. The test <code>determinism.test.ts</code> reads the same two lists in CI. The build of this site stops when one of these kernels gains a row that is outside them.
+  Every row is in the two lists of <a href={record}>design record 0005</a>. The list <code>ALLOWED</code> names the operations a kernel may use anywhere: {allowed.map((op, i) => <>{i > 0 && ', '}<code>{op}</code></>)}. The list <code>VALUE_ONLY</code> names the operations a function may use only to make a value: {pairs.map(([fn, ops], i) => <>{i > 0 && ', '}{ops.map((op, j) => <>{j > 0 && ' and '}<code>{op}</code></>)} in <code>{fn}</code></>)}. {valueOnlyRows.length === 0 ? <>At this pin every row is in <code>ALLOWED</code>, so <code>VALUE_ONLY</code> binds no row.</> : <>At this pin {valueOnlyRows.length} {valueOnlyRows.length === 1 ? 'row is' : 'rows are'} in <code>VALUE_ONLY</code> alone.</>}
+</p>
+<p>
+  Rule 3 of record 0005 lets the bounded and inherited operations steer a path. The bounds of the oracle gate hold what they move. Rule 2 lets <code>exp2</code> and <code>pow</code> make a value, as the tone map does, and keeps them from choosing a path. The test <code>determinism.test.ts</code> reads the same two lists in CI. The build of this site stops when one of these kernels gains a row that is outside them.
 </p>
