@@ -13,6 +13,8 @@
 // and the events are `start`, `change` and `end`. Movement integrates with `dt`, so it does not
 // depend on the frame rate. There is no collision: the camera may pass through a wall. There is no
 // pointer lock: a drag on the canvas turns the view, so the page needs no click to capture it.
+// `start` and `end` fire for a pointer drag only, not for a held key. `change` fires from `update()`.
+// The keys are read from the whole document while the controls are enabled.
 // The keys are read by `KeyboardEvent.code`, so they do not depend on the keyboard layout.
 
 import { EventDispatcher, Vector3, type Camera } from '@typeshade/radiance';
@@ -55,6 +57,10 @@ export class FlyControls extends EventDispatcher<FlyControlsEvents> {
     this.#listen(doc, 'keydown', (e) => this.#onKey(e as KeyboardEvent, true));
     this.#listen(doc, 'keyup', (e) => this.#onKey(e as KeyboardEvent, false));
     this.#listen(domElement, 'blur', () => this.#keys.clear());
+    // The keys come from the document, so a lost window focus (Alt-Tab) must clear them too.
+    const win = (domElement.ownerDocument as Document | undefined)?.defaultView;
+    if (win) this.#listen(win, 'blur', () => this.#keys.clear());
+    this.#listen(doc, 'visibilitychange', () => this.#keys.clear());
     if (domElement.tabIndex < 0) domElement.tabIndex = 0;
     if (domElement.style) domElement.style.touchAction = 'none';
   }
@@ -137,15 +143,18 @@ export class FlyControls extends EventDispatcher<FlyControlsEvents> {
   }
 
   #onKey(e: KeyboardEvent, down: boolean): void {
-    // A key let go always counts, so a key held while the controls turn off does not stay down.
-    if (!this.enabled && down) return;
+    // A key let go always counts, before any filter, so no key stays down.
+    if (!down) {
+      this.#keys.delete(e.code);
+      return;
+    }
+    if (!this.enabled) return;
     const t = e.target as HTMLElement | null;
     if (t !== null && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName ?? '')))
       return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (!/^(Key[WASDQE]|Shift(Left|Right))$/.test(e.code)) return;
-    if (down) this.#keys.add(e.code);
-    else this.#keys.delete(e.code);
+    this.#keys.add(e.code);
     if (e.code.startsWith('Key')) e.preventDefault();
   }
 
