@@ -5,7 +5,7 @@
 // have most of its samples hidden by the roof. The galleries and the curtains are lit by the
 // paths that bounce in from the nave. The view starts in fly mode inside the nave: drag to look,
 // W A S D to move, Q and E to go down and up, Shift to go faster. KeyF swaps to the orbit, which
-// is free, and back (swap-controls.ts).
+// is free, and back (site/src/lib/swap-controls.ts).
 // The model is by Frank Meinl (Crytek), from the Computer Graphics Archive of Morgan McGuire, under
 // CC BY 3.0 (site/public/assets/LICENSES.md has the credit and the source).
 //
@@ -22,7 +22,7 @@ import {
   Scene,
 } from '@typeshade/radiance';
 import { FlyControls, GLTFLoader, OrbitControls } from '@typeshade/radiance-addons';
-import { swapControls } from './swap-controls.ts';
+import { swapControls } from '../src/lib/swap-controls.ts';
 import type { ExampleRun } from './types.ts';
 
 /**
