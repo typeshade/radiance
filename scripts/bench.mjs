@@ -165,9 +165,11 @@ export function deviceName(info) {
   return parts.length > 0 ? parts.join(' ') : 'unknown';
 }
 
-/** True when the adapter is software: SwiftShader, llvmpipe or a fallback adapter. */
+/** True when the adapter is software: SwiftShader, llvmpipe, WARP (the "Microsoft Basic Render
+ *  Driver") or a fallback adapter. */
 export const isSoftware = (info, name) =>
-  info?.isFallbackAdapter === true || /swiftshader|llvmpipe|software/i.test(name);
+  info?.isFallbackAdapter === true ||
+  /swiftshader|llvmpipe|software|basic render driver|warp/i.test(name);
 
 /** The page. `window.sceneNames()` lists the scenes: `cornell`, then every site example's id.
  *  `window.adapter()` answers the adapter. `window.bench(options)` renders the named

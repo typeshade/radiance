@@ -30,7 +30,9 @@ Cornell box) and every site example. Each row has these columns.
 | `browser`   | The browser and its version.                                                                                         |
 
 The top-level BVH and the packing of the scene are not in `BVH ms`. The page builds the BVH again
-for the timing, so the number is the cost of the builder and not a part of `frame ms`.
+for the timing, so the number is the cost of the builder and not a part of `frame ms`. A page that
+is not cross-origin isolated has a timer of about 0.1 ms resolution. A `BVH ms` value below that
+resolution reads as 0.0.
 
 ## The options
 
@@ -80,8 +82,10 @@ So `bun` must be an executable, as the installer from bun.sh sets it up. A `.cmd
 9. Copy each row of the output into the real GPU table below.
 10. Commit the rows in a pull request.
 
-The default run renders every scene at 512 x 512 and 1920 x 1080 with 16 samples a pixel. To record
-the 1080p speed of one scene, run `bun run bench --gpu --scene cornell --size 1920x1080`.
+The script records a WARP adapter (the "Microsoft Basic Render Driver") as software, even when the
+browser does not set the fallback flag. The default run renders every scene at 512 x 512 and
+1920 x 1080 with 16 samples a pixel. To record the 1080p speed of one scene, run
+`bun run bench --gpu --scene cornell --size 1920x1080`.
 
 ## CI
 
