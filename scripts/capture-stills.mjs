@@ -1,8 +1,11 @@
 // Captures the still of every example: builds nothing itself (`bun run capture:stills` builds
 // the site first with STILLS_REBASELINE=1), opens each example's page in Chromium on
 // SwiftShader, waits for STILL_SAMPLES samples a pixel, and writes the canvas to
-// site/public/stills/<id>.webp with a .sha256 of its bytes. Commit both: the build checks the
-// hash (scripts/stills.mjs), so a still changes only by a deliberate capture.
+// site/public/stills/<id>.webp with a .sha256 of its bytes. An example that fills a panel under
+// its canvas (`ExampleRun.panel`) runs passes of its own, with its own sample count: the capture
+// waits for the `data-done` mark the example sets in the panel, and not for STILL_SAMPLES. Commit
+// both files: the build checks the hash (scripts/stills.mjs), so a still changes only by a
+// deliberate capture.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import sharp from 'sharp';
@@ -10,9 +13,19 @@ import { launchBrowser, serve } from './gates/_browser.mjs';
 import { exampleIds, sha256, stillPath } from './stills.mjs';
 
 /** The samples a pixel a still is taken at. */
-const STILL_SAMPLES = Number(process.env.STILL_SAMPLES ?? 256);
+const STILL_SAMPLES = Number(process.env.STILL_SAMPLES ?? 64);
+/** The most samples a pixel the stage traces on an example page: MAX_SAMPLES in
+ *  site/src/islands/ExampleStage.tsx. A tracer stops at this cap, so a larger STILL_SAMPLES never
+ *  arrives. */
+const STILL_SAMPLES_CEILING = 1024;
 /** The size a still is rendered at, in CSS pixels at a device pixel ratio of 1. */
 const VIEWPORT = { width: 1280, height: 900 };
+if (STILL_SAMPLES > STILL_SAMPLES_CEILING) {
+  console.error(
+    `STILL_SAMPLES is ${STILL_SAMPLES}, above ${STILL_SAMPLES_CEILING}, the cap of the stage (MAX_SAMPLES).`,
+  );
+  process.exit(1);
+}
 
 const siteRoot = join(process.cwd(), 'site');
 const only = process.argv.slice(2);
@@ -32,15 +45,26 @@ try {
     // stopped on adds up samples. Any other is paused after, to stop on a finished frame.
     await page.waitForSelector('[data-stage] [data-running]');
     const animated = (await page.locator('[data-stage-toolbar][data-animated]').count()) > 0;
-    if (animated) await pause.click();
-    await page.waitForFunction(
-      (n) => Number(document.querySelector('[data-stage-toolbar]')?.dataset.samples) >= n,
-      STILL_SAMPLES,
-      // On SwiftShader the triangle kernel (design record 0001) traces about 30,000 paths a
-      // second, so a still of 718 x 450 pixels at 256 samples takes about 45 minutes.
-      { timeout: 120 * 60_000, polling: 500 },
+    const panel = (await page.locator('[data-stage-panel][data-filled]').count()) > 0;
+    if (panel) {
+      // Three renders of the stage's size at RENDER.samples (site/examples/determinism.ts).
+      await page.waitForSelector('[data-stage-panel] [data-done]', { timeout: 120 * 60_000 });
+    } else {
+      if (animated) await pause.click();
+      await page.waitForFunction(
+        (n) => Number(document.querySelector('[data-stage-toolbar]')?.dataset.samples) >= n,
+        STILL_SAMPLES,
+        // On SwiftShader the triangle kernel (design record 0001) traces about 15,000 paths a
+        // second (measured 2026-10-06, 4 cores), so a still of 718 x 450 pixels at 64 samples takes
+        // about 25 minutes. A still is the picture a page shows before its canvas runs, so 64
+        // samples are enough: it is hashed, not held to a golden.
+        { timeout: 120 * 60_000, polling: 500 },
+      );
+      if (!animated) await pause.click();
+    }
+    const samples = await page.evaluate(
+      () => document.querySelector('[data-stage-toolbar]')?.dataset.samples,
     );
-    if (!animated) await pause.click();
     // Take the pointer off the toolbar, so its tooltip is not in the picture.
     await page.mouse.move(0, 0);
     await page.waitForTimeout(500);
@@ -53,9 +77,7 @@ try {
       console.error(`${id}: ${e}`);
       failures++;
     }
-    console.log(
-      `${id}: ${STILL_SAMPLES} spp in ${((Date.now() - t0) / 1000).toFixed(0)} s, ${file}`,
-    );
+    console.log(`${id}: ${samples} spp in ${((Date.now() - t0) / 1000).toFixed(0)} s, ${file}`);
     await page.close();
   }
 } catch (e) {

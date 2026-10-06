@@ -9,7 +9,7 @@ import {
   MirrorMaterial,
   PathTracer,
   PerspectiveCamera,
-  QuadGeometry,
+  PlaneGeometry,
   Scene,
   SphereGeometry,
 } from '@typeshade/radiance';
@@ -19,13 +19,13 @@ import type { ExampleRun } from './types.ts';
 export default async function firstScene(canvas: HTMLCanvasElement): Promise<ExampleRun> {
   const scene = new Scene();
 
-  const ground = new QuadGeometry(6, 6);
+  const ground = new PlaneGeometry(6, 6);
   const grey = new DiffuseMaterial();
   grey.color.setHex(0xbfbfbf);
   const floor = new Mesh(ground, grey);
   floor.rotation.x = -Math.PI / 2;
 
-  const panel = new QuadGeometry(1.2, 1.2);
+  const panel = new PlaneGeometry(1.2, 1.2);
   const light = new EmissiveMaterial();
   light.emissive.multiplyScalar(10);
   const lamp = new Mesh(panel, light);
@@ -51,9 +51,8 @@ export default async function firstScene(canvas: HTMLCanvasElement): Promise<Exa
   const renderer = await new PathTracer({ canvas, seed: 1, targetFrameTime: 30 }).init();
   const controls = new OrbitControls(camera, canvas);
   controls.target.set(0, 0.5, 0);
-  controls.minDistance = 1.5;
-  controls.maxDistance = 8;
-  controls.maxPolarAngle = Math.PI / 2 - 0.05;
+  controls.minDistance = 0.05;
+  controls.maxDistance = 50;
   controls.update();
   controls.saveState();
 

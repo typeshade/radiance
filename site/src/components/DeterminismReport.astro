@@ -1,0 +1,64 @@
+---
+// What the page of the determinism example says besides the example: the render it makes, and the
+// determinism report of the kernels it renders with. The report is read when the site is built
+// (src/lib/facts.ts), and the build stops when a row is outside the two lists of record 0005
+// (`ALLOWED` and `VALUE_ONLY`), so the sentence that says every row is in them is true.
+import { RENDER } from '../../examples/determinism.ts';
+import { facts, sourceUrl } from '../lib/facts.ts';
+import { localePath } from '../i18n/index.ts';
+
+const { rows, allowed, valueOnly } = facts.determinism;
+const record = sourceUrl('docs/design/0005-determinism.md');
+const guide = localePath('en', '/guide/determinism/');
+const files = [...new Set(rows.map((row) => row.file))];
+const floats = (RENDER.width * RENDER.height * 4).toLocaleString('en-US');
+const KINDS: Record<string, string> = {
+  ulp: 'the WGSL spec bounds the error in units of the last place',
+  inherited:
+    'the spec defines the result by a formula, and a driver may evaluate it in any way that is at least as accurate',
+};
+// The rows that only `VALUE_ONLY` admits. At the pin there is none, and the page says so.
+const valueOnlyRows = rows.filter((row) => !allowed.includes(row.op));
+const pairs = Object.entries(valueOnly);
+const kinds = [...new Set(rows.map((row) => row.kind))].filter((kind) => kind in KINDS);
+---
+
+<h2 id="what-runs">What the page does</h2>
+<p>
+  {`The page renders the Cornell box three times on your device, at ${RENDER.width} by ${RENDER.height} pixels and ${RENDER.samples} samples a pixel. The first render uses seed ${RENDER.otherSeed}. The second and the third use seed ${RENDER.seed}, with a reset between them. Each render has ${floats} floats: four a pixel. The page reads every float of every render and counts the floats that differ.`}
+</p>
+<p>
+  Two renders of one seed on one device must differ in no float. A different seed must differ in many. Seed {RENDER.otherSeed} goes first because the first frame of a renderer adds one sample. So the two renders of seed {RENDER.seed} have the same split of their samples into frames. The <a href={guide}>guide</a> states the promise and what it needs.
+</p>
+
+<h2 id="report">What the compiler reports</h2>
+<p>
+  The compiler lists every operation of a kernel whose result may differ from one driver to another. That list is the determinism report. The table shows its rows for {files.map((file, i) => <>{i > 0 && (i === files.length - 1 ? ' and ' : ', ')}<code>{file}</code></>)}, read when the site was built.
+</p>
+<table>
+  <thead>
+    <tr><th>File</th><th>Operation</th><th>Kind</th><th>Accuracy</th><th>Used in</th></tr>
+  </thead>
+  <tbody>
+    {
+      rows.map((row) => (
+        <tr>
+          <td><code>{row.file}</code></td>
+          <td><code>{row.op}</code></td>
+          <td>{row.kind}</td>
+          <td>{row.accuracy}</td>
+          <td>{row.where.map((fn, i) => <>{i > 0 && ', '}<code>{fn}</code></>)}</td>
+        </tr>
+      ))
+    }
+  </tbody>
+</table>
+<p>
+  {kinds.map((kind, i) => <>{i > 0 && ' '}Kind <code>{kind}</code> means {KINDS[kind]}.</>)}
+</p>
+<p>
+  Every row is in the two lists of <a href={record}>design record 0005</a>. The list <code>ALLOWED</code> names the operations a kernel may use anywhere: {allowed.map((op, i) => <>{i > 0 && ', '}<code>{op}</code></>)}. The list <code>VALUE_ONLY</code> names the operations a function may use only to make a value: {pairs.map(([fn, ops], i) => <>{i > 0 && ', '}{ops.map((op, j) => <>{j > 0 && ' and '}<code>{op}</code></>)} in <code>{fn}</code></>)}. {valueOnlyRows.length === 0 ? <>At this pin every row is in <code>ALLOWED</code>, so <code>VALUE_ONLY</code> binds no row.</> : <>At this pin {valueOnlyRows.length} {valueOnlyRows.length === 1 ? 'row is' : 'rows are'} in <code>VALUE_ONLY</code> alone.</>}
+</p>
+<p>
+  Rule 3 of record 0005 lets the bounded and inherited operations steer a path. The bounds of the oracle gate hold what they move. Rule 2 lets <code>exp2</code> and <code>pow</code> make a value, as the tone map does, and keeps them from choosing a path. The test <code>determinism.test.ts</code> reads the same two lists in CI. The build of this site stops when one of these kernels gains a row that is outside them.
+</p>

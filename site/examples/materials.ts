@@ -10,7 +10,7 @@ import {
   MirrorMaterial,
   PathTracer,
   PerspectiveCamera,
-  QuadGeometry,
+  PlaneGeometry,
   Scene,
   SphereGeometry,
 } from '@typeshade/radiance';
@@ -21,11 +21,11 @@ export default async function materials(canvas: HTMLCanvasElement): Promise<Exam
   const scene = new Scene();
 
   const white = new DiffuseMaterial({ color: new Color(0.8, 0.8, 0.8) });
-  const floor = new Mesh(new QuadGeometry(8, 6), white);
+  const floor = new Mesh(new PlaneGeometry(8, 6), white);
   floor.rotation.x = -Math.PI / 2;
-  const back = new Mesh(new QuadGeometry(8, 4), white);
+  const back = new Mesh(new PlaneGeometry(8, 4), white);
   back.position.set(0, 2, -2);
-  const light = new Mesh(new QuadGeometry(4, 1.5), new EmissiveMaterial({ intensity: 6 }));
+  const light = new Mesh(new PlaneGeometry(4, 1.5), new EmissiveMaterial({ intensity: 6 }));
   light.position.set(0, 3, 0.5);
   light.rotation.x = Math.PI / 2;
   scene.add(floor, back, light);
@@ -49,11 +49,8 @@ export default async function materials(canvas: HTMLCanvasElement): Promise<Exam
   const renderer = await new PathTracer({ canvas, seed: 1, targetFrameTime: 30 }).init();
   const controls = new OrbitControls(camera, canvas);
   controls.target.set(0, 0.6, 0);
-  controls.minDistance = 2;
-  controls.maxDistance = 10;
-  controls.maxPolarAngle = Math.PI / 2 - 0.05;
-  controls.minAzimuthAngle = -1;
-  controls.maxAzimuthAngle = 1;
+  controls.minDistance = 0.05;
+  controls.maxDistance = 50;
   controls.update();
   controls.saveState();
 

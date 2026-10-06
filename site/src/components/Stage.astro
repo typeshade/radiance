@@ -1,7 +1,8 @@
 ---
 // The stage an example runs on: the example's build-time still in the first row, the running
-// island over it (ExampleStage.tsx), and on an example's page a toolbar row under it. The still
-// is the picture a browser with no WebGPU, a reader with no script and a social preview get.
+// island over it (ExampleStage.tsx), and on an example's page a toolbar row under it, with a row
+// between for the panel of an example that has one. The still is the picture a browser with no
+// WebGPU, a reader with no script and a social preview get.
 import ExampleStage, { type StageCopy } from '../islands/ExampleStage.tsx';
 import { copyFor } from '../i18n/index.ts';
 import { exampleById } from '../../examples/index.ts';
@@ -17,7 +18,11 @@ const { id, compact = false, aspect = '16 / 10' } = Astro.props;
 const entry = exampleById(id);
 if (!entry) throw new Error(`[stage] no example called '${id}' in site/examples/index.ts`);
 const s = copyFor('en').examples.stage;
-const copy: StageCopy = { ...s, canvasLabel: s.canvasLabel(entry.title) };
+const copy: StageCopy = {
+  ...s,
+  canvasLabel: s.canvasLabel(entry.title),
+  canvasLabelFixed: s.canvasLabelFixed(entry.title),
+};
 ---
 
 <div class="rd-stage" data-stage data-example={id} data-compact={compact ? '' : undefined}>
@@ -35,7 +40,7 @@ const copy: StageCopy = { ...s, canvasLabel: s.canvasLabel(entry.title) };
 <style>
   .rd-stage {
     display: grid;
-    grid-template-rows: auto auto;
+    grid-template-rows: auto auto auto;
     overflow: hidden;
     border: 1px solid var(--rd-hairline);
     border-radius: 8px;
@@ -51,7 +56,7 @@ const copy: StageCopy = { ...s, canvasLabel: s.canvasLabel(entry.title) };
     background: #000;
   }
   .rd-toolbar-slot {
-    grid-row: 2;
+    grid-row: 3;
     grid-column: 1;
     min-height: 3rem;
     border-top: 1px solid var(--rd-hairline);
@@ -65,7 +70,7 @@ const copy: StageCopy = { ...s, canvasLabel: s.canvasLabel(entry.title) };
     aspect-ratio: auto !important;
   }
   .rd-stage:fullscreen {
-    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-rows: minmax(0, 1fr) auto auto;
     border: 0;
     border-radius: 0;
     background: #000;

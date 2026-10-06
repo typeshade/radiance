@@ -89,6 +89,18 @@ describe('differential comparison', () => {
     expect(() => gatedScene('missing')).toThrow(/cornell/);
     expect(() => gatedScene('toString')).toThrow(/no gated scene/);
   });
+  test('the scenes of M2 are gated at 16 x 16 and 256 spp, within the bounds record 0002 derives', () => {
+    for (const name of ['triangles', 'instances', 'lights']) {
+      const { gate, oracle } = gatedScene(name);
+      expect(gate.size).toEqual([16, 16]);
+      expect(gate.samples).toBe(256);
+      // `abs` and `rel` stay M1's, and `mean` is ten times a measured mean of about 1e-7.
+      expect(oracle.abs).toBe(1e-3);
+      expect(oracle.rel).toBe(0.05);
+      expect(oracle.mean).toBeGreaterThan(1e-6);
+      expect(oracle.mean).toBeLessThan(3e-6);
+    }
+  });
 });
 
 describe('determinism bit-identity', () => {

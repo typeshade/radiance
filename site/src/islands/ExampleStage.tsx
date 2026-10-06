@@ -2,7 +2,16 @@
 // on it, and a toolbar of Ant Design controls under it (the status, the samples a pixel, the
 // frame time; pause, reset the view, save a PNG, full screen). The still is drawn by the page
 // (Stage.astro) under this island, so a browser with no WebGPU or no script still shows the
-// picture. `compact` is the front page's form: the status floats over the canvas, no toolbar.
+// picture. An example that has more to show than its canvas hands the island a panel
+// (`ExampleRun.panel`), which the island puts between the canvas and the toolbar. `compact` is
+// the front page's form: the status floats over the canvas, no toolbar, no panel.
+//
+// The stage bounds the work a page does. An example that sets no `maxSamples` of its own gets
+// MAX_SAMPLES (MAX_SAMPLES_COMPACT on the front page). The frame converges, the status reads Done,
+// and the tracer dispatches nothing until the camera, the scene or the size changes, or the example
+// resets it. A canvas scrolled out of view pauses its tracer and its motion until it is back (an
+// IntersectionObserver), and a hidden tab gets no animation frames from the browser. Pause on the
+// toolbar is the viewer's and stays as set through both.
 
 import { useEffect, useRef, useState } from 'react';
 import { Button, ConfigProvider, Tag, Tooltip, theme as antd } from 'antd';
@@ -26,15 +35,27 @@ export interface StageCopy {
   exitFullscreen: string;
   noWebgpu: string;
   canvasLabel: string;
+  /** The canvas's label for an example with no camera controls. */
+  canvasLabelFixed: string;
 }
 
 interface Stats {
   samples: number;
   frameTime: number | undefined;
   preview: boolean;
+  /** The work is finished. An example with a panel says so itself (`data-done` on the panel). Any
+   *  other example is finished when its tracer reaches its cap on a full frame. */
+  done: boolean;
 }
 
 const ICON = { size: 16, strokeWidth: 1.5 } as const;
+
+/** The samples a pixel an example's page traces before its tracer idles. */
+const MAX_SAMPLES = 1024;
+/** The same on the front page, where the stage is a preview. */
+const MAX_SAMPLES_COMPACT = 256;
+/** The share of the canvas that must be in view for its tracer to run. */
+const IN_VIEW = 0.1;
 
 /** Whether the page is dark now, following Starlight's theme switch. */
 function useDark(): boolean {
@@ -103,14 +124,22 @@ export default function ExampleStage(props: { id: string; copy: StageCopy; compa
   const { id, copy, compact = false } = props;
   const dark = useDark();
   const holder = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
   const run = useRef<ExampleRun | undefined>(undefined);
-  const [stats, setStats] = useState<Stats>({ samples: 0, frameTime: undefined, preview: false });
+  const [stats, setStats] = useState<Stats>({
+    samples: 0,
+    frameTime: undefined,
+    preview: false,
+    done: false,
+  });
   const [error, setError] = useState<string | undefined>(undefined);
   const [paused, setPaused] = useState(false);
   const [full, setFull] = useState(false);
   const [running, setRunning] = useState(false);
   const [animated, setAnimated] = useState(false);
   const [drawn, setDrawn] = useState(false);
+  const [hasPanel, setHasPanel] = useState(false);
+  const [offscreen, setOffscreen] = useState(false);
 
   useEffect(() => {
     let stopped = false;
@@ -138,16 +167,38 @@ export default function ExampleStage(props: { id: string; copy: StageCopy; compa
           return;
         }
         run.current = r;
+        if (!Number.isFinite(r.renderer.maxSamples))
+          r.renderer.maxSamples = compact ? MAX_SAMPLES_COMPACT : MAX_SAMPLES;
+        if (r.controls === undefined) canvas.setAttribute('aria-label', copy.canvasLabelFixed);
+        if (r.panel !== undefined && panel.current !== null) {
+          panel.current.replaceChildren(r.panel);
+          setHasPanel(true);
+        }
         setRunning(true);
         setAnimated(r.playing !== undefined);
         timer = window.setInterval(() => {
           const t = r.renderer;
           if (t.samples > 0) setDrawn(true);
-          setStats({
+          const next: Stats = {
             samples: t.samples,
             frameTime: t.info.frames > 0 ? t.info.frameTime : undefined,
             preview: t.scale !== 1,
-          });
+            // An example with a panel says itself when its work is finished. Any other is
+            // finished when its tracer has reached its cap on a full frame.
+            done:
+              r.panel !== undefined
+                ? r.panel.hasAttribute('data-done')
+                : t.scale === 1 && t.samples >= t.maxSamples,
+          };
+          // The same numbers keep the same state, so a converged tracer does not render the toolbar.
+          setStats((s) =>
+            s.samples === next.samples &&
+            s.frameTime === next.frameTime &&
+            s.preview === next.preview &&
+            s.done === next.done
+              ? s
+              : next,
+          );
         }, 200);
       })
       .catch((e: unknown) => {
@@ -158,17 +209,35 @@ export default function ExampleStage(props: { id: string; copy: StageCopy; compa
       clearInterval(timer);
       run.current?.dispose();
       run.current = undefined;
+      // The next example sets `running` again, which applies Pause and the view to its renderer.
+      setRunning(false);
+      panel.current?.replaceChildren();
     };
   }, [id]);
 
   // Pause stops what moves: an example's motion when it has one (the frame then refines), the
-  // path tracer's samples otherwise.
+  // path tracer's samples otherwise. Out of view, both stop.
   useEffect(() => {
     const r = run.current;
     if (!r) return;
-    if (r.playing !== undefined) r.playing = !paused;
-    else r.renderer.paused = paused;
-  }, [paused]);
+    if (r.playing !== undefined) {
+      r.playing = !paused && !offscreen;
+      r.renderer.paused = offscreen;
+    } else r.renderer.paused = paused || offscreen;
+  }, [paused, offscreen, running]);
+
+  useEffect(() => {
+    const el = holder.current;
+    if (el === null || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) setOffscreen(entry.intersectionRatio < IN_VIEW);
+      },
+      { threshold: [0, IN_VIEW] },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const onChange = (): void =>
@@ -182,11 +251,13 @@ export default function ExampleStage(props: { id: string; copy: StageCopy; compa
 
   const status = error
     ? copy.error
-    : stats.preview
-      ? copy.preview
-      : paused
-        ? copy.paused
-        : copy.rendering;
+    : stats.done
+      ? copy.done
+      : stats.preview
+        ? copy.preview
+        : paused || offscreen
+          ? copy.paused
+          : copy.rendering;
   const colour = error ? 'error' : status === copy.rendering ? 'processing' : 'default';
   const count = (
     <span className="rd-num text-[12px] leading-[18px] whitespace-nowrap">
@@ -201,7 +272,8 @@ export default function ExampleStage(props: { id: string; copy: StageCopy; compa
   );
 
   // The island's elements join the stage's grid (Stage.astro): the canvas over the still in the
-  // first row, the toolbar over its placeholder in the second. astro-island is display: contents.
+  // first row, the example's panel in the second (no row while it is empty), the toolbar over its
+  // placeholder in the third. astro-island is display: contents.
   return (
     <ConfigProvider theme={themeFor(dark)}>
       <div className="relative col-start-1 row-start-1 min-h-0">
@@ -236,7 +308,15 @@ export default function ExampleStage(props: { id: string; copy: StageCopy; compa
       </div>
       {!compact && (
         <div
-          className="col-start-1 row-start-2 flex min-h-12 flex-wrap items-center gap-2 border-t border-hairline bg-overlay px-3 py-1 text-fg"
+          ref={panel}
+          className="col-start-1 row-start-2 min-w-0 border-t border-hairline bg-overlay text-fg empty:hidden"
+          data-stage-panel
+          data-filled={hasPanel ? '' : undefined}
+        />
+      )}
+      {!compact && (
+        <div
+          className="col-start-1 row-start-3 flex min-h-12 flex-wrap items-center gap-2 border-t border-hairline bg-overlay px-3 py-1 text-fg"
           data-stage-toolbar
           data-animated={animated ? '' : undefined}
           data-samples={stats.samples}

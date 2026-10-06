@@ -1,0 +1,80 @@
+---
+title: Determinism
+description: 'What one seed promises: the same image bit for bit on one device, and an image within the oracle gate across devices.'
+sidebar:
+  order: 6
+---
+
+A path tracer draws noise. The noise must be the same noise when you ask for it again. This page
+states what Radiance promises about that, and what a render needs for the promise to hold. The
+[determinism example](/examples/determinism/) checks the promise in your browser.
+
+## The promise
+
+- On one device and one driver, one seed gives one image, bit for bit, every time.
+- Across devices and drivers, the image is within the oracle gate's tolerance. The operations WGSL
+  leaves to the driver may move a path by one sample's share. The gate's `rel` and `mean` bound
+  that move.
+- The CPU oracle's render is the reference image of a scene and a seed.
+
+The second item is not a bit-for-bit promise. Two devices can draw images that differ in some
+floats, and the gate holds the difference inside its bound.
+
+## What a render needs
+
+Two renders of one seed are bit-identical when each one takes its samples in the same frames. The
+samples of a pixel add up inside one dispatch, and each dispatch adds its sum to the pixel. Another
+split of the same samples can round differently.
+
+So keep `samplesPerFrame` the same for the two renders. Leave `targetFrameTime` unset when you
+compare them. That option changes `samplesPerFrame` with the frame time, so the split changes from
+one run to the next.
+
+Start each render from zero. Call `reset()`, or set `seed`. Both start the accumulation again.
+
+## Check it yourself
+
+`readRadiance()` gives every float of a render. Render seed 2 once and seed 1 twice, and count the
+floats that differ. `Object.is` decides, as the gate does: a NaN equals a NaN, and 0 differs
+from -0.
+
+A renderer's first frame adds one sample, so its first render has a split of its own, and the code
+draws seed 2 first.
+
+```ts
+import { PathTracer } from '@typeshade/radiance';
+
+// `scene` and `camera` are the ones from Getting started.
+const renderer = await new PathTracer({ samplesPerFrame: 16 }).init();
+renderer.setSize(320, 200);
+
+async function render(seed: number): Promise<Float32Array> {
+  renderer.seed = seed;
+  renderer.reset();
+  do {
+    await renderer.render(scene, camera);
+  } while (renderer.samples < 64);
+  return renderer.readRadiance();
+}
+
+const other = await render(2);
+const first = await render(1);
+const again = await render(1);
+
+const count = (a: Float32Array, b: Float32Array) =>
+  a.filter((value, i) => !Object.is(value, b[i])).length;
+const same = count(first, again);
+const different = count(first, other);
+```
+
+On one device, `same` is 0, and `different` is many.
+
+## Where CI checks it
+
+CI renders the Cornell box twice with one seed and holds the two renders to the same bits. It also
+holds the GPU's image to the CPU oracle's image. [Checked on the CPU](/guide/checked-on-the-cpu/)
+explains both gates.
+
+Every kernel of the engine follows six rules, which the engine's design record 0005 states. The
+compiler reports the operations of each kernel that a driver may evaluate in another way. A test
+holds that report to a list of allowed operations. The example page prints the report.

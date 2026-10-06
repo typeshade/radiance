@@ -2,16 +2,17 @@
 
 The product, what it is not, how it is built on the compiler, and the milestones with their
 acceptance criteria. Decided with the owner on 2026-10-05 against the compiler's `main` at
-e923a34. The Korean conversation that produced it is summarised here in English, as every
-document in the tree is.
+e923a34. The owner decided the WebGL2 direction on 2026-10-06 (section 12, decision 7). The plan
+reads the compiler's change 0054 as amended at 146b162 on the compiler's `main`. The Korean
+conversation that produced it is summarised here in English, as every document in the tree is.
 
 ## 1. Context
 
 The owner wants an engine on the TypeShade language that renders at photographic quality and
 reaches, if not Houdini's breadth, something of its kind. Four decisions frame everything below:
 
-- **Platform:** the browser (WebGPU) first, the desktop second. The core is WebGPU throughout.
-  Only the host differs.
+- **Platform:** the browser first, the desktop second. In the browser the engine runs on WebGPU
+  today and will run on WebGL2 too (decision 7 in section 12). Only the host differs.
 - **First axis:** a progressive path tracer.
 - **User:** developers. An npm library. A scene is assembled in code, with no UI.
 - **Differentiator:** differentiable rendering on `grad()` (inverse rendering) is the core.
@@ -28,6 +29,9 @@ What the compiler is today, as read at e923a34:
   material**, by decision (#335, decision 3): the reference engine lives in its own repository,
   built only on the public runtime. `journeys/engine/` is the gate for that shape, and this
   repository is that engine.
+- Change 0054 is accepted on the compiler's `main` and is not implemented at the pin 596c805. It
+  will run every `@compute` entry on WebGL2 and will give `typeshade/runtime` a WebGL2 tier
+  (section 9). This bullet was read at 146b162.
 - `grad(m, fn, param)` is **forward mode**, a few parameters at a time. It differentiates through
   `if` and constant-bounded `for`, and the discontinuous builtins have a zero derivative. Reverse
   mode is after 1.0. So differentiable rendering here means **fitting a few parameters** (material
@@ -51,8 +55,9 @@ What the compiler is today, as read at e923a34:
 ## 2. The product
 
 **In one line:** a reproducible, differentiable physically based path-tracing renderer that runs
-in the browser. A scene is assembled in TypeScript. The same kernels render it on WebGPU and are
-verified on the CPU. The image can be differentiated with respect to the scene's parameters.
+in the browser. A scene is assembled in TypeScript. The same kernels render it on WebGPU, will
+render it on WebGL2, and are verified on the CPU. The image can be differentiated with respect to
+the scene's parameters.
 
 Three things only TypeShade can give are the product's axes:
 
@@ -69,7 +74,12 @@ Three things only TypeShade can give are the product's axes:
 **What it is not**, explicitly, for the first milestones: a node-graph UI or a DCC application
 (last, and a separate product). A real-time raster game engine (head-on with three.js and short
 of photoreal). The whole of Houdini's SOPs and DOPs (a few solvers as kernel packages first).
-WebGL2 (no compute, so no path tracer).
+
+**WebGL2 is a target** (section 12, decision 7). The engine runs on WebGPU only today, and its
+path tracer is a `@compute` entry (`trace.shade.ts`). Change 0054 will run every `@compute` entry
+on WebGL2, within the limits of section 3.1, item 8. WebGPU stays the first tier (0054, "Draft
+impact estimate"). Milestone M8 (section 4) takes the engine to WebGL2 after the pin moves to a
+compiler that carries 0054. Section 10 names the cost of the tier as a risk.
 
 ## 3. Architecture: one repository, each layer on the public API of the layer below
 
@@ -98,7 +108,9 @@ it in CI.
 
 ### 3.1 Constraints that shape the design (assumed from the start)
 
-Found in the owner's review of what was missing. Each is cheap at M1 or M2 and a rewrite later.
+Items 1 to 7 are from the owner's review of what was missing. Each is cheap at M1 or M2 and a
+rewrite later. Item 8 came with decision 7 (section 12). It bounds how much of a scene one buffer
+of record 0001's layout holds on WebGL2.
 
 1. **The GPU watchdog (TDR).** Windows kills a dispatch over two seconds. A frame of the path
    tracer is several dispatches of tiles times sample batches, and the watchdog budget (say
@@ -125,6 +137,27 @@ Found in the owner's review of what was missing. Each is cheap at M1 or M2 and a
    BLAS refit and a TLAS rebuild.
 7. **A scene graph.** Parent-child transforms, instances and LOD live in the scene package: the
    glTF node tree is taken as it is, not flattened.
+8. **WebGL2 limits (M8).** On WebGL2 a storage buffer will be a texture (change 0054, "The
+   execution model", item 1). Change 0054 names three limits of the WebGL2 context ("What stays
+   outside"):
+   - a buffer past `MAX_TEXTURE_SIZE` squared texels
+   - an entry that needs `f16` or subgroups
+   - a storage texture format that WebGL2 cannot render to
+
+   Change 0054 will report each one with a reason and run it on the CPU tier. Inference: the
+   renderer has no CPU tier at the pin. M4's reference mode (L3) will run the same kernels on the
+   CPU oracle. Inference: unless that mode serves as the fallback, a scene past one of these limits
+   will not render on WebGL2.
+
+   Change 0054 specifies one `R32UI` texel for each 4-byte lane. Every `u32` buffer will use
+   `R32UI` on any context. An `f32` buffer may use `R32F` or `RGBA32F` when the context has
+   `EXT_color_buffer_float`. The figures here assume `R32UI`. The OpenGL ES 3.0 minimum for
+   `MAX_TEXTURE_SIZE` is 2048. At that minimum, one buffer holds 4,194,304 lanes, which is
+   16 MiB. Record 0006, row 1, assumes 128 MiB for each buffer on WebGPU. A device may report a
+   larger `MAX_TEXTURE_SIZE`.
+
+   Change 0054 does not state how many buffers one pass can read. The design record of the tier
+   will measure the limits against record 0001's seven buffers.
 
 ### 3.2 The path tracer
 
@@ -270,13 +303,54 @@ Every milestone is done by an **image** and a **number**: a named demo and a CI 
 | M6p       | Pyro: advection, buoyancy, combustion, vorticity confinement, pressure PCG                                                                                                                                                                                                                                                     | A smoke column, a flame and an explosion rendered through M3v. Two runs of one seed bit-identical                                                                               |
 | M6s       | FLIP liquid: P2G by sorted gather, pressure PCG, G2P, surface reconstruction to a mesh, rendered by the path tracer                                                                                                                                                                                                            | A dam break runs in the browser. Frame 100 of two runs of one seed bit-identical. Within tolerance of a low-resolution CPU oracle run. Particle count and ms per frame recorded |
 | M7        | The Node plus Dawn host, an offline render CLI, simulation cache export                                                                                                                                                                                                                                                        | The same scene renders to PNG from the CLI, bit-identical to the browser                                                                                                        |
+| M8        | The WebGL2 tier: the kernels run on a WebGL2 context through the program runtime (change 0054), and a browser without WebGPU renders the scene. Detail follows the table                                                                                                                                                       | The Cornell box on WebGL2 is within the `differential` bounds of the oracle and held to a golden. Two runs of one seed are bit-identical. Paths per second recorded             |
 
 The real-time tier (R1 to R3) comes after M3 and shares M6's SDF kernels. The whole order:
 
 M0, M1, M2, M2a, M3 (the product-viewer demo, AOVs, EXR, ACES), M3v (volumes, clouds and fog,
 VDB), M3s (SSS), M5 (the fitting demo), M6 (procedural kernels, SDF), M6p (Pyro), R1, R2, R3
 (DDGI), R3v (froxel volumes), M6s (FLIP), M4 (denoising, determinism), R6 (the error gate), M7
-(the desktop, cache export), then R4, R5 and the further solvers.
+(the desktop, cache export), then R4, R5, the further solvers and M8 (the WebGL2 tier).
+
+**M8, the WebGL2 tier (proposed).** The owner's decision 7 (section 12) sets the direction. The
+place of M8 in the order and its numbers are proposals, and the owner has not decided them. M8 is
+done when each of these holds. Each item names what checks it:
+
+- The pin carries steps 1 to 4 of change 0054's implementation (its "Draft impact estimate"),
+  and `compiler-changes.md` records 0054. A reviewer checks both in the pull request that moves
+  the pin. Change 0054 names `typeshade.github.io` and `vscode-typeshade` in its `downstream`
+  list, but not `radiance`. So the `compiler bump impact` job does not report 0054. The reviewer
+  adds an item to `compiler-changes.md` by hand: `0054`, then the pull request that did the work.
+  If the compiler adds `radiance` to the `downstream` list of 0054, the job reports 0054 on a pin
+  where its `status` is `implemented`, until the item exists.
+- `tshc check` reports no `TS8015` on the kernels. `bun run check:shaders` runs it in the
+  `format + boundary + typecheck + test` job. It reports `TS8015` as a warning and exits 0, so no
+  CI job fails on `TS8015`. A reviewer reads the output of `bun run check:shaders` in the job log.
+  This is also 0054's own evidence for `trace.shade.ts` ("What it touches").
+- The renderer runs on a WebGL2 context when the browser has no WebGPU, through
+  `typeshade/runtime` alone. `bun run check:boundary` holds the boundary in the same job. A gate
+  run that forces the WebGL2 context does not show that the renderer chooses WebGL2 without WebGPU.
+  The tier's design record names the test that removes WebGPU (for example, `navigator.gpu`
+  undefined) and checks the fallback.
+- The three gates below run on WebGL2. At `main` 5df5042, `launchBrowser` in
+  `scripts/gates/_browser.mjs` starts Chromium with `--enable-unsafe-webgpu`, so the `harness` job
+  renders on WebGPU. A WebGL2 run needs a `launchBrowser` option that starts Chromium without
+  WebGPU, or a `createRuntime` option that forces WebGL2. Change 0054 leaves the shape of
+  `RuntimeOptions` open (decision 2), and the tier's design record chooses one. Each gate run fails
+  when the tier that `Runtime` reports is not `webgl2`.
+- The Cornell box on WebGL2, in headless Chromium on SwiftShader, is within the `ORACLE` bounds
+  (`scripts/gates.mjs`) of the oracle's render. This is the `differential` gate of record 0002. It
+  runs in the `harness` job.
+- Two renders of one seed on WebGL2 are bit-identical (the `determinism` gate). It runs in the
+  `harness` job.
+- A golden holds the WebGL2 image (the `render` gate). It runs in the `harness` job.
+- `docs/benchmarks.md` has one row for WebGL2 and one for WebGPU, with the paths per second. The
+  file does not exist on `main` at 7d48fa4. Step 7 of record 0002 ("The benchmark") creates it
+  and gives the procedure for the rows. The `bench` gate runs by hand, so no CI job checks these
+  rows. A reviewer reads them.
+- The owner accepts a design record for the tier before the first line of its code (decision 6,
+  section 12). A reviewer checks this at the pull request of the record. An amendment to records
+  0001 and 0002 merges first, in its own pull request, where WebGL2 changes a limit or a gate.
 
 R1 to R3 acceptance: Sponza at 1080p on a desktop GPU within 16 ms a frame. The error against the
 path tracer on the same scene (RMSE and the FLIP metric) recorded by the R6 gate, and R4 and R5
@@ -338,7 +412,7 @@ plan's.
 | Geometry operations: Catmull-Clark subdivision, normal and UV generation, curves and point clouds                                                                                                                                | M6                                                               |
 | Simulation: collision with moving meshes (an SDF per frame), time-step policy (substeps, CFL), emitters and forces (wind, turbulence fields). Boundary conditions, cache format and timeline scrubbing, coupling between solvers | M6p, M6s. Coupling in the next plan                              |
 | Real time: clustered lighting, frustum and occlusion culling, LOD, transparency sorting, skinning (shared with M2a). Atmosphere and sky, volumetric fog, post (bloom, motion blur, colour grading), reverse-Z depth              | R1 (reverse-Z, clustered, culling, post), R3v (fog), the rest R5 |
-| Device loss and out-of-memory handling. A notice for browsers without WebGPU (no WebGL2 fallback)                                                                                                                                | M0                                                               |
+| Device loss and out-of-memory handling. A notice for browsers without WebGPU (until M8 adds WebGL2)                                                                                                                              | M0                                                               |
 | A worker plus OffscreenCanvas, so simulation and rendering leave the main thread                                                                                                                                                 | M1                                                               |
 | Resource lifetime (`destroy`) and memory accounting. A bundle-size gate per package (the compiler's `gate:boundary` way)                                                                                                         | M0                                                               |
 | CI: SwiftShader is slow, so gates use tiny scenes and low spp. A performance gate needs a real GPU runner (self-hosted)                                                                                                          | M0. The runner at M3                                             |
@@ -373,6 +447,17 @@ the milestone each blocks and the engine's way around each until it lands. It ad
 limits, a partial buffer write, raw bytes as a host value, a texture write, a layer read and the
 console's slot to the items below:
 
+- WebGL2: change 0054, accepted on the compiler's `main` at a5dcbe7 (pull request #506) and
+  amended at 146b162 (#509). It answers typeshade/typeshade#468, raised in
+  `docs/typeshade-feedback.md` on 2026-10-05. The engine opens no proposal for it, and M8 waits
+  on it. The pin 596c805 is before it. Only step 1a of its implementation (#510) is on the
+  compiler's `main`, at 1c2d6406. Record 0006 says that 0054 is not implemented at the pin. It
+  says that the engine waits on 0054 for M8 (the paragraph "What the engine waits on and does not
+  open", Amendment 1).
+- What change 0054 leaves open for the engine. Its implementing pull request will settle the shape
+  of `RuntimeOptions` for a WebGL2 context ("Decisions at acceptance", decision 2). Change 0054
+  does not state the count of buffers one pass reads on WebGL2. If the tier's design record needs
+  either, the need goes back to the compiler as a proposal.
 - How the runtime helps frame accumulation (#204). Solved on the host at M1, and the need
   written down.
 - How the runtime exposes `timestamp-query` (GPU time per frame and pass). Coarse measurement
@@ -384,7 +469,8 @@ console's slot to the items below:
 - `grad` over several parameters of one kernel at once (vectorised forward mode), then reverse
   mode. M5.
 - The Node host: what differs when `createRuntime({ device })` is handed a Dawn device. M7.
-- Performance: subgroup operations and f16 (both after 1.0), needed at the wavefront stage.
+- Performance: subgroup operations and f16 (both after 1.0), needed at the wavefront stage. An
+  entry that uses either has no WebGL2 tier (change 0054, "What stays outside").
 - A convention for a shader package exporting texture-array bindings as a struct (an extension of
   X6). M3 and M6.
 
@@ -395,6 +481,9 @@ console's slot to the items below:
 - The scope of differentiation: forward mode plus zero at discontinuities. Neural fields and shape
   optimisation are out until reverse mode. The docs say "fitting a few parameters" from the
   start.
+- WebGL2 cost: change 0054 will run a dispatch as passes over textures, with a write log and a
+  scatter pass (its "execution model"). No measurement of the path tracer on it exists. M8
+  records the number, and the plan promises no speed on WebGL2.
 - An unfrozen runtime surface: the API moves until 0.8. The submodule pin and
   `downstream-impact.ts` absorb it.
 - The desktop: the Dawn host is unverified. Deferred to M7. The core stays host-agnostic.
@@ -442,3 +531,17 @@ numbers and the probe each proves itself with. In short:
    as a design record in `docs/design/`, merged as accepted before its code is written, and
    each implementing commit names it (`Design: NNNN`). `docs/design/README.md` is the
    procedure (the owner, 2026-10-05).
+7. WebGL2 is a target of the engine (the owner, 2026-10-06). The engine runs on WebGPU only
+   today, and decision 7 changes the direction, not the code. The owner's words, translated: "It is
+   written now that only WebGPU is supported, but in the end it seems right that WebGL2 is
+   supported too." Fact: the plan's exclusion gave "no compute" as its reason, and change 0054
+   (accepted by the owner on 2026-10-06) will give WebGL2 compute. Section 4 proposes milestone M8
+   for the work. Decision 7 supersedes four texts written on 2026-10-05. They stay here as history:
+   - Section 1, Platform: "the browser (WebGPU) first, the desktop second. The core is WebGPU
+     throughout. Only the host differs."
+   - Section 2, what it is not: "WebGL2 (no compute, so no path tracer)."
+   - Section 7, the device loss row: "A notice for browsers without WebGPU (no WebGL2 fallback)".
+   - `PRODUCT.md`, capabilities: "WebGPU only, by decision: no WebGL2 fallback (`docs/plan.md`)."
+
+   Decision 7 does not decide the place of M8 in the order, its numbers or the date of the pin
+   move. The proposal puts M8 after every current milestone, at the end of the order in section 4.

@@ -10,7 +10,7 @@ import {
   Mesh,
   PathTracer,
   PerspectiveCamera,
-  QuadGeometry,
+  PlaneGeometry,
   Scene,
   SphereGeometry,
 } from '@typeshade/radiance';
@@ -20,14 +20,14 @@ import type { ExampleRun } from './types.ts';
 export default async function colouredLights(canvas: HTMLCanvasElement): Promise<ExampleRun> {
   const scene = new Scene();
   const white = new DiffuseMaterial({ color: new Color(0.85, 0.85, 0.85) });
-  const floor = new Mesh(new QuadGeometry(10, 10), white);
+  const floor = new Mesh(new PlaneGeometry(10, 10), white);
   floor.rotation.x = -Math.PI / 2;
   scene.add(floor);
 
   const colours = [new Color(8, 0.2, 0.2), new Color(0.2, 8, 0.2), new Color(0.2, 0.2, 8)];
   colours.forEach((colour, i) => {
     const angle = (i / colours.length) * Math.PI * 2;
-    const light = new Mesh(new QuadGeometry(0.8, 0.8), new EmissiveMaterial({ color: colour }));
+    const light = new Mesh(new PlaneGeometry(0.8, 0.8), new EmissiveMaterial({ color: colour }));
     light.position.set(Math.sin(angle) * 1.6, 2.4, Math.cos(angle) * 1.6);
     light.rotation.x = Math.PI / 2;
     scene.add(light);
@@ -49,9 +49,8 @@ export default async function colouredLights(canvas: HTMLCanvasElement): Promise
   const renderer = await new PathTracer({ canvas, seed: 1, targetFrameTime: 30 }).init();
   const controls = new OrbitControls(camera, canvas);
   controls.target.set(0, 0.4, 0);
-  controls.minDistance = 2;
-  controls.maxDistance = 12;
-  controls.maxPolarAngle = Math.PI / 2 - 0.05;
+  controls.minDistance = 0.05;
+  controls.maxDistance = 50;
   controls.update();
   controls.saveState();
 

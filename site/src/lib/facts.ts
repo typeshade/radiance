@@ -4,6 +4,13 @@
 import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { compile } from 'typeshade';
+import {
+  ALLOWED,
+  VALUE_ONLY,
+  describeRow,
+  outsideLists,
+} from '../../../packages/radiance/src/kernels/determinism-lists.ts';
 import { GATE, ORACLE } from '../../../scripts/gates.mjs';
 import { exampleIds } from '../../../scripts/stills.mjs';
 
@@ -19,6 +26,51 @@ const git = (args: string, cwd = repoRoot): string =>
 const engine = json('packages/radiance/package.json');
 const addons = json('packages/addons/package.json');
 const compiler = json('vendor/typeshade/package.json');
+
+/** The kernels whose determinism report the site prints, in the order it prints them. */
+const REPORTED_KERNELS = ['trace.shade.ts', 'sampler.shade.ts'] as const;
+
+/** One row of a kernel's determinism report: the compiler's, with the file it came from. */
+export interface KernelRow {
+  readonly file: string;
+  readonly op: string;
+  readonly kind: string;
+  readonly accuracy: string;
+  readonly count: number;
+  readonly where: readonly string[];
+}
+
+const readText = (file: string): string | undefined => {
+  try {
+    return readFileSync(file, 'utf8');
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * Compiles each reported kernel and reads `compile().determinism`, as the lint does
+ * (packages/radiance/src/kernels/determinism.test.ts). The page says that every row is in the
+ * allowlist of record 0005, so a row outside the lists stops the build: the page must not say it.
+ */
+function kernelDeterminism(): readonly KernelRow[] {
+  const rows: KernelRow[] = [];
+  for (const file of REPORTED_KERNELS) {
+    const at = path.join(repoRoot, 'packages/radiance/src/kernels', file);
+    const compiled = compile(readFileSync(at, 'utf8'), { fileName: at, readDocument: readText });
+    const errors = compiled.diagnostics.filter((d) => d.category === 'error');
+    if (errors.length > 0)
+      throw new Error(`[determinism] ${file} does not compile: ${errors[0]!.message}`);
+    for (const { op, kind, accuracy, count, where } of compiled.determinism)
+      rows.push({ file, op, kind, accuracy, count, where });
+  }
+  const outside = outsideLists(rows);
+  if (outside.length > 0)
+    throw new Error(
+      `[determinism] a row is outside the lists of record 0005, so the page cannot say that every row is in them. Do not widen the lists: amend the record first.\n${outside.map((row) => describeRow(row.file, row)).join('\n')}`,
+    );
+  return rows;
+}
 
 export const facts = {
   /** The engine package, and its version in the tree. */
@@ -37,6 +89,9 @@ export const facts = {
   license: 'Apache-2.0',
   /** The examples, by id. */
   examples: exampleIds(siteRoot),
+  /** The determinism report of the reported kernels, and the two lists of record 0005 every row
+   *  is held to: `ALLOWED` and `VALUE_ONLY`. */
+  determinism: { rows: kernelDeterminism(), allowed: ALLOWED, valueOnly: VALUE_ONLY },
   /** The gates CI holds the engine to. */
   gate: {
     size: `${GATE.size[0]} x ${GATE.size[1]}`,
