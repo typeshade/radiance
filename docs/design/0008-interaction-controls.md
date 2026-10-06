@@ -532,8 +532,8 @@ Each step is one pull request with `Design: 0008` in its commit message. Each te
 
 **Amendment 1** (2026-10-06, UTC). The Sponza example is a tenth example that has controls. This record counts nine. The count is true at `main` eafc2e1, the baseline of "Before". It is false in the pull request that adds `site/examples/sponza.ts`. That example returns `renderer`, `controls` and `dispose`. It has no `playing`. Its loop runs `renderer.preview = controls.moving ? 4 : 1`. This amendment changes six sentences and nothing else. It changes no code, no step and no decision. The decisions keep their numbers and their text.
 
-1. "The other nine examples return both ... Eight of them run" in "The material inspector" becomes "The other ten examples ... Nine of them run".
-2. "one of the eight examples of this kind" in "Pause" becomes "one of the nine examples of this kind".
+1. "The other nine examples return both ... Eight of them run" in "After", "The site." becomes "The other ten examples ... Nine of them run".
+2. "one of the eight examples of this kind" in "The material inspector", "Edits and the other parts." becomes "one of the nine examples of this kind".
 3. "the nine examples that have controls" in "What it touches" becomes "the ten examples that have controls".
 4. "the nine examples" in step 5 becomes "the ten examples".
 5. "the nine examples" in the note on step 8 becomes "the ten examples".
