@@ -78,10 +78,14 @@ behind it, are what Radiance tests.
   progressive accumulation with a lower-resolution preview while the camera moves, exposure and
   a filmic display transform, `OrbitControls` for mouse, touch, pen and keyboard, and four
   examples (the Cornell box, materials, coloured lights, a moving scene graph).
-- WebGPU only, by decision: no WebGL2 fallback (`docs/plan.md`). Chrome and Edge from version
-  113 have it. A browser without WebGPU sees a still of the example and a notice.
+- WebGPU only today, and WebGL2 by direction. The owner decided on 2026-10-06 that WebGL2 is a
+  target (`docs/plan.md`, section 12, decision 7). The compiler's change 0054 will run every
+  compute entry on WebGL2. The engine will take the tier at the proposed milestone M8, after the
+  pin moves to a compiler that carries change 0054. Chrome and Edge from version 113 have WebGPU.
+  Today a browser without WebGPU sees a still of the example and a notice.
 - Not yet: triangle meshes, a BVH and glTF (M2), textures and the principled BSDF (M3), a
-  denoiser (M4), differentiable rendering (M5), the real-time tier (R1 to R3).
+  denoiser (M4), differentiable rendering (M5), the real-time tier (R1 to R3), the WebGL2 tier
+  (M8).
 - Installation: the packages are not on npm at 2026-10-05. The owner decided (2026-10-05) that
   the site assumes publication of `@typeshade/radiance` 0.0.1 and shows `npm install
 @typeshade/radiance`, with a pre-release note until the package is published.
