@@ -8,10 +8,10 @@
 //
 // The stage bounds the work a page does. An example that sets no `maxSamples` of its own gets
 // MAX_SAMPLES (MAX_SAMPLES_COMPACT on the front page). The frame converges, the status reads Done,
-// and the tracer dispatches nothing until the camera or the size changes. A canvas scrolled out of
-// view pauses its tracer and its motion until it is back (an IntersectionObserver), and a hidden
-// tab gets no animation frames from the browser. Pause on the toolbar is the viewer's and stays as
-// set through both.
+// and the tracer dispatches nothing until the camera, the scene or the size changes, or the example
+// resets it. A canvas scrolled out of view pauses its tracer and its motion until it is back (an
+// IntersectionObserver), and a hidden tab gets no animation frames from the browser. Pause on the
+// toolbar is the viewer's and stays as set through both.
 
 import { useEffect, useRef, useState } from 'react';
 import { Button, ConfigProvider, Tag, Tooltip, theme as antd } from 'antd';
@@ -43,7 +43,8 @@ interface Stats {
   samples: number;
   frameTime: number | undefined;
   preview: boolean;
-  /** The example's panel says its work is finished (`data-done`). */
+  /** The work is finished. An example with a panel says so itself (`data-done` on the panel). Any
+   *  other example is finished when its tracer reaches its cap on a full frame. */
   done: boolean;
 }
 

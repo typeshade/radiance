@@ -14,8 +14,18 @@ import { exampleIds, sha256, stillPath } from './stills.mjs';
 
 /** The samples a pixel a still is taken at. */
 const STILL_SAMPLES = Number(process.env.STILL_SAMPLES ?? 256);
+/** The most samples a pixel the stage traces on an example page: MAX_SAMPLES in
+ *  site/src/islands/ExampleStage.tsx. A tracer stops at this cap, so a larger STILL_SAMPLES never
+ *  arrives. */
+const STILL_SAMPLES_CEILING = 1024;
 /** The size a still is rendered at, in CSS pixels at a device pixel ratio of 1. */
 const VIEWPORT = { width: 1280, height: 900 };
+if (STILL_SAMPLES > STILL_SAMPLES_CEILING) {
+  console.error(
+    `STILL_SAMPLES is ${STILL_SAMPLES}, above ${STILL_SAMPLES_CEILING}, the cap of the stage (MAX_SAMPLES).`,
+  );
+  process.exit(1);
+}
 
 const siteRoot = join(process.cwd(), 'site');
 const only = process.argv.slice(2);
