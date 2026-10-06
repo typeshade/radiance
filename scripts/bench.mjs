@@ -32,9 +32,9 @@
 //   BVH ms     The median of five builds of the bottom-level BVH (`buildBlas`) of every distinct
 //              geometry of the scene, on the page's main thread. A build that takes over a second
 //              is timed once. The top-level BVH and the packing are not in it.
-//   frame ms   The mean time of one frame (`PathTracer.info.frameTime`). The first frame adds one
-//              sample, to measure the speed the tiles are sized by, and is left out of the mean
-//              and of paths/s when the render has a second frame.
+//   frame ms   The mean time of one frame (`PathTracer.info.frameTime`). The first counted frame
+//              is left out of the mean and of paths/s when the render has a second frame. On the
+//              `cornell` path it adds one sample, to measure the speed the tiles are sized by.
 //   paths/s    The paths the counted frames traced, over their time.
 //   spp/s      paths/s over the pixels of the frame.
 //   device     The adapter's description as the browser reports it (`GPUAdapter.info`).
@@ -114,7 +114,7 @@ export function parseArgs(argv) {
 }
 
 /**
- * The speed of a render from its frames, `{ paths, ms }` each, in order. The first frame is left
+ * The speed of a render from its frames, `{ paths, ms }` each, in order. The first counted frame is left
  * out when a second one exists (see the header). Answers `{ frames, frameMs, pathsPerSecond }`.
  */
 export function summarize(frames) {
@@ -283,7 +283,8 @@ function bundleBench() {
 
 /** The short hash of HEAD, with `-dirty` when the tree differs from it. */
 function commitName() {
-  const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim();
+  const git = (...args) =>
+    execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
   try {
     return `${git('rev-parse', '--short', 'HEAD')}${git('status', '--porcelain') === '' ? '' : '-dirty'}`;
   } catch {
@@ -295,7 +296,9 @@ function commitName() {
  *  table as it is ready. Answers the rows. */
 export async function bench(options, write = (line) => process.stdout.write(`${line}\n`)) {
   const bundle = readFileSync(bundleBench(), 'utf8');
-  const { server, origin } = await serve(outDir(), (url) => {
+  // The site's public files (`/assets/bunny.glb`) answer every path outside `/__bench/`, as the
+  // built site does for the render gate.
+  const { server, origin } = await serve(join(process.cwd(), 'site/public'), (url) => {
     if (url === '/__bench/bench.js')
       return { type: 'text/javascript; charset=utf-8', body: bundle };
     if (url === '/__bench/') return { type: 'text/html; charset=utf-8', body: PAGE };

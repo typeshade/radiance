@@ -23,7 +23,7 @@ Cornell box) and every site example. Each row has these columns.
 | `spp`       | The samples a pixel of the render.                                                                                   |
 | `triangles` | The triangles the scene draws. Each visible mesh counts, so an instance counts again.                                |
 | `BVH ms`    | The median of five builds of the bottom-level BVH of every distinct geometry. A build over one second is timed once. |
-| `frame ms`  | The mean time of one frame. The first frame adds one sample and is left out when a second frame exists.              |
+| `frame ms`  | The mean time of one frame. The first counted frame is left out when a second frame exists.                          |
 | `paths/s`   | The paths the counted frames traced, over their time.                                                                |
 | `spp/s`     | `paths/s` over the pixels of the frame.                                                                              |
 | `device`    | The adapter's description as the browser reports it. When the description is empty, the vendor and architecture.     |
@@ -60,7 +60,7 @@ Run these steps on Linux or macOS from the repository root.
 6. Check that `device` names SwiftShader.
 
 SwiftShader traces about 28,000 to 160,000 paths a second on four cores. At 1920 x 1080 the default
-run takes over an hour. Use the small size of step 3.
+run takes over an hour. Use the small size of step 4.
 
 ## Procedure: a real GPU, in Windows PowerShell
 
