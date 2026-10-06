@@ -544,8 +544,12 @@ disposition. "Made part of the record" means that the section named states the r
 `main` 6ad088d has it. "The record's new text" means that the section states a rule that the code
 at `main` 6ad088d does not follow. The merge accepts the rule, and a later pull request makes the
 code follow it. The numbers: `ScenePack.counts` of `createCornellBox()` at `main` 6ad088d holds 8
-instances, 1,924 triangles, 1,130 vertices, 1,091 nodes (3 of them the TLAS) and 2 lights. A 4K
-frame takes 2 tiles in its first frame and 129,600 tiles at the smallest tile.
+instances, 1,924 triangles, 1,130 vertices, 1,093 nodes (5 of them the TLAS) and 2 lights.
+`render` in `PathTracer.ts` and `scripts/oracle.ts` call `scene.updateMatrixWorld()` before
+`ScenePack.update`, and these counts follow that call. The measurement ran on 2026-10-06 with the
+pin 596c805 and bun 1.3.14. A pack built without that call has every instance at the identity
+matrix. It holds 1,091 nodes, 3 of them the TLAS. A 4K frame takes 2 tiles in its first frame and
+129,600 tiles at the smallest tile.
 
 1. **TLAS leaves.** Made part of the record. "The build" states how the TLAS splits a node of
    more than 4 instances (`buildTlas` and `build` in `bvh.ts`).
