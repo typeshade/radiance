@@ -59,9 +59,10 @@ Pin e923a34. Record 0006 lists what the engine needs from the runtime, with the 
 pin. Items 1 to 4 are open on typeshade/typeshade as draft change proposals, one pull request
 each, written in the compiler's own procedure and reviewed against its tree. Their numbers moved
 from 0043 to 0046 to 0047 to 0050, because the compiler's `main` took 0043 to 0045 and its
-pull request #486 took 0046 while the drafts were written.
+pull request #486 took 0046 while the drafts were written. Then its `main` took 0047 for the
+array zero value (#496), so item 1 moved to 0051 on 2026-10-06.
 
-- Item 1, device limits: proposal 0047, typeshade/typeshade#489
+- Item 1, device limits: proposal 0051 (first 0047), typeshade/typeshade#489
   (https://github.com/typeshade/typeshade/pull/489).
 - Item 2, a partial buffer write: proposal 0048, typeshade/typeshade#493
   (https://github.com/typeshade/typeshade/pull/493).

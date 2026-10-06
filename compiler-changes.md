@@ -9,4 +9,4 @@ When a pull request moves the compiler pin (`vendor/typeshade`) past a proposal 
 done on that branch and its id is recorded below. Record one list item per proposal: the id
 first, then the pull request that did the work.
 
-None yet: the pin is fd39ba3, and no proposal names this repository.
+None yet: the pin is 596c805, and no proposal names this repository.
