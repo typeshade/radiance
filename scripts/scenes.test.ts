@@ -9,8 +9,7 @@
 
 import { describe, expect, test } from 'bun:test';
 import { BufferGeometry, Mesh, SphereGeometry } from '@typeshade/radiance';
-import { INSTANCE_STRIDE, LIGHT_STRIDE } from '../packages/radiance/src/kernels/layout.shade.ts';
-import { ScenePack } from '../packages/radiance/src/renderers/scene-pack.ts';
+import { INSTANCE_STRIDE, LIGHT_STRIDE, ScenePack } from '@typeshade/radiance/internal';
 import { scenes, type SceneName } from './scenes.ts';
 
 /** The scene `name`, packed as the renderer packs it. */

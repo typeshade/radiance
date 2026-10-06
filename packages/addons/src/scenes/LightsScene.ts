@@ -6,7 +6,7 @@ import {
   EmissiveMaterial,
   Mesh,
   PerspectiveCamera,
-  QuadGeometry,
+  PlaneGeometry,
   Scene,
   SphereGeometry,
   Vector3,
@@ -35,9 +35,9 @@ function triangle(a: number, b: number): BufferGeometry {
 export function createLightsScene(): DemoScene {
   const scene = new Scene();
   const white = new DiffuseMaterial({ color: new Color(0.73, 0.73, 0.73) });
-  const floor = new Mesh(new QuadGeometry(4, 4), white);
+  const floor = new Mesh(new PlaneGeometry(4, 4), white);
   floor.rotation.x = -Math.PI / 2;
-  const back = new Mesh(new QuadGeometry(4, 3), white);
+  const back = new Mesh(new PlaneGeometry(4, 3), white);
   back.position.set(0, 1.5, -1.2);
   const ball = new Mesh(new SphereGeometry(0.45, 12, 8), white);
   ball.position.set(0, 0.45, 0);

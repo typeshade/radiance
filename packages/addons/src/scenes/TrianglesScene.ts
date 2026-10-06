@@ -6,7 +6,7 @@ import {
   EmissiveMaterial,
   Mesh,
   PerspectiveCamera,
-  QuadGeometry,
+  PlaneGeometry,
   Scene,
   SphereGeometry,
   Vector3,
@@ -27,12 +27,12 @@ export function createTrianglesScene(): DemoScene {
   const blue = new DiffuseMaterial({ color: new Color(0.2, 0.35, 0.75) });
   const light = new EmissiveMaterial({ color: new Color(14, 13, 10) });
 
-  const floor = new Mesh(new QuadGeometry(4, 4), white);
+  const floor = new Mesh(new PlaneGeometry(4, 4), white);
   floor.rotation.x = -Math.PI / 2;
-  const back = new Mesh(new QuadGeometry(4, 3), white);
+  const back = new Mesh(new PlaneGeometry(4, 3), white);
   back.position.set(0, 1.5, -1.2);
 
-  const lamp = new Mesh(new QuadGeometry(0.8, 0.5), light);
+  const lamp = new Mesh(new PlaneGeometry(0.8, 0.5), light);
   lamp.position.set(0, 1.9, 0.2);
   lamp.rotation.x = Math.PI / 2;
 

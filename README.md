@@ -101,7 +101,7 @@ bun run gate:api        # the exports of each package equal packages/*/__api__/s
 bun run gate:site       # the site builds from the tree into dist/site, with the hash of each still checked
 bun run bake:api-surface # bake the exports again after an intended change to one of them
 bun run harness         # the gates and their probes on WebGPU, and the site (needs Chromium: npx playwright install chromium)
-bun run gate:differential  # one gate alone: the Cornell box on WebGPU and on the oracle
+bun run gate:differential  # one gate alone: the Cornell box on WebGPU and on the oracle (add `-- <scene>` for another scene)
 bun run gate:determinism   # one gate alone: two renders of one seed are bit-identical
 bun run gate:render        # one gate alone: each example's picture is within tolerance of its golden
 UPDATE_GOLDENS=1 bun run gate:render  # rewrite the goldens after an intended change to a picture

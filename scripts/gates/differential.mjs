@@ -201,7 +201,8 @@ export async function probe(options = {}) {
 }
 
 if (import.meta.main) {
-  const result = await run();
+  // `bun run gate:differential -- <scene>` renders the scene called `<scene>`. With no name it renders the Cornell box.
+  const result = await run({ scene: process.argv[2] });
   (result.ok ? console.log : console.error)(result.message);
   process.exit(result.ok ? 0 : 1);
 }

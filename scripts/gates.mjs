@@ -25,8 +25,10 @@ export const ORACLE = { abs: 1e-3, rel: 0.05, mean: 3.3e-6 };
 /**
  * The differential gate's scenes of M2 (docs/design/0002-verification.md, "The differential
  * scenes"): `triangles`, `instances` and `lights`, each 16 x 16 at 256 samples a pixel. At that size
- * the oracle renders one in about 20 seconds on a loaded four-core machine, so the three scenes with
- * their determinism renders add about 90 seconds to the harness (measured on 2026-10-06, SwiftShader).
+ * the oracle renders one in 20 to 38 seconds on a four-core machine, 20 seconds when it is lightly
+ * loaded and 38 seconds at a load average of 9 (`lights`, measured on 2026-10-06, SwiftShader).
+ * The gate takes 36 to 48 seconds for a scene at that load. The three scenes with their determinism
+ * renders add under 3 minutes to the harness.
  */
 export const GATE_M2 = { size: [16, 16], samples: 256, perFrame: 64, seed: 1 };
 
