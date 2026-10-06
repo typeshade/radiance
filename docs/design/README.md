@@ -71,19 +71,21 @@ pull request), and these sections:
 
 ## The records
 
-| Id                                    | Title                                                                                                         | Status   | Milestones  |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------- | -------- | ----------- |
-| [0001](0001-scene-data-model.md)      | The scene data model: from the scene graph to the kernel's buffers                                            | accepted | M2, M2a, M3 |
-| [0002](0002-verification.md)          | Verification: the gates, their scenes, their numbers, and the instrument they prove                           | accepted | M2 onward   |
-| [0003](0003-public-api.md)            | The public API: what is public, its names, its versions, and the first release                                | accepted | M2, 0.1.0   |
-| [0004](0004-materials-and-shading.md) | Materials and shading: the material record, the shading contract, and the texture plan                        | accepted | M2, M3      |
-| [0005](0005-determinism.md)           | Determinism: the promise, the kernel rules, and the lint that holds them                                      | accepted | M2, M4      |
-| [0006](0006-compiler-boundary.md)     | The compiler boundary: what the engine needs from the runtime, as proposals                                   | accepted | M2 to M5    |
-| [0007](0007-webgl2-tier.md)           | The WebGL2 tier: the same kernels, no WebGL call in the engine, and gates for both tiers                      | draft    | M8          |
-| [0008](0008-interaction-controls.md)  | Interaction controls: a host ray cast, four modes (orbit, select, translate, rotate) and a material inspector | accepted | none        |
+| Id                                           | Title                                                                                                                                       | Status   | Milestones  |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ----------- |
+| [0001](0001-scene-data-model.md)             | The scene data model: from the scene graph to the kernel's buffers                                                                          | accepted | M2, M2a, M3 |
+| [0002](0002-verification.md)                 | Verification: the gates, their scenes, their numbers, and the instrument they prove                                                         | accepted | M2 onward   |
+| [0003](0003-public-api.md)                   | The public API: what is public, its names, its versions, and the first release                                                              | accepted | M2, 0.1.0   |
+| [0004](0004-materials-and-shading.md)        | Materials and shading: the material record, the shading contract, and the texture plan                                                      | accepted | M2, M3      |
+| [0005](0005-determinism.md)                  | Determinism: the promise, the kernel rules, and the lint that holds them                                                                    | accepted | M2, M4      |
+| [0006](0006-compiler-boundary.md)            | The compiler boundary: what the engine needs from the runtime, as proposals                                                                 | accepted | M2 to M5    |
+| [0007](0007-webgl2-tier.md)                  | The WebGL2 tier: the same kernels, no WebGL call in the engine, and gates for both tiers                                                    | draft    | M8          |
+| [0008](0008-interaction-controls.md)         | Interaction controls: a host ray cast, four modes (orbit, select, translate, rotate) and a material inspector                               | accepted | none        |
+| [0010](0010-materials-lights-and-outputs.md) | The first public demo (M3): a principled BSDF, textures, lights, a physical camera, AOVs with EXR output and a product viewer beside Cycles | draft    | M3          |
 
 The order of implementation is 0001 and 0002 first, in parallel, because M2 is written on them.
 0003 is done before the first npm release. 0004 and 0005 are needed before M3. 0006 is a list
 of proposals the compiler's owner schedules. Each record names the item it waits on.
 0007 waits for the compiler's change 0054 and the pin that carries it. It serves milestone M8, which the plan pull request proposes, and merges after that pull request.
+0010 serves M3. It has six parts, and each part merges alone. It waits for the analytic sphere record and record 0009 (sampling quality), which merge before it, and for the compiler's change 0050 for its texture parts.
 0008 serves no milestone of the plan. It is a change to the engine's core (the ray cast), to the addons (the controls) and to the site. The record is accepted, and its implementation runs in the steps the record lists, after the Sponza example (decision 20).
