@@ -1,6 +1,6 @@
 // The Sponza geometry of the `sponza` example (design record 0001, step 5): the committed .glb is
 // the one scripts/assets/sponza.mjs records, the loader reads it into 22 meshes of 227,327
-// triangles together, the orbit limits of the example keep the camera in free space of the model,
+// triangles together, the camera of the example starts in free space of the model,
 // and the BVH builder takes each mesh. The test prints the milliseconds the BVH
 // builds and the whole scene pack take on the machine that runs it. It holds them only to a loose
 // bound, because a time depends on the machine and must not fail a check.
@@ -82,7 +82,7 @@ describe('the Sponza asset', () => {
     expect(high[1]! - low[1]!).toBeCloseTo(12.45, 1);
   });
 
-  it('lets the camera orbit only in free space of the nave, above its floor', async () => {
+  it('starts the camera inside the nave, in free space above its floor', async () => {
     const gltf = await new GLTFLoader().parseAsync(bytes);
     gltf.scene.updateMatrixWorld();
     // The world-space box of each triangle of the model, six numbers each.
@@ -122,43 +122,23 @@ describe('the Sponza asset', () => {
       return false;
     };
 
-    // The floor of the nave: a vertical ray over the model finds it at y = 0.991.
+    // The orbit is free (the example sets no limit but the distance), so the test holds the start
+    // and the pivot only. The floor of the nave: a vertical ray over the model finds it at y = 0.991.
     const FLOOR = 0.991;
     const CLEARANCE = 0.2;
-    const [tx, ty, tz] = ORBIT.target;
-    // Every camera position the orbit reaches, over a grid of its distance, polar angle and
-    // azimuth angle, ends included. The pivot is a point: the pan gestures do not move it.
-    const steps = 12;
-    let lowest = Infinity;
-    for (let i = 0; i <= steps; i++) {
-      const r = ORBIT.minDistance + ((ORBIT.maxDistance - ORBIT.minDistance) * i) / steps;
-      for (let j = 0; j <= steps; j++) {
-        const phi = ORBIT.minPolar + ((ORBIT.maxPolar - ORBIT.minPolar) * j) / steps;
-        for (let k = 0; k <= steps; k++) {
-          const theta = -Math.PI / 2 - ORBIT.azimuth + (2 * ORBIT.azimuth * k) / steps;
-          const at = [
-            tx + r * Math.sin(phi) * Math.sin(theta),
-            ty + r * Math.cos(phi),
-            tz + r * Math.sin(phi) * Math.cos(theta),
-          ] as const;
-          lowest = Math.min(lowest, at[1]);
-          expect(touches(at, CLEARANCE)).toBe(false);
-        }
-      }
-    }
-    // At the lowest, the camera is 0.25 m or more above the floor.
-    expect(lowest).toBeGreaterThanOrEqual(FLOOR + 0.25);
-
-    // The start is inside the limits, so the controls do not move it.
-    const d = [ORBIT.start[0] - tx, ORBIT.start[1] - ty, ORBIT.start[2] - tz] as const;
-    const r0 = Math.hypot(...d);
-    expect(r0).toBeGreaterThanOrEqual(ORBIT.minDistance);
-    expect(r0).toBeLessThanOrEqual(ORBIT.maxDistance);
-    const phi0 = Math.acos(d[1] / r0);
-    expect(phi0).toBeGreaterThanOrEqual(ORBIT.minPolar);
-    expect(phi0).toBeLessThanOrEqual(ORBIT.maxPolar);
-    expect(Math.abs(Math.atan2(d[0], d[2]) + Math.PI / 2)).toBeLessThanOrEqual(ORBIT.azimuth);
     expect(touches(ORBIT.start, CLEARANCE)).toBe(false);
+    expect(touches(ORBIT.target, CLEARANCE)).toBe(false);
+    expect(ORBIT.start[1]).toBeGreaterThanOrEqual(FLOOR + 0.25);
+    // The start is inside the nave: it is 3.8 m wide, centred on the axis z = 0.
+    expect(Math.abs(ORBIT.start[2])).toBeLessThan(1.9);
+    // It lies within the distance the example allows, 0.05 to 50 m.
+    const r0 = Math.hypot(
+      ORBIT.start[0] - ORBIT.target[0],
+      ORBIT.start[1] - ORBIT.target[1],
+      ORBIT.start[2] - ORBIT.target[2],
+    );
+    expect(r0).toBeGreaterThanOrEqual(0.05);
+    expect(r0).toBeLessThanOrEqual(50);
   }, 60_000);
 
   it('is built into 22 BVHs, and packed with a light', async () => {

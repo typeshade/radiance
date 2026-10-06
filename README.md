@@ -58,8 +58,8 @@ and a 1024 spp render on WebGPU is within tolerance of the CPU oracle's render o
 kernel. Milestone **M2** is in progress. The kernel draws triangle meshes through a two-level
 BVH, behind the material record and the shading contract (design records 0001 and 0004). The
 `GLTFLoader` reads `.gltf` and `.glb` files, and the `bunny` example draws the Stanford bunny from
-one. The `sponza` example draws the Sponza atrium without its textures. The benchmark scenes come
-next.
+one. The `sponza` example draws the Sponza atrium without its textures. `bun run bench` measures the
+speed of each scene, and `docs/benchmarks.md` holds the rows.
 
 ## Layout
 
