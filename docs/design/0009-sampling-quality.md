@@ -358,3 +358,65 @@ Alternatives. Clamp each sample's radiance: simple, and it adds bias at every pi
 1. **The test sees a wrong median.** Plant the fault of reading the same sorted value for both middle values. P1 must pass and P2 must fail with the case named. Plant the fault of writing every frame to bucket 0. The count test of step 4.2 must fail with the counts in its message.
 2. **The quality tool sees a firefly.** Plant a fault in a scratch branch. Add 10,000 to the radiance of a path whose hash is under 1 in 4,096. The plain mean's error at 256 samples must rise above the unfaulted error. The filter's error must stay under the plain mean's error. The pull request records the three numbers. Inference: the fault's share of the radiance is large enough to show at 16 by 16 pixels. Step 4.4 measures it.
 3. **The gates stay blind to the filter.** With the filter on, `bun run gate:render` must give the same result as with it off. The mode is read from `PresentParams`, and the goldens use mode 0.
+
+## Part 5: blue-noise error diffusion by a scrambled Morton index (ZSobol)
+
+### What changes (part 5)
+
+Today each pixel reads its own random scramble of the sequence, so the errors of two neighbours are independent. After this part all pixels of a block read one scrambled sequence. A pixel takes its share of it by the sample index `zIndex(code, i)`, a scrambled Morton index of (pixel, sample). The errors of neighbours then become anti-correlated, which is blue noise in screen space (Ahmed et al. 2020, ZSobol). Part 5 builds on part 2's `sample2`, so part 2 merges first.
+
+**Before.** These are facts at `main` 55bde46. `trace` makes `pixelSeed = hash2(pixel, params.scene.w)` for each pixel (`trace.shade.ts`, line 207). `sample2` takes `key = hash2(pixelSeed, pair)` and shuffles the sample index with `owen(index, key)` (`sampler.shade.ts`, lines 72 and 73). Both depend on the pixel, so every pixel has its own scramble and its own order. The error is white noise across pixels. The index is a whole `u32`, and `frame.z + s` counts up from 0 for the whole render (line 210). Nothing reads a budget of samples.
+
+**After.** After part 2, `sample2` shuffles with `shuffled = owen(index, key)`. Part 5 replaces that one line and gives `sample2` one more parameter. These are the definitions.
+
+- **The budget.** `L = params.path.w` is the log2 of the sample budget. The host sets it (decision 15). A budget of `2^L` samples is one epoch. The sample `index` is in epoch `e = index >> L`, and `i = index & (2^L - 1)` is its place in the epoch.
+- **The block.** Let `bits(n)` be the smallest `m` with `2^m >= n`. The block side is `2^m`, with `m = min(bits(max(width, height)), (32 - L) / 2)`. The block of a pixel is `(px >> m, py >> m)`. A frame of at most `2^m` pixels on each side is one block. At `L` of 10, `m` is at most 11, and a block is at most 2,048 by 2,048 pixels.
+- **The seeds.** `trace` makes `pixelSeed = hash2(hash2(bx, by), params.scene.w)`. It is the same for each pixel of a block. A block of the frame has its own seed, so two blocks are independent. `sample2` makes `blockKey = hash2(pixelSeed, e)`, and `key = hash2(blockKey, group)`. Each epoch is a new sequence, so a render past the budget restarts the blue noise, as the survey says it must.
+- **The code.** `trace` makes `code = morton2(px & (2^m - 1), py & (2^m - 1))`. It interleaves the bits of x and y, and it has `2m` bits. It is the same for each sample of the pixel.
+- **The index.** `zIndex(code, i, key, L)` is the number `n = (code << L) | i`, which has `2m + L` bits. Its digits in base 4 sit at the bit shifts `s = (L & 1), (L & 1) + 2, ...`. They are permuted from the top. For the digit at shift `s`, let `higher = n >> (s + 2)`. The permutation is number `hash2(higher, key ^ s) % 24` of the 24 permutations of `{0, 1, 2, 3}`. The digit is replaced by its image. When `L` is odd, the lowest bit is a digit in base 2. It is flipped when a bit of `hash2(n >> 1, key)` is set. A digit above it stays in base 4, so the digits keep their place.
+- **The result.** `shuffled = zIndex(code, i, key, L)`. The rest of `sample2` is part 2's: the SZ dimensions of `shuffled`, each with its own Owen scramble from `key`. The scrambles are the same for each pixel of the block. A pixel differs only by its index.
+- **The new signature.** `sample2(pixelSeed, code, index, pair)`. `radiance` takes `code` after `pixelSeed`. `direct`, `sampleBsdf` and `emission` do not change.
+- **The table.** `PERM4` is a module constant `array<u32, 24>`. Entry `p` packs the permutation `p`: the image of digit `d` is `(PERM4[p] >> (2 * d)) & 3`. It is 96 bytes. It needs no buffer, so record 0001 gains nothing from it. If step 2.2's probe shows that a runtime index into a module constant array fails, the permutation comes from arithmetic. Decode `p` with `p / 6`, `(p / 2) % 3` and `p % 2`, and place the digit by `select`. This needs no table. Decision 16 holds this choice.
+- **The host.** `PathTracer` sets `L` when the accumulation restarts. It is `ceil(log2(max(1, maxSamples)))`, kept at most 16. When `maxSamples` is infinite, `L` is 10. A change of `maxSamples` after a restart changes nothing until the next restart. The site's caps give `L` of 10 for 1,024 samples and 8 for 256. Both are even.
+- **The tiles.** `code` and the block come from the absolute `px` and `py`, so a tile changes no image. The test "adds the same samples to every pixel whatever the tiles, bit for bit" in `kernels.test.ts` keeps its meaning.
+- **The oracle.** `oracle.ts` sets `L` as the host does, from its `samples`.
+
+**What the property needs.** Fact: the survey says that the blue-noise property needs the sample budget in advance. A frame that takes `n` samples with `n` a power of two up to `2^L` has the property in full. Inference: a count between two powers of two has it in part. A frame from the first frame of one sample (`PathTracer.ts`, lines 241 to 244) shifts later frames by one index. Inference: this loses part of the stratification of each frame of a bucket in part 4. Step 5.3 measures the whole effect.
+
+**The cost.** Inference, from arithmetic: `zIndex` loops over `(2m + L) / 2` digits, and each digit takes two hashes and a table read. A 1,280 by 720 frame at `L` of 10 has `m` of 11, so 16 digits. One path calls `sample2` up to 33 times: 4 for each of 8 bounces, and 1 for the jitter. Each call runs `zIndex`. At about 25 integer operations for a digit, that is about 13,000 operations for a path. The cost may be a visible share of the frame. Step 5.3 measures it, and step 5.4 caches the digits of the pixel if it is over 10 % of the frame.
+
+### Why (part 5)
+
+A low-discrepancy sequence makes the error of one pixel small. It says nothing about the error of the next pixel, which is independent. The eye sees independent errors as grain. If the errors of neighbours are anti-correlated, a blur removes more of them, and a denoiser removes them more easily. The paper's claim, from the survey: a scrambled Morton index turns low-sample error into blue noise. It needs integer operations only and no buffer. The site's preview at 256 and 1,024 samples would look cleaner. This record has not read the paper's numbers. Step 5.1 reads it.
+
+Alternatives. Heitz et al. (2019): it needs tables and a binding, and no binding is free (record 0001, rule 1). ART-Owen (Ahmed et al. 2023): the survey says it needs a bound table, and it is less proven.
+
+### What it touches (part 5)
+
+- **Files.** `sampler.shade.ts` (`morton2`, `zIndex`, `PERM4`, `sample2`, the header comment). `trace.shade.ts` (`trace`, `radiance`). `PathTracer.ts` (`L` at a restart). `scene-pack.ts` (the `path` word). `scripts/oracle.ts` (`L`). `scripts/quality.mjs` (the blur column).
+- **Records.** Record 0001: the meaning of `path.w` (Amendment H). Record 0005: the seeds, the epoch and the promise's condition (Amendment I). Record 0002: the goldens, and the numbers of the new tests.
+- **Gates.** The differential and determinism gates at their bounds. Every golden changes, because every random number changes.
+- **The site.** The stills change with the goldens. The guide page `checked-on-the-cpu.mdx` (line 42) and `PRODUCT.md` (line 77) say "an Owen-scrambled Sobol sequence". Part 2 makes that line stale. Part 5 does not make it more so.
+- **Not touched.** Parts 1 and 3 and the kernels' other files.
+
+### Steps (part 5)
+
+1. **Step 5.1: `morton2`, `zIndex` and their tests.** Read Ahmed et al. (2020). Add the three functions and `PERM4`. Write the paper's rule into the comments where it differs from this record. Tests in `sampler.test.ts`, through `compile()` on the oracle and through the language service:
+   - `zIndex` is a bijection on `[0, 2^(2m + L))` for `m` of 2 and `L` of 3, and for `m` of 3 and `L` of 4. This holds for 8 keys. The case `L` of 3 tests the base-2 digit. Verifies Design 0009.16.
+   - Take an aligned square of `2^k` by `2^k` pixels, `k` up to 3. The indices of its pixels and of the samples `0` to `2^L - 1` form one aligned range of `4^k * 2^L` integers. Verifies Design 0009.16.
+   - `morton2` of the 16 by 16 pixels is a bijection on `[0, 256)`.
+     Done when the tests pass and `determinism.test.ts` reports no new row.
+2. **Step 5.2: the probe and the kernel.** Run step 2.2's probe on `PERM4`. Change `sample2`, `trace` and `radiance` as "What changes" says. Add `L` to `PathTracer` and the oracle. Tests:
+   - For 3 pixels and 1,024 values of `i`, the pair `sample2(.., 2^L + i, ..)` differs from `sample2(.., i, ..)`. Verifies Design 0009.15.
+   - `L` is 10 for an infinite `maxSamples`, 10 for 1,024 and 8 for 256. A change of `maxSamples` after a restart does not change `L`. Verifies Design 0009.15.
+   - A frame of 3,000 by 1,000 pixels has `m` of 11 at `L` of 10. Pixels 2,048 apart in x have different seeds.
+     Done when the tests pass and `bun run check:shaders` reports no diagnostic.
+3. **Step 5.3: the numbers.** Record `bun run gate:differential` before and after for the four scenes. Run `bun run gate:determinism`. Rewrite the goldens with `UPDATE_GOLDENS=1 bun run gate:render` and show each pair of pictures. Run `bun run quality` on `cornell` at 1, 4, 16, 64, 256 and 1,024 samples, at 64 by 64 pixels, before and after. The tool prints the error and the blur ratio. Run `bun run bench` on `cornell` and add a row before and after. Done when the pull request shows these numbers.
+4. **Step 5.4: the cache.** Do this step only when step 5.3 shows a cost over 10 % of `frame ms`. Compute the digits of the pixel once for each group, and keep them in a local array. Run step 5.3's numbers again. Done when the cost is under 10 %, or the owner accepts it.
+
+**The blur ratio.** This is a number that `bun run quality` gains in this part. Blur the render and the reference with a box of 3 by 3 pixels. The ratio is the error of the blurred render over the error of the render, both against the reference. Arithmetic: errors that are independent between pixels fall by a factor of 3 in the blur, so the ratio is 1/3. Anti-correlated errors fall more, so the ratio is under 1/3. The reference for this part is 64 by 64 pixels at 4,096 samples. Inference: it is 16,777,216 paths, and at 28,000 paths a second it takes about 10 minutes. This is not measured at that size.
+
+### Prove the instrument (part 5)
+
+1. **The tests see a wrong permutation.** Plant the fault of setting entry 5 of `PERM4` to `(0, 0, 1, 2)`. The bijection test must fail with the first repeated index in its message. Plant the fault of taking `higher` from `i` alone. One of the two tests of step 5.1 must fail. The pull request names which.
+2. **The quality tool sees white noise.** Plant the fault of using `hash(px, py)` in place of the Morton code. The blur ratio at 4 samples must rise to about 1/3, and the unfaulted ratio must be under it. Inference: the ratio of the faulted kernel falls between 0.28 and 0.38 on a frame of 64 by 64 pixels. Step 5.3 measures it. If it does not, the tool does not measure what it names.
