@@ -64,8 +64,8 @@ function to differentiate.
 says which scattering the kernel applies. Diffuse is 0 and mirror is 1, as `kind` had them, and
 physical is 2. Each subclass sets `type` from the constants of `materials.shade.ts`
 (`MATERIAL_DIFFUSE`, `MATERIAL_MIRROR`, `MATERIAL_PHYSICAL`), and `packMaterial` stores it in
-the low 8 bits of `[2].w`. `Material` gains `flatShading` (Amendment 3), default false, as three.js's `material.flatShading`.
-`DiffuseMaterial` and `MirrorMaterial` stay as they are.
+the low 8 bits of `[2].w`. `Material` gains `flatShading` (Amendment 3), default false, as
+three.js's `material.flatShading`. `DiffuseMaterial` and `MirrorMaterial` stay as they are.
 `EmissiveMaterial` stays: a black diffuse that emits. `PhysicalMaterial`, new, takes
 `PhysicalMaterialParameters`: `color`, `metalness` (0), `roughness` (0.5), `ior` (1.5),
 `transmission` (0), `specularIntensity` (1), `emissive`, `emissiveIntensity`, and at M3 `map`,

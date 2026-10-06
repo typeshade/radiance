@@ -106,8 +106,8 @@ quadratic to `intersect.shade.ts`. Record 0004 adds `sphereUv`. Both stay under 
 neither adds a row to the lists:
 
 1. **Which rules.** The quadratic uses `+`, `-`, `*`, `/`, `sqrt`, `dot`, `normalize`, `select` and
-   comparisons. Its first step is one subtraction, the origin from the centre. Rule 3 admits all of them. `sphereUv` uses `+`, `-`, `*`, `/`, `sqrt` and
-   comparisons. It calls neither `atan2` nor `acos`. Rule 2 does not list `sqrt`. It lists `sin`,
+   comparisons. Its first step is one subtraction, the origin from the centre. Rule 3 admits all of
+   them. `sphereUv` uses `+`, `-`, `*`, `/`, `sqrt` and comparisons. It calls neither `atan2` nor `acos`. Rule 2 does not list `sqrt`. It lists `sin`,
    `cos`, `exp`, `exp2`, `log`, `log2`, `pow`, `fract`, `tan`, `atan`, `atan2`, `asin` and `acos`.
 2. **What `sqrt` is.** Fact: the compiler's report gives `sqrt` the kind `inherited`, from
    `1 / inverseSqrt(x)`. It gives `inverseSqrt` the kind `ulp`, at 2 ULP, and `/` the kind `ulp`,
