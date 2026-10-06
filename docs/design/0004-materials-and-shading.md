@@ -56,7 +56,7 @@ function to differentiate.
   M3 fills the rest. The stride does not change between.
 - Six words of the record are integers: `[2].w`, and the five texture ids `[3].x` to `[3].w` and
   `[7].x`. At M2 each one is the bits of an `f32`. "The integer words" below proposes that step 6
-  moves them to a `u32` binding.
+  moves them to `materialBits`, a binding of `u32` words.
 
 **The classes.** `Material` keeps `color` and `emissive` and gains `version`, `type`,
 `doubleSided` and `name`. `type` replaces M1's `kind` and `kind` is removed, so one number
@@ -125,21 +125,28 @@ export function evalBsdf(s: Surface, wo: vec3, wi: vec3): vec4; // f in xyz, pdf
   of an `f32` at that coordinate.
 - **The shading normal.** `ns` is the vertices' normals, interpolated by the barycentric weights,
   moved to world space by the inverse transposed and made unit. `surfaceAt` turns it to the ray's
-  side when the ray met the back face. `ns` is `ng` when the interpolated vector has length 0.
+  side when the ray met the back face. `ns` is `ng` when the vector in world space has length 0.
   `ns` is `ng` too when its dot product with `ng` is 0 or less after the turn.
-- **A direction under the surface.** `radiance` ends a path in two cases. The `pdf` of the sample
-  is 0 or less. Or the dot product of `wi` and `ng` is 0 or less. A shading normal can give such a
-  direction. The end of the path follows next-event estimation, so the light sample of that
-  bounce still counts. `direct` adds nothing for a light sample whose direction has a dot
-  product with `ng` of 0 or less. Inference: the rule acts only where `ns` differs from `ng`.
-  The light that such a path would carry is lost. The loss was not measured.
+- **A direction under the surface.** After the BSDF sample, `radiance` ends the path in two
+  cases. The `pdf` of the sample is 0 or less. Or the dot product of `wi` and `ng` is 0 or less.
+  A shading normal can give such a direction. The end of the path follows next-event estimation,
+  so the light sample of that bounce still counts. `direct` adds nothing for a light sample whose
+  direction has a dot product with `ng` of 0 or less. Inference: the rule acts only where `ns`
+  differs from `ng`. The light that such a path would carry is lost. The loss was not measured.
 
-**The path loop** (`radiance()` in `trace.shade.ts`) becomes: traverse, `surface`, add
-`emission` when the last bounce was specular or this is the camera ray, `sampleBsdf` for the next
-direction, next-event estimation with `evalBsdf` toward a light from the table unless the sample
-is specular, an end to the path when the direction goes under `ng`, Russian roulette. The loop
-draws the BSDF sample first because a specular sample skips next-event estimation. The two use
-their own sampler dimensions, so the order changes no number. Nothing in the loop reads a
+**The path loop** (`radiance()` in `trace.shade.ts`) becomes these steps for each bounce:
+
+1. Traverse the scene.
+2. Fill the `Surface` with `surface`.
+3. Add `emission` when the last bounce was specular or this is the camera ray.
+4. Draw the next direction with `sampleBsdf`.
+5. Add next-event estimation with `evalBsdf` toward a light from the table, unless the sample is
+   specular.
+6. End the path when the direction goes under `ng`.
+7. Apply Russian roulette.
+
+The loop draws the BSDF sample first because a specular sample skips next-event estimation. The
+two use their own sampler dimensions, so the order changes no number. Nothing in the loop reads a
 material word: that is the contract.
 
 **The grad boundary** (plan §3.1 item 2, §3.3). `grad` differentiates `evalBsdf`, `emission`
@@ -163,8 +170,8 @@ compute stage has no derivatives) at a level the ray's footprint chooses (ray di
 pin (record 0006, item 4): M3's textures wait on it.
 
 **The integer words (step 6).** Step 1 stores six words of the record as the bits of an `f32`:
-`[2].w` and the five texture ids. This record proposes that step 6 moves them to a `u32` binding.
-The owner confirms it in decision 8. The facts and inferences first:
+`[2].w` and the five texture ids. This record proposes that step 6 moves them to `materialBits`,
+a new binding of `u32` words. The owner confirms it in decision 8. The facts and inferences first:
 
 - Fact: `0xffffffff`, the id of no texture, is the bits of a NaN. The runtime writes an `f32` lane
   with `DataView.setFloat32` and a `u32` lane with `setUint32` (`writeNumber` in
@@ -174,6 +181,10 @@ The owner confirms it in decision 8. The facts and inferences first:
 - Fact: change 0045 of the compiler (`vendor/typeshade/changes/0045-bitcast-nan-subnormal-words.md`,
   `status: implemented`) says that a NaN or subnormal bit pattern in an `f32` has no portable
   `bitcast`. It says that an integer word belongs in a `storage<array<u32>>` binding.
+- Fact: change 0045 names `storage<array<vec4u>>` beside `storage<array<u32>>` (its Deviations),
+  because the compiler's typeshade/typeshade#485 (52d1bd0a) made it exact on GLSL ES 3.00. That
+  commit is in the pin 596c805. `triangles` is already a `storage<array<vec4u>>`
+  (`layout.shade.ts`).
 - Fact: the type-and-flags word is below `0x800`, so its bits are 0 or a subnormal `f32`. The
   kernel reads it at M2 (`flagsOf` in `materials.shade.ts`). Change 0045 measured Chromium on
   SwiftShader, which keeps the bits. It did not measure a hardware GPU.
@@ -186,13 +197,15 @@ The owner confirms it in decision 8. The facts and inferences first:
 
 The rule from step 6:
 
-1. `materialBits` is a `storage<array<u32>>` binding with 8 `u32` for each material, in the
-   order of `materials`.
-2. Its words are the type and flags, then `map`, `normalMap`, `roughnessMap`, `metalnessMap` and
-   `emissiveMap`, then two reserved words of 0.
+1. `materialBits` is a `storage<array<vec4u>>` binding with 2 `vec4u` for each material, in the
+   order of `materials`. Material `m` has the elements `2 * m` and `2 * m + 1`.
+2. Its 8 words are the type and flags, then `map`, `normalMap`, `roughnessMap`, `metalnessMap` and
+   `emissiveMap`, then two reserved words of 0. Element `2 * m` holds the first four, from `x` to
+   `w`. Element `2 * m + 1` holds the rest.
 3. The six lanes of `materials` that held these words become reserved and hold 0. The record
    stays 128 bytes, and no float word moves.
-4. The host writes `materialBits` from a `Uint32Array`. `flagsOf` reads it with no `bitcast`.
+4. The host writes `materialBits` from one `Uint32Array`, as it writes `triangles`. `flagsOf` reads
+   it with no `bitcast`.
 5. A texture id keeps its form: `0xffffffff` for none, else `(class << 24) | layer`.
 6. Step 6 moves no picture. The kernel reads no texture id before M3, and the type and flags
    keep their values.
@@ -200,6 +213,10 @@ The rule from step 6:
 The cost: `materialBits` is the eighth storage buffer of the trace stage. Record 0001 holds the
 count at seven (rule 1 and decision 0001.2). Its rule 1 keeps the eighth slot for the compiler's
 console buffer. So the owner decides before step 6 starts.
+
+The binding keeps record 0001, rule 2: it is an array of `vec4u`, bound from one typed array, as
+`triangles` is. A `storage<array<u32>>` binding would break rule 2 too. So the conflict is with
+rule 1 alone.
 
 The alternative keeps seven buffers. The host stores each integer word as the value of an `f32`,
 not as its bits. Inference: an integer below 2^24 is exact in an `f32`, and the kernel converts it
@@ -236,10 +253,21 @@ optional and `dpdu` from the triangle is exact for a triangle). Texture atlases 
   2 % by a 4,096-sample estimate. `emission` is zero on the back face). `scene-pack.test.ts`
   (the record's words). The `physical` differential scene (record 0002).
 - The site's guide page on materials. The API reference follows the JSDoc.
-- Step 6 touches `src/kernels/materials.shade.ts` (`flagsOf`, the binding and the header, which
-  names the one `bitcast`), `src/renderers/scene-pack.ts` (`packMaterial` and the buffer list),
-  `src/renderers/PathTracer.ts` (the bindings), `scene-pack.test.ts` and `materials.test.ts`. It
-  waits for an amendment of record 0001 if the owner chooses the eighth buffer.
+- Step 6 touches the files below. It waits for an amendment of record 0001 if the owner chooses
+  the eighth buffer.
+  - `src/kernels/materials.shade.ts`: `flagsOf`, the binding and the header, which names the one
+    `bitcast`.
+  - `src/kernels/layout.shade.ts`: the header, which says that a `vec4` holds an integer word as
+    the bits of an `f32`.
+  - `src/kernels/layout.test.ts` and `src/kernels/kernels.test.ts`: the first asserts the exact set
+    of storage bindings. The second asserts that the trace binds seven.
+  - `src/renderers/scene-pack.ts`: `packMaterial`, `SCENE_BUFFERS`, `SceneArrays` and the header,
+    which counts six buffers.
+  - `src/renderers/PathTracer.ts`: the two comments that count the storage buffers. It binds the
+    pack's buffers through `pack.residents()`.
+  - `scripts/oracle.ts`, at the repository root: it binds each buffer of `SCENE_BUFFERS` through
+    `vec4s`.
+  - `scene-pack.test.ts` and `materials.test.ts`.
 
 ## Implementation, in steps
 
@@ -255,7 +283,7 @@ optional and `dpdu` from the triangle is exact for a triangle). Texture atlases 
    images, `surface`'s reads, the `textures` differential scene.
 4. **Clearcoat, sheen, anisotropy (M3)**, each its own pull request with its oracle test.
 5. **The `grad` test**, with M5: `grad` accepts the three functions.
-6. **The integer words in a `u32` binding**, before step 3 reads a texture id, and only after
+6. **The integer words in `materialBits`**, before step 3 reads a texture id, and only after
    the owner confirms decision 8. It delivers `materialBits` as "The integer words" states.
    Done when a test sends `0xffffffff` through the oracle's binding and reads it back, the
    Cornell box gate and the render gate pass with no change of a number, and the determinism
@@ -275,9 +303,10 @@ optional and `dpdu` from the triangle is exact for a triangle). Texture atlases 
    whose direction goes under `ng`.
 7. `Material.type` replaces `Material.kind`, and no `kind` stays (Amendment 1).
 8. At step 6, the six integer words of the material record move to `materialBits`, a
-   `storage<array<u32>>` binding. That changes six words of decision 1's record. It is also an
-   eighth storage buffer, against record 0001, rule 1. The owner chooses: amend record 0001
-   first, or keep seven buffers and store each word as the value of an `f32`.
+   `storage<array<vec4u>>` binding with 2 `vec4u` for each material. That changes six words of
+   decision 1's record. It is also an eighth storage buffer, against record 0001, rule 1. It keeps
+   rule 2 of record 0001. The owner chooses: amend record 0001 rule 1 first, or keep seven buffers
+   and store each word as the value of an `f32`.
 
 ## Record
 
@@ -297,7 +326,7 @@ changes the code or this record. The dispositions:
 - **The offset of the hit point.** Proposed: made part of the record. The distance is `OFFSET`
   times the largest of 1 and the point's largest absolute coordinate.
 - **The side of the shading normal.** Proposed: made part of the record. `ns` is `ng` when the
-  interpolated normal has length 0 or faces away.
+  interpolated normal, in world space, has length 0 or faces away.
 - **A direction under the surface.** Proposed: made part of the record. The path loop ends such
   a path. The rule loses the light that the path would carry, so the owner may ask for another
   policy. Decision 6 holds this one.
@@ -305,15 +334,16 @@ changes the code or this record. The dispositions:
   classes" says so. The package is at version 0.0.0 with no release, so record 0003,
   "Deprecation", has no released name to protect. Decision 7 holds it.
 - **The integer words.** Proposed: a rule for a later step. "The integer words (step 6)" moves
-  six words to a `u32` binding. The proposal is open until the owner confirms decision 8,
-  because it needs an eighth storage buffer. This pull request changes no code.
+  six words to `materialBits`. The proposal is open until the owner confirms decision 8,
+  because it needs an eighth storage buffer, against record 0001, rule 1. It keeps rule 2. This
+  pull request changes no code.
 - **The order of `sampleBsdf` and next-event estimation.** Found while reading the code, and not
   in the list of #18. The loop draws the BSDF sample first, so that a specular sample skips
   next-event estimation. Proposed: made part of the record. "The path loop" now has that order.
 
 **Deviations of step 1** (2026-10-05, UTC). Step 1 is typeshade/radiance#18 with record 0001
 step 3, merged as 9f2cf1a. Each entry gives the difference and its disposition. Amendment 1
-proposes a new disposition for each.
+proposes a new disposition for each of the first six entries and adds the seventh.
 
 - **The back face of a light.** "The record" defines the "double sided" bit and does not say
   what it does. `emission` is zero on the back face unless the bit is set. With the bit, the
@@ -336,12 +366,25 @@ proposes a new disposition for each.
   belongs in a `storage<array<u32>>` binding. Measured in bun 1.3.14 at the pin e923a34: the
   runtime's `pack` turns 0xffffffff into 0x7fc00000 on an `f32` lane and keeps it on a `u32`
   lane. No picture moves until M3 reads a texture id. Disposition: Amendment 1 proposes step 6
-  to move those words to a `u32` binding (`docs/typeshade-feedback.md`, the step 3 entry on the
+  to move those words to `materialBits` (`docs/typeshade-feedback.md`, the step 3 entry on the
   upload). It stays open until the owner confirms decision 8.
+- **The order of `sampleBsdf` and next-event estimation.** Amendment 1 found this one, and #18 did
+  not list it. This record's path loop put next-event estimation before `sampleBsdf`. The code
+  draws the BSDF sample first, so that a specular sample skips next-event estimation.
+  Disposition: made part of the record by Amendment 1.
 
 **Configuration and validation record.** Step 1 is delivered with record 0001 step 3 as
-typeshade/radiance#18, merged as 9f2cf1a, at the compiler pin e923a34. The oracle tests in
+typeshade/radiance#18, merged as 9f2cf1a. The verification of #18 ran at the compiler pin
+e923a34, in a worktree at 23cbc51 on `main` bc99533 (#18, Verification). #18 merged onto 632c661,
+which had already moved the pin, so 9f2cf1a pins the compiler at fd39ba3. The oracle tests in
 `src/kernels/materials.test.ts` pass. A diffuse sample's weight is its colour, and a mirror
 sample is the reflection. `evalBsdf`'s pdf integrates to 1 within 2 % by 4,096 samples. A
 single-sided light is dark from behind. The Cornell box gate passes on the contract with the
 numbers in record 0001's record. Steps 2 to 6 are not started.
+
+**Open item.** Decisions 0004.6 and 0004.7 carry no `Verifies:` tag, so DEC-0406 and DEC-0407 have
+no reference. Tests of some of their rules exist. `materials.test.ts` ('is zero on the back face
+of a single-sided light') tests the back face of decision 6. `intersect.test.ts` ('meets the
+instance where its matrix puts it') tests the offset of decision 6. `scene-pack.test.ts` ('writes
+the type of each material class') tests the type word of decision 7. A later pull request adds the
+tags.
