@@ -114,6 +114,8 @@ bun run capture:stills  # the examples' stills, after a change to what an exampl
 RADIANCE_GPU=1 bun run capture:stills  # the same on this machine's GPU instead of SwiftShader
 ```
 
+The `harness (headless WebGPU)` and `compiler bump impact` jobs skip their steps on a docs-only pull request. Such a pull request changes only files under `docs/`, `reqs/` and `.claude/`, `README.md`, `CLAUDE.md`, `LICENSE`, and Markdown pages under `site/src/content/docs/` outside `api/`.
+
 A gate shows that it can fail before it is trusted to pass: the harness runs each gate's `probe()`.
 The probes of `gate:api` and `gate:site` need no browser, so `bun run test` runs them.
 
