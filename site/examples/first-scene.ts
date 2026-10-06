@@ -9,7 +9,7 @@ import {
   MirrorMaterial,
   PathTracer,
   PerspectiveCamera,
-  QuadGeometry,
+  PlaneGeometry,
   Scene,
   SphereGeometry,
 } from '@typeshade/radiance';
@@ -19,13 +19,13 @@ import type { ExampleRun } from './types.ts';
 export default async function firstScene(canvas: HTMLCanvasElement): Promise<ExampleRun> {
   const scene = new Scene();
 
-  const ground = new QuadGeometry(6, 6);
+  const ground = new PlaneGeometry(6, 6);
   const grey = new DiffuseMaterial();
   grey.color.setHex(0xbfbfbf);
   const floor = new Mesh(ground, grey);
   floor.rotation.x = -Math.PI / 2;
 
-  const panel = new QuadGeometry(1.2, 1.2);
+  const panel = new PlaneGeometry(1.2, 1.2);
   const light = new EmissiveMaterial();
   light.emissive.multiplyScalar(10);
   const lamp = new Mesh(panel, light);

@@ -22,7 +22,6 @@ export { BoxGeometry } from './geometries/BoxGeometry.ts';
 export { BufferGeometry } from './geometries/BufferGeometry.ts';
 export { Geometry } from './geometries/Geometry.ts';
 export { PlaneGeometry } from './geometries/PlaneGeometry.ts';
-export { QuadGeometry } from './geometries/QuadGeometry.ts';
 export { SphereGeometry } from './geometries/SphereGeometry.ts';
 
 export { DiffuseMaterial } from './materials/DiffuseMaterial.ts';
