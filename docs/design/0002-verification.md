@@ -369,9 +369,11 @@ this one.
 
 - **The bound of a run.** This record said that the script renders each scene for ten seconds at
   each size. The script stops at a number of samples a pixel instead: 16 by default, set with
-  `--samples`. A render that passes `--timeout` (1,800 s by default) fails the run. Fact: SwiftShader
-  traced from 28,584 to 158,147 paths a second in the rows of `docs/benchmarks.md`. One 1080p render
-  of 16 samples is 33,177,600 paths. Inference: a time bound gives each device a different number of
+  `--samples`. A render that passes `--timeout` (1,800 s by default) fails the run. Fact: a manual run
+  on 2026-10-06 (UTC) at commit 85cce4f of the branch `wt/B3` (compiler pin 596c805, SwiftShader,
+  128 x 128, 16 samples a pixel, 11 scenes) traced from 28,689 to 126,039 paths a second. Step 7
+  records those rows in `docs/benchmarks.md`. The squash merge of the pull request gives `main`
+  another hash. One 1080p render of 16 samples is 33,177,600 paths. Inference: a time bound gives each device a different number of
   samples, and the first frame, which adds one sample, is then a different share of each row. A
   fixed number of samples gives every device the same work, so `frame ms` and `paths/s` compare.
   Proposed: made part of the record. "The benchmark" now says it.
@@ -394,8 +396,9 @@ this one.
 - **The smoke step in CI.** The pull request that delivers step 7 adds no step to
   `.github/workflows/ci.yml`. Open. Next action: a pull request that adds
   `node scripts/bench.mjs --smoke` to the `harness` job, after `bun run harness`, with the added
-  seconds measured in that pull request. Fact: measured on 2026-10-06 at 596584d (SwiftShader, node
-  v22.22.0, bun 1.3.14), the smoke run of all seven scenes took 8.7 s.
+  seconds measured in that pull request. Fact: measured on 2026-10-06 (UTC) at commit 1199690 of the
+  branch `wt/B3` (compiler pin 596c805, SwiftShader, node v22.22.0, bun 1.3.14), the smoke run of
+  all 11 scenes took 12.6 s.
 - **The verification of decision 3.** No test carries `Verifies: Design 0002.3`, and DEC-0203 keeps
   `verification: pending`. Proposed: decision 3 is verified by inspection. The script holds no bound,
   and no gate reads `docs/benchmarks.md`. `scripts/bench.test.ts` states this in its header. This
