@@ -4,12 +4,14 @@
 // above it in a slot of 14.5 m by 3 m, so the light is a plane of that size: a larger one would
 // have most of its samples hidden by the roof. The galleries and the curtains are lit by the
 // paths that bounce in from the nave. Drag to look around from inside the nave.
-// The model is Crytek's, from the Khronos glTF-Sample-Assets (site/public/assets/LICENSES.md).
+// The model is by Frank Meinl (Crytek), from the Computer Graphics Archive of Morgan McGuire, under
+// CC BY 3.0 (site/public/assets/LICENSES.md has the credit and the source).
 //
 // The BVH of the 22 meshes builds in about 380 ms on the host (scripts/sponza.test.ts prints it),
 // and docs/benchmarks.md has the speed of this example on SwiftShader.
 
 import {
+  Box3,
   Clock,
   EmissiveMaterial,
   Mesh,
@@ -17,9 +19,34 @@ import {
   PerspectiveCamera,
   PlaneGeometry,
   Scene,
+  Vector3,
 } from '@typeshade/radiance';
 import { GLTFLoader, OrbitControls } from '@typeshade/radiance-addons';
 import type { ExampleRun } from './types.ts';
+
+/**
+ * The orbit of the camera, in metres and radians. The camera starts at `start` and turns about
+ * `target`, 8.8 m down the nave and 1.6 m below the start. The nave is 3.8 m wide, its floor is at
+ * y = 0.991, and its columns, arches and hanging vases stand at the sides and at the end bay.
+ * The limits keep every position the orbit reaches at least 0.2 m from a triangle of the model
+ * and above y = 1.25 (`scripts/sponza.test.ts` holds that, on a grid of the whole range):
+ *
+ * - `maxDistance` 9 keeps the camera in front of the arch at x = -7.3, out of the end bay.
+ * - `maxPolar` is 0.32 rad below the horizon. At 9 m it puts the camera at y = 1.37 at the lowest.
+ * - `azimuth` 0.15 rad keeps the camera within 1.35 m of the axis of the nave, inside its columns.
+ *
+ * The pivot is one point, so the pan gestures do not move it.
+ */
+export const ORBIT = {
+  start: [-6.8, 5.8, 0.4] as const,
+  target: [2, 4.2, 0] as const,
+  minDistance: 2,
+  maxDistance: 9,
+  minPolar: Math.PI / 2 - 0.4,
+  maxPolar: Math.PI / 2 + 0.32,
+  /** Half the azimuth range, about the direction of the start (-x). */
+  azimuth: 0.15,
+};
 
 export default async function sponza(canvas: HTMLCanvasElement): Promise<ExampleRun> {
   const scene = new Scene();
@@ -35,20 +62,23 @@ export default async function sponza(canvas: HTMLCanvasElement): Promise<Example
   scene.add(gltf.scene, sky);
 
   const camera = new PerspectiveCamera(70);
-  camera.position.set(-9, 1.6, 0.4);
+  camera.position.set(...ORBIT.start);
 
   const renderer = await new PathTracer({ canvas, seed: 1, targetFrameTime: 30 }).init();
-  // The camera stays in the nave, which is about 4 m wide: the drag turns it about a point 11 m
-  // down the nave, and the azimuth limits keep it within 1.6 m of the nave's axis.
+  // The controls read the camera when they are made, about a pivot at the origin. `saveState` and
+  // `reset` read it again about the pivot set here, so the camera stays where `ORBIT.start` puts it.
   const controls = new OrbitControls(camera, canvas);
-  controls.target.set(2, 4.2, 0);
-  controls.minDistance = 5;
-  controls.maxDistance = 11.5;
-  controls.minPolarAngle = Math.PI / 2 - 0.25;
-  controls.maxPolarAngle = Math.PI / 2 + 0.45;
-  controls.minAzimuthAngle = -Math.PI / 2 - 0.15;
-  controls.maxAzimuthAngle = -Math.PI / 2 + 0.15;
+  controls.target.set(...ORBIT.target);
+  controls.targetBounds = new Box3(new Vector3(...ORBIT.target), new Vector3(...ORBIT.target));
+  controls.minDistance = ORBIT.minDistance;
+  controls.maxDistance = ORBIT.maxDistance;
+  controls.minPolarAngle = ORBIT.minPolar;
+  controls.maxPolarAngle = ORBIT.maxPolar;
+  controls.minAzimuthAngle = -Math.PI / 2 - ORBIT.azimuth;
+  controls.maxAzimuthAngle = -Math.PI / 2 + ORBIT.azimuth;
   controls.enableDamping = true;
+  controls.saveState();
+  controls.reset();
   controls.update();
   controls.saveState();
 

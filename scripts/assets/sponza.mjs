@@ -2,98 +2,103 @@
 //
 // `node scripts/assets/sponza.mjs` (or `bun scripts/assets/sponza.mjs`) writes
 // `site/public/assets/sponza.glb` from the public source below. `--check` builds the .glb in
-// memory and fails when it differs from the committed file. `--source <dir>` reads `Sponza.gltf`
-// and `Sponza.bin` from a directory, in place of the download. The script uses no library: only
-// `node:` modules and `fetch`.
+// memory and fails when it differs from the committed file. `--source <file>` reads `sponza.zip`
+// from a local file, in place of the download. The script uses no library: only `node:` modules
+// and `fetch`.
 //
-// Source:   The Khronos glTF-Sample-Assets repository, model "Sponza", at the commit named by
-//           SOURCE_COMMIT below. The two files are Models/Sponza/glTF/Sponza.gltf and
-//           Models/Sponza/glTF/Sponza.bin. The model is 103 primitives, 262,267 triangles and
-//           192,496 vertices, with 25 materials.
-// Licence:  NOT Creative Commons. The model's README and LICENSE.md in that repository give
-//           "(c) 2016, Crytek" under the "Cryengine Limited License Agreement"
-//           (LicenseRef-CRYENGINE-Agreement, https://www.cryengine.com/ce-terms). The agreement is
-//           a licence for the CRYENGINE and for games made with it. It does not say that a copy of
-//           the model may be redistributed on its own. The credit the README keeps: the Atrium
-//           Sponza Palace, Dubrovnik, by Frank Meinl (Crytek), after the model of Marko Dabrovic
-//           (RNA Studio, 2002), modified by Morgan McGuire in 2011, and prepared as glTF by the
-//           Khronos Group. site/public/assets/LICENSES.md records this, and it is an open point for
-//           the owner before the file is published.
-// SHA-256 of Sponza.gltf:
-//   646c10cbc8fab990ca29f363e90e2d65155f3a3569506852eb1434a9465b9501
-// SHA-256 of Sponza.bin:
-//   fdbdbfb6a76edeb6626f28a1401bc1536bb1c864131a64e90fbc3df2d2d191bd
+// Source:   The Computer Graphics Archive of Morgan McGuire, model "Crytek Sponza"
+//           (https://casual-effects.com/data/, the model's page is "Crytek Sponza" under
+//           common/model/crytek_sponza). The archive file is
+//           https://casual-effects.com/g3d/data10/common/model/crytek_sponza/sponza.zip.
+//           The script reads two files of the archive: sponza.obj and sponza.mtl. The model is
+//           393 usemtl blocks, 262,267 triangles (126,873 quads and 8,521 triangles), 153,635
+//           positions and 147,510 normals, with 25 materials. The URL does not name a version, so
+//           the SHA-256 of the archive and of the two files is the pin.
+// Licence:  Creative Commons Attribution 3.0 Unported (CC BY 3.0,
+//           https://creativecommons.org/licenses/by/3.0/). The archive's own description of the
+//           model (https://casual-effects.com/g3d/data10/common/model/crytek_sponza/info.js,
+//           read on 2026-10-06) gives it as: copyright "(c) 2010 Frank Meinl, Crytek", license
+//           "CC BY 3.0". The condition of the licence is the credit, which
+//           site/public/assets/LICENSES.md carries. The Khronos glTF-Sample-Assets repository
+//           lists the same geometry under another licence, the Cryengine Limited License
+//           Agreement, and this script does not use that source (LICENSES.md says why).
+//           The credit: the Atrium Sponza Palace, Dubrovnik, by Frank Meinl (Crytek), after the
+//           model of Marko Dabrovic (RNA Studio, 2002), corrected by Morgan McGuire in 2011.
+// SHA-256 of sponza.zip:
+//   da005cbee0be2df2abc8513f3ceb61bcb6f69aac112babcd9c00169a27c2770c
+// SHA-256 of sponza.obj in the archive:
+//   dc9d77fa783772e92f47e67ddef8344858fa14e224711b5dd7d39f7db7042493
+// SHA-256 of sponza.mtl in the archive:
+//   7e5d765a00bf2af1c0cae1696051fdf04c5bb358cf2bc5cc2634ea8715669d9b
 // SHA-256 of the result, site/public/assets/sponza.glb:
-//   162a13362fdd4d624e381555f2785004b2d617f90666350facf422a907ff6486
+//   581b0eb4817fb92223412f1be15a39557c115d6555c099ce7f114885fce7f5bd
 //
 // What the conversion does. The result is the geometry of the model without a texture, because the
 // engine draws no texture before milestone M3 (design record 0004).
 //
-// 1. It leaves out each primitive whose material has alphaMode MASK: three materials, the plants,
-//    the chains and the flag. A leaf is a cut-out of a texture. Without the texture it is a solid
-//    card. That is 3 materials, 14 primitives and 34,940 triangles of the model.
-// 2. It joins the primitives that share a material into one primitive, in the order of the file.
-//    One material is then one primitive, and the path tracer draws one instance for each. Vertex
-//    positions and normals are copied as the file has them: no vertex moves. The indices of a
-//    joined primitive are unsigned shorts, or unsigned integers when it has over 65,535 vertices.
-//    The texture coordinates and the tangents are not copied.
+// 1. It leaves out each face whose material has a `map_d` (an alpha mask) in the .mtl file: three
+//    materials, `leaf`, `Material__57` and `chain`, the plants and the chains. A leaf is a cut-out
+//    of a texture. Without the texture it is a solid card. That is 34,940 triangles of the model.
+// 2. It splits each quad into two triangles, (a, b, c) and (a, c, d), and joins the faces that
+//    share a material into one primitive, in the order of the file. One material is then one
+//    primitive, and the path tracer draws one instance for each. A vertex is a pair of a position
+//    and a normal of the file. The pair is stored once for each primitive. No position moves.
+//    The normals are scaled to length 1. The indices of a primitive are unsigned shorts, or
+//    unsigned integers when it has over 65,535 vertices. The texture coordinates are not copied.
 // 3. It gives each material a flat colour. The colour is the mean of the material's diffuse
-//    texture, measured once with ImageMagick (`convert <texture> -resize 1x1!`, in sRGB), turned to
-//    linear, and multiplied by the model's own constant diffuse factor (0.588, in every
-//    baseColorFactor of the file). The means are the table MEAN_SRGB below. The material is matte:
-//    metallicFactor 0 and roughnessFactor 0.85.
-// 4. It writes one scene with one node, "sponza", with one mesh. The node has the scale 0.008 that
-//    the source's node has (the model is in centimetres, and this puts it in metres), and a
-//    translation that puts the middle of the box of the kept geometry on the y axis and its
-//    lowest point on y = 0.
+//    texture (`map_Kd`), measured once with ImageMagick on the textures of the archive
+//    (`convert <texture> -alpha off -colorspace sRGB -resize 1x1!`, in sRGB), turned to linear,
+//    and multiplied by the `Kd` of the material (1 for every kept material). The means are the
+//    table MEAN_SRGB below. A material without a texture, `Material__47`, is white. The material
+//    is matte: metallicFactor 0 and roughnessFactor 0.85.
+// 4. It writes one scene with one node, "sponza", with one mesh. The node has the scale 0.008
+//    (the model is in centimetres, and this puts it in metres), and a translation that puts the
+//    middle of the box of the kept geometry on the y axis and its lowest point on y = 0.
 //
-// The result has the same normals and positions as the source. It is not the whole model: the
-// owner and the record know it as "part of Sponza" (design record 0001, step 5).
+// The result has the positions of the source. It is not the whole model: the owner and the record
+// know it as "part of Sponza" (design record 0001, step 5).
 
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { inflateRawSync } from 'node:zlib';
 
-export const SOURCE_COMMIT = 'edc7c9e67c639d230715049ee31f9a96a6babbbe';
-const BASE = `https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/${SOURCE_COMMIT}/Models/Sponza/glTF/`;
-export const SOURCES = {
-  'Sponza.gltf': '646c10cbc8fab990ca29f363e90e2d65155f3a3569506852eb1434a9465b9501',
-  'Sponza.bin': 'fdbdbfb6a76edeb6626f28a1401bc1536bb1c864131a64e90fbc3df2d2d191bd',
-};
-export const SPONZA_GLB_SHA256 = '162a13362fdd4d624e381555f2785004b2d617f90666350facf422a907ff6486';
+export const SOURCE_URL =
+  'https://casual-effects.com/g3d/data10/common/model/crytek_sponza/sponza.zip';
+export const ZIP_SHA256 = 'da005cbee0be2df2abc8513f3ceb61bcb6f69aac112babcd9c00169a27c2770c';
+export const OBJ_SHA256 = 'dc9d77fa783772e92f47e67ddef8344858fa14e224711b5dd7d39f7db7042493';
+export const MTL_SHA256 = '7e5d765a00bf2af1c0cae1696051fdf04c5bb358cf2bc5cc2634ea8715669d9b';
+export const SPONZA_GLB_SHA256 = '581b0eb4817fb92223412f1be15a39557c115d6555c099ce7f114885fce7f5bd';
 const OUTPUT = fileURLToPath(new URL('../../site/public/assets/sponza.glb', import.meta.url));
 
-/** The mean sRGB colour of the diffuse texture of each material of the source, by its index in
- *  `materials`. Measured on the textures of SOURCE_COMMIT. Material 2 has no texture but a white
- *  pixel. Materials 0, 3 and 20 are alpha-masked and the conversion leaves them out. */
-export const MEAN_SRGB = [
-  [61, 58, 45],
-  [98, 86, 88],
-  [197, 197, 197],
-  [125, 130, 50],
-  [92, 83, 68],
-  [151, 143, 126],
-  [118, 109, 95],
-  [170, 152, 121],
-  [155, 145, 128],
-  [179, 163, 137],
-  [162, 154, 137],
-  [92, 88, 82],
-  [138, 128, 110],
-  [124, 113, 107],
-  [27, 103, 30],
-  [33, 77, 124],
-  [113, 39, 28],
-  [46, 87, 142],
-  [130, 29, 19],
-  [37, 90, 14],
-  [151, 70, 28],
-  [34, 37, 37],
-  [162, 146, 121],
-  [101, 90, 69],
-  [107, 102, 104],
-];
+/** The mean sRGB colour of the diffuse texture of each kept material of the source, by the name of
+ *  the material. Measured on the textures of the archive named by ZIP_SHA256. The material
+ *  `Material__47` has no texture, and its entry is white. */
+export const MEAN_SRGB = {
+  vase_round: [98, 86, 88],
+  Material__298: [92, 83, 68],
+  bricks: [151, 143, 126],
+  arch: [118, 109, 95],
+  ceiling: [170, 152, 122],
+  column_a: [155, 145, 128],
+  floor: [179, 163, 137],
+  column_c: [162, 154, 137],
+  details: [92, 88, 82],
+  column_b: [138, 128, 110],
+  Material__47: [255, 255, 255],
+  flagpole: [124, 113, 107],
+  fabric_e: [26, 103, 30],
+  fabric_d: [33, 77, 125],
+  fabric_a: [113, 39, 28],
+  fabric_g: [46, 87, 143],
+  fabric_c: [130, 29, 19],
+  fabric_f: [37, 91, 14],
+  vase_hanging: [33, 37, 37],
+  vase: [162, 146, 121],
+  Material__25: [101, 90, 69],
+  roof: [107, 102, 104],
+};
 
 const SCALE = 0.008;
 const ROUGHNESS = 0.85;
@@ -104,87 +109,120 @@ const srgbToLinear = (c) => {
 };
 const round = (x) => Number(x.toFixed(6));
 
-const COMPONENTS = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4 };
-const WIDTH = { 5121: 1, 5123: 2, 5125: 4, 5126: 4 };
+/** The files of a .zip archive as a Map of name to bytes, for the names in `wanted`. It reads the
+ *  central directory, and it handles the stored and the deflated method. */
+export function readZip(bytes, wanted) {
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let end = bytes.length - 22;
+  while (end >= 0 && dv.getUint32(end, true) !== 0x06054b50) end--;
+  if (end < 0) throw new Error('the archive has no end-of-directory record');
+  const count = dv.getUint16(end + 10, true);
+  let at = dv.getUint32(end + 16, true);
+  const out = new Map();
+  for (let i = 0; i < count; i++) {
+    if (dv.getUint32(at, true) !== 0x02014b50) throw new Error('the central directory is broken');
+    const method = dv.getUint16(at + 10, true);
+    const size = dv.getUint32(at + 20, true);
+    const nameLength = dv.getUint16(at + 28, true);
+    const extraLength = dv.getUint16(at + 30, true);
+    const commentLength = dv.getUint16(at + 32, true);
+    const local = dv.getUint32(at + 42, true);
+    const name = Buffer.from(bytes.subarray(at + 46, at + 46 + nameLength)).toString('utf8');
+    at += 46 + nameLength + extraLength + commentLength;
+    if (!wanted.includes(name)) continue;
+    const start = local + 30 + dv.getUint16(local + 26, true) + dv.getUint16(local + 28, true);
+    const data = bytes.subarray(start, start + size);
+    if (method === 0) out.set(name, data);
+    else if (method === 8) out.set(name, new Uint8Array(inflateRawSync(data)));
+    else throw new Error(`${name} has the compression method ${method}`);
+  }
+  for (const name of wanted) if (!out.has(name)) throw new Error(`the archive has no ${name}`);
+  return out;
+}
 
-/** The elements of accessor `index` of `gltf`, read from `bin`, as a typed array of its type. */
-function readAccessor(gltf, bin, index) {
-  const a = gltf.accessors[index];
-  const view = gltf.bufferViews[a.bufferView];
-  const n = COMPONENTS[a.type];
-  const width = WIDTH[a.componentType];
-  const stride = view.byteStride ?? n * width;
-  const start = (view.byteOffset ?? 0) + (a.byteOffset ?? 0);
-  const data = new DataView(bin.buffer, bin.byteOffset, bin.byteLength);
-  const Out = { 5121: Uint8Array, 5123: Uint16Array, 5125: Uint32Array, 5126: Float32Array }[
-    a.componentType
-  ];
-  const out = new Out(a.count * n);
-  for (let i = 0; i < a.count; i++) {
-    for (let k = 0; k < n; k++) {
-      const at = start + i * stride + k * width;
-      out[i * n + k] =
-        a.componentType === 5126
-          ? data.getFloat32(at, true)
-          : a.componentType === 5125
-            ? data.getUint32(at, true)
-            : a.componentType === 5123
-              ? data.getUint16(at, true)
-              : data.getUint8(at);
+/** The materials of a .mtl text as a Map of name to `{ kd, masked }`. `masked` is true when the
+ *  material has a `map_d`, an alpha mask. */
+export function parseMtl(text) {
+  const materials = new Map();
+  let cur;
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (line.startsWith('newmtl ')) {
+      cur = { kd: [1, 1, 1], masked: false };
+      materials.set(line.slice(7).trim(), cur);
+    } else if (cur && /^Kd\s/.test(line)) {
+      cur.kd = line.slice(3).trim().split(/\s+/).map(Number);
+    } else if (cur && /^map_d\s/.test(line)) {
+      cur.masked = true;
     }
   }
-  return out;
+  return materials;
 }
 
 /**
  * What the conversion keeps of the source: `groups`, one for each kept material in the order of
- * `materials`, each `{ material, position, normal, index }` (typed arrays), and the counts of what
- * it left out. `gltf` is the parsed `Sponza.gltf`, `bin` the bytes of `Sponza.bin`.
+ * its first face, each `{ name, kd, position, normal, index }` (typed arrays), and the counts of
+ * what it left out. `objText` is the text of `sponza.obj`, `materials` the result of `parseMtl`.
  */
-export function selectGeometry(gltf, bin) {
-  const masked = new Set(gltf.materials.flatMap((m, i) => (m.alphaMode === 'MASK' ? [i] : [])));
+export function selectGeometry(objText, materials) {
+  const positions = [];
+  const normals = [];
   const parts = new Map();
-  const dropped = { materials: masked.size, primitives: 0, triangles: 0 };
-  for (const p of gltf.meshes[0].primitives) {
-    if (p.mode !== undefined && p.mode !== 4) throw new Error('a primitive is not a triangle list');
-    const index = readAccessor(gltf, bin, p.indices);
-    if (masked.has(p.material)) {
-      dropped.primitives++;
-      dropped.triangles += index.length / 3;
-      continue;
-    }
-    if (!parts.has(p.material)) parts.set(p.material, []);
-    parts.get(p.material).push({
-      position: readAccessor(gltf, bin, p.attributes.POSITION),
-      normal: readAccessor(gltf, bin, p.attributes.NORMAL),
-      index,
-    });
-  }
-  const groups = [...parts.keys()]
-    .sort((a, b) => a - b)
-    .map((material) => {
-      const list = parts.get(material);
-      const vertices = list.reduce((n, q) => n + q.position.length / 3, 0);
-      const triangles = list.reduce((n, q) => n + q.index.length, 0);
-      const position = new Float32Array(vertices * 3);
-      const normal = new Float32Array(vertices * 3);
-      const index = new Uint32Array(triangles);
-      let v = 0;
-      let t = 0;
-      for (const q of list) {
-        position.set(q.position, v * 3);
-        normal.set(q.normal, v * 3);
-        for (let i = 0; i < q.index.length; i++) index[t + i] = q.index[i] + v;
-        v += q.position.length / 3;
-        t += q.index.length;
+  const dropped = { materials: 0, triangles: 0 };
+  for (const m of materials.values()) if (m.masked) dropped.materials++;
+  let cur;
+  for (const raw of objText.split('\n')) {
+    if (raw.startsWith('v ')) {
+      positions.push(raw.slice(2).trim().split(/\s+/).map(Number));
+    } else if (raw.startsWith('vn ')) {
+      const n = raw.slice(3).trim().split(/\s+/).map(Number);
+      const len = Math.hypot(n[0], n[1], n[2]);
+      normals.push(n.map((c) => c / len));
+    } else if (raw.startsWith('usemtl ')) {
+      const name = raw.slice(7).trim();
+      if (!materials.has(name)) throw new Error(`the material ${name} is not in the .mtl file`);
+      if (materials.get(name).masked) {
+        cur = { name, skip: true };
+      } else {
+        if (!parts.has(name))
+          parts.set(name, { name, vertices: new Map(), pos: [], nor: [], index: [] });
+        cur = parts.get(name);
       }
-      return { material, position, normal, index };
-    });
+    } else if (raw.startsWith('f ')) {
+      if (!cur) throw new Error('a face comes before any usemtl');
+      const words = raw.slice(2).trim().split(/\s+/);
+      if (cur.skip) {
+        dropped.triangles += words.length - 2;
+        continue;
+      }
+      const ids = words.map((w) => {
+        const [v, , n] = w.split('/').map((x) => (x === '' ? NaN : Number(x)));
+        if (!(v > 0) || !(n > 0)) throw new Error(`a face has no position or no normal: ${raw}`);
+        const key = (v - 1) * 1_000_000 + (n - 1);
+        let id = cur.vertices.get(key);
+        if (id === undefined) {
+          id = cur.pos.length / 3;
+          cur.vertices.set(key, id);
+          cur.pos.push(...positions[v - 1]);
+          cur.nor.push(...normals[n - 1]);
+        }
+        return id;
+      });
+      for (let i = 1; i + 1 < ids.length; i++) cur.index.push(ids[0], ids[i], ids[i + 1]);
+    }
+  }
+  const groups = [...parts.values()].map((g) => ({
+    name: g.name,
+    kd: materials.get(g.name).kd,
+    position: Float32Array.from(g.pos),
+    normal: Float32Array.from(g.nor),
+    index: Uint32Array.from(g.index),
+  }));
   return { groups, dropped };
 }
 
-/** The .glb of `groups`, as `Uint8Array`. `factor` is the source's diffuse factor. */
-export function buildGlb(groups, factor) {
+/** The .glb of `groups`, as `Uint8Array`. */
+export function buildGlb(groups) {
   const min = [Infinity, Infinity, Infinity];
   const max = [-Infinity, -Infinity, -Infinity];
   for (const g of groups) {
@@ -252,9 +290,9 @@ export function buildGlb(groups, factor) {
       material: materials.length,
     });
     materials.push({
-      name: `material-${g.material}`,
+      name: `material-${g.name}`,
       pbrMetallicRoughness: {
-        baseColorFactor: [...MEAN_SRGB[g.material].map((c) => round(srgbToLinear(c) * factor)), 1],
+        baseColorFactor: [...MEAN_SRGB[g.name].map((c, k) => round(srgbToLinear(c) * g.kd[k])), 1],
         metallicFactor: 0,
         roughnessFactor: ROUGHNESS,
       },
@@ -267,7 +305,8 @@ export function buildGlb(groups, factor) {
     asset: {
       version: '2.0',
       generator: 'scripts/assets/sponza.mjs',
-      copyright: 'Crytek, Frank Meinl, Marko Dabrovic, Morgan McGuire, Khronos Group',
+      copyright:
+        '(c) 2010 Frank Meinl, Crytek. CC BY 3.0. After Marko Dabrovic, corrected by Morgan McGuire.',
     },
     scene: 0,
     scenes: [{ name: 'sponza', nodes: [0] }],
@@ -296,35 +335,41 @@ export function buildGlb(groups, factor) {
   return out;
 }
 
-/** The bytes of each source file: from `dir` when it names a directory, else downloaded. Each is
- *  checked against its SHA-256. */
-async function sources(dir) {
-  const out = {};
-  for (const [name, expected] of Object.entries(SOURCES)) {
-    const bytes = dir
-      ? readFileSync(join(dir, name))
-      : new Uint8Array(await (await fetch(BASE + name)).arrayBuffer());
-    const sum = sha256(bytes);
+/** The two source files, from the archive in `file` when it is given, else downloaded. The archive
+ *  and each file are checked against their SHA-256. */
+async function sources(file) {
+  const zip = file
+    ? new Uint8Array(readFileSync(file))
+    : new Uint8Array(await (await fetch(SOURCE_URL)).arrayBuffer());
+  const zipSum = sha256(zip);
+  if (zipSum !== ZIP_SHA256)
+    throw new Error(`the SHA-256 of the archive is ${zipSum}, not ${ZIP_SHA256}`);
+  const files = readZip(zip, ['sponza.obj', 'sponza.mtl']);
+  for (const [name, expected] of [
+    ['sponza.obj', OBJ_SHA256],
+    ['sponza.mtl', MTL_SHA256],
+  ]) {
+    const sum = sha256(files.get(name));
     if (sum !== expected) throw new Error(`the SHA-256 of ${name} is ${sum}, not ${expected}`);
-    out[name] = bytes;
   }
-  return out;
+  return {
+    obj: Buffer.from(files.get('sponza.obj')).toString('utf8'),
+    mtl: Buffer.from(files.get('sponza.mtl')).toString('utf8'),
+  };
 }
 
 if (import.meta.main) {
   const args = process.argv.slice(2);
   const check = args.includes('--check');
-  const dir = args.includes('--source') ? args[args.indexOf('--source') + 1] : undefined;
-  const files = await sources(dir);
-  const gltf = JSON.parse(Buffer.from(files['Sponza.gltf']).toString('utf8'));
-  const { groups, dropped } = selectGeometry(gltf, files['Sponza.bin']);
-  const factor = gltf.materials[groups[0].material].pbrMetallicRoughness.baseColorFactor[0];
-  const glb = buildGlb(groups, factor);
+  const file = args.includes('--source') ? args[args.indexOf('--source') + 1] : undefined;
+  const { obj, mtl } = await sources(file);
+  const { groups, dropped } = selectGeometry(obj, parseMtl(mtl));
+  const glb = buildGlb(groups);
   const sum = sha256(glb);
   const triangles = groups.reduce((n, g) => n + g.index.length / 3, 0);
   const vertices = groups.reduce((n, g) => n + g.position.length / 3, 0);
   console.log(
-    `kept ${triangles} triangles and ${vertices} vertices in ${groups.length} primitives, left out ${dropped.triangles} triangles of ${dropped.primitives} primitives (${dropped.materials} masked materials)`,
+    `kept ${triangles} triangles and ${vertices} vertices in ${groups.length} primitives, left out ${dropped.triangles} triangles of ${dropped.materials} masked materials`,
   );
   if (check) {
     if (!existsSync(OUTPUT) || sha256(readFileSync(OUTPUT)) !== sum) {
