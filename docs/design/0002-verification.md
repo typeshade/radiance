@@ -78,16 +78,31 @@ it compiles every kernel module with the compiler (scripts and tests may import 
 may not) and holds `compile().determinism`'s rows to the allowlist record 0005 states. A new
 row fails the test with the operation, its kind and the functions it is in.
 
-**The render gate's goldens** live in `scripts/__goldens__/<example>.png`, 96 x 64, 64 samples
-a pixel, seed 1, rendered on SwiftShader through `readPixels()` and written as PNG by the
-harness's own encoder. The gate holds one golden for each example the site lists (`exampleIds`
-in `scripts/stills.mjs`). It fails an example that has no golden. It fails a golden that no
-example owns. It runs each example on a canvas of 96 x 64 CSS pixels. It stops the motion of an
-animated example. It sets `seed` to 1, `samplesPerFrame` to 16 and `maxSamples` to 64
-(`window.runExample` in `scripts/gates/_browser.mjs`). `UPDATE_GOLDENS=1 bun run gate:render`
-rewrites the goldens and removes a golden that no example owns. The pull request that does so
-shows each old and new picture. The site's stills (`site/public/stills`) stay what they are:
-the picture a page shows, captured at 64 samples a pixel and hashed. They are not goldens.
+**The render gate's goldens** live in `scripts/__goldens__/<example>.png`. Each is 96 x 64, 64
+samples a pixel and seed 1, except one example with its own seed (below). SwiftShader renders each
+through `readPixels()`, and the harness's own encoder writes it as PNG. The gate holds one golden
+for each example the site lists (`exampleIds` in `scripts/stills.mjs`). It fails an example that
+has no golden. It fails a golden that no example owns. It runs each example on a canvas of 96 x 64
+CSS pixels. It stops the motion of an animated example. It sets `seed` to 1, `samplesPerFrame` to
+16 and `maxSamples` to 64 (`window.runExample` in `scripts/gates/_browser.mjs`).
+`UPDATE_GOLDENS=1 bun run gate:render` rewrites the goldens and removes a golden that no example
+owns. The pull request that does so shows each old and new picture. The site's stills
+(`site/public/stills`) stay what they are: the picture a page shows, captured at 64 samples a pixel
+and hashed. They are not goldens.
+
+**The seed of a golden.** An example can set `seed` after the gate does. The `determinism` example
+does so in `render()` of `site/examples/determinism.ts`. The gate then holds that example at the
+seed of the first render that reaches `RENDER.samples` in `scripts/gates.mjs`, which is 64. The gate
+reads the picture at that moment. Each such example has an entry in `OWN_SEED` in
+`scripts/gates/render.mjs`. A new example of this kind needs an entry in the same pull request. One
+example has an entry: `determinism`. It draws seed 2, then seed 1, then seed 1 again. Its golden is
+a seed-2 picture. Record 0005 (Amendment 2, "The first frame and the example") gives the reason. The
+entry is a copy of `RENDER.otherSeed` in `site/examples/determinism.ts`. `node`, the runtime of the
+gate, cannot import that file. The check of `ran` against `wanted` in `holdExample` compares the
+seed the example ran with to its entry. For an example without an entry, `wanted` takes
+`RENDER.seed` from `scripts/gates.mjs`. A difference fails the example, and the failure names both
+seeds. Every other golden is a seed-1 picture. This rule applies from the pull request that changes
+the example.
 
 **The render gate's tolerance** is `RENDER` in `scripts/gates.mjs`, in 8-bit units, and
 `comparePictures` in `scripts/gates/render.mjs` applies it. A render and its golden are 8-bit
@@ -295,6 +310,48 @@ from the CI runs named in them.
   `scripts/gates/render.test.ts` fails when an example has no golden or a golden has no example.
   Proposed: made part of the record. Step 4 and "The render gate's goldens" now say "one golden
   for each example".
+
+**Amendment 3** (2026-10-06, UTC). The `determinism` example draws seed 2 first, then seed 1 twice.
+Record 0005, Amendment 2, "The first frame and the example" (its fifth bullet), requires that the two
+renders of seed 1 share one split. It gives seed 2 first, then seed 1 twice, as an example of how.
+A renderer's first frame adds one sample, so the first render has a split of its own. The example
+meets the requirement with that order. The gate reads the picture when the samples reach
+`RENDER.samples` in `scripts/gates.mjs` (64). That is the end of the first render. So the golden of
+this example becomes a seed-2 picture.
+
+This record said that every golden is seed 1 and that the gate sets `seed` to 1. The first statement
+is false for this example. The second statement stays true: the gate sets `seed` to 1, and the
+example replaces that seed later. This amendment settles the difference before the pull request that
+changes the example. It changes "The render gate's goldens" and adds "The seed of a golden". The
+decisions keep their numbers and their text. The merge of the pull request that carries this
+amendment is the owner's acceptance. The pull request that changes the example merges after it and
+names this record on a line of its own, `Design: 0002`.
+
+- **The fact.** Measured on 2026-10-06 at commit 60351f7 (pin 596c805, bun 1.3.14, node v22.22.0).
+  That commit is the second commit of the site pull request that changes the example. The first
+  commit is 175daa3. The old golden of `determinism` is `scripts/__goldens__/determinism.png` at
+  06a1a39. The new golden is the file at 60351f7. They differ by a mean of 4.338/255 and a worst
+  channel of 164/255. 2,366 of 6,144 pixels are beyond 4/255. The other five goldens do not change.
+  This comparison reads the two files from git and uses no renderer.
+  On SwiftShader at 60351f7 the gate line of `determinism` reads `96 x 64 at 64 spp, seed 2`. It
+  matches the new golden with a mean of 0.000/255, a worst channel of 0/255 and 0 of 6,144 pixels
+  beyond 4/255.
+- **The proposal.** The gate takes the golden of an example that sets `seed` after the gate does
+  from the first render that reaches `RENDER.samples`. `OWN_SEED` holds the seed of that render, and
+  `determinism` is its one entry. Proposed: made part of the record. "The seed of a golden" says it,
+  and the comments of `scripts/gates.mjs` and `scripts/gates/render.mjs` say it in the pull request
+  that changes the example.
+- **Considered and not proposed: a short first render** (inference). The golden stays a seed-1
+  picture if the first render is a seed-2 render that stops before 64 samples. That render would
+  have fewer samples than the two renders it is compared with, so the example would show a
+  different thing.
+- **Considered and not proposed: a wait for `data-done`** (inference). The gate could wait for the
+  `data-done` mark that the example sets in its panel, as `scripts/capture-stills.mjs` does. The
+  gate would then read the last render, which is seed 1. Every golden would stay a seed-1 picture.
+  The gate would keep no copy of a seed. This option has two costs. The first cost is a change of
+  the stop rule in `window.runExample` in `scripts/gates/_browser.mjs`. That rule stops when
+  `r.samples` reaches the samples. The second cost is a run of three renders in place of one for
+  this example. The owner can choose this option in place of `OWN_SEED`.
 
 **Configuration and validation record.** This record does not yet apply. Implementation will
 record each gate's first measured numbers, the pin, and the CI run that first ran it.

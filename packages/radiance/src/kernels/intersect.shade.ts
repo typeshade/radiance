@@ -187,16 +187,9 @@ export function nearest(origin: vec3, dir: vec3, limit: f32): Hit {
   const tlas = params.scene.x;
   const r = prepare(origin, dir);
   // The two stacks, of the TLAS and of the BLAS being walked, each made once for the ray. The
-  // TLAS's starts with its root, node 0. WGSL zeroes an array declared with no value, but
-  // TypeScript calls it unassigned, so the zeros are written out.
-  let stack: array<u32, 32> = [
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  ];
-  let inner: array<u32, 32> = [
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  ];
+  // TLAS's starts with its root, node 0.
+  let stack: array<u32, 32> = array<u32, 32>();
+  let inner: array<u32, 32> = array<u32, 32>();
   let top: u32 = 1;
   while (top > 0) {
     top -= 1;
@@ -270,14 +263,8 @@ export function occluded(origin: vec3, dir: vec3, limit: f32): bool {
   }
   const tlas = params.scene.x;
   const r = prepare(origin, dir);
-  let stack: array<u32, 32> = [
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  ];
-  let inner: array<u32, 32> = [
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  ];
+  let stack: array<u32, 32> = array<u32, 32>();
+  let inner: array<u32, 32> = array<u32, 32>();
   let top: u32 = 1;
   while (top > 0) {
     top -= 1;
