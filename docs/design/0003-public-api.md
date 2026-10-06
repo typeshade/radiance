@@ -70,7 +70,7 @@ that changes the surface commits the re-bake, and the diff is the review.
    `map`, `normalMap`, `roughnessMap`, `metalnessMap`, `emissiveMap`, `specularIntensity`.
 3. A thing neither has takes the name the plan uses: `PathTracer`, `samplesPerFrame`,
    `maxSamples`, `watchdogBudget`, `readRadiance`. Amendment 1 adds `Sphere`, the analytic
-   sphere, because three.js has no such object.
+   sphere, because three.js has no analytic sphere object.
 
 So `QuadGeometry` becomes `PlaneGeometry` (record 0001), and nothing else is renamed at 0.1.0.
 

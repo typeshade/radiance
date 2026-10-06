@@ -325,8 +325,10 @@ const k = -(b + select(-sqrt(disc), sqrt(disc), b >= 0));
 const cc = dot(oc, oc) - r * r;
 const t1 = k / a;
 const t2 = cc / k; // miss when k is 0
-// t is the smaller of t1 and t2 that is above 0, else the larger that is above 0, else a miss
-// miss when t is not below limit
+const lo = select(t2, t1, t1 < t2); // the smaller root
+const hi = select(t1, t2, t1 < t2); // the larger root
+const t = select(hi, lo, lo > 0); // the smaller root above 0, else the larger
+// miss when t is not above 0, or when t is not below limit
 const q = normalize(oc + d * t); // the hit point from the centre, put back on the unit sphere
 ```
 
@@ -366,11 +368,13 @@ class Sphere extends Object3D {
 
 A `Sphere` is an `Object3D`. Its position is the centre. Its rotation turns its texture, and nothing else. Its scale is uniform, as "A non-uniform scale is refused" says. `radius` is a plain property. The pack reads it each frame, so the class has no `version`. A change to `radius` or to the transform changes the instance words, and the pack writes them. The pack's traversal of the scene gains one branch, `o instanceof Sphere`. A `Mesh` and a `Sphere` are the two drawable classes. A `Mesh` with a geometry that is not a `BufferGeometry` still throws the `TypeError` it throws now. Record 0003 lists the new export. The name `Sphere` is also three.js's name for a bounding sphere, a math class. This package exports no such class (record 0003, "The public surface at 0.1.0"), so no name collides inside it.
 
-**Emission.** The light table lists triangles. A sphere that emits would meet only camera rays and mirror paths. Next-event estimation could not sample it, so the light would be lost from every diffuse path. `ScenePack.update` therefore throws `TypeError: a Sphere does not emit: the light table lists triangles only` for a sphere whose material emits. M3's analytic lights may add a sphere type to the light table, and its type word is reserved. Decided by default.
+**Emission.** The light table lists triangles. A sphere that emits would meet only camera rays and mirror paths. Next-event estimation could not sample it, so the light would be lost from every diffuse path. `ScenePack.update` therefore throws `TypeError: a Sphere does not emit: the light table lists triangles only` for a sphere whose material emits. M3's analytic lights may add a sphere type to the light table. Decided by default.
 
 **Change tracking and upload.** A sphere uses the instance rule of "Change tracking and upload" and no other. A moved sphere, or one whose `radius` changed, writes `instances`, and `nodes` with the new TLAS. It never writes `triangles` or `vertices`, so `pack.arrays.triangles` stays the same array object. A scene of spheres alone has `tlasBase` 0, and `nodes` holds the TLAS only. `triangles` and `vertices` hold one zero element each, the pack's minimum.
 
 **Limits.** The instance limit of "The GPU layout" (1,048,576) bounds the spheres. The precision rule holds for the class that the measure covers. Its radii run from 0.01 to 100. Its centres lie within 1,000 of the origin. Its origins lie up to 10^5 radii from the centre. Outside it, the record claims no bound. The `OFFSET` of record 0004 is 1e-4 times the largest of 1 and the point's largest absolute coordinate. For a sphere whose radius is under 1e-3 times that factor, the offset passes a tenth of the radius. The record does not refuse such a sphere. Inference: its contact shadows and reflections move by about the offset.
+
+The offset can also be too small. Precision rule 3 needs an origin at least 1.00005 radii out, so the offset needs at least 5e-5 radii. That fails when the radius is above 2 times the factor. Example: a sphere of radius 100 and a hit point near the origin, where the factor is 1, gets an offset of 1e-6 radii. This case lies inside the measured class. Inference: a grazing secondary ray from such a point may meet the sphere again (a self-hit). The record does not change the offset. Step 6 does not test this case.
 
 **The oracle.** `scripts/oracle.ts` needs no change. It binds the arrays of the pack and runs `trace.shade.ts`, so the sphere test runs there too. This has a cost. The GPU and the oracle read one pack and run one formula. So the differential gate cannot see a wrong radius in the packer or a wrong term in the formula. Record 0002 adds checks that do not share them: a test against an independent `f64` reference, and the render gate's goldens and probe.
 
@@ -628,8 +632,8 @@ Alternatives considered and not taken:
   whose test `child.geometry instanceof SphereGeometry` no longer finds the Cornell box's spheres.
   The new scene `SpheresScene.ts`, the new example `site/examples/spheres.ts`, its golden and its
   still.
-  `site/src/content/docs/guide/scene-graph.mdx` (its geometry table), the guide page on materials
-  and `docs/benchmarks.md`. The `geometries` example does not change.
+  `site/src/content/docs/guide/scene-graph.mdx` (its geometry table and its Materials
+  section) and `docs/benchmarks.md`. The `geometries` example does not change.
 - **Other records.** Records 0002, 0003, 0004 and 0005 carry an amendment of the same date. Record
   0008 does not. Its cast throws a `TypeError` for a geometry that is not a `BufferGeometry`
   (record 0008, "What the cast skips"), and it casts at `Mesh` objects alone. It finds no `Sphere`
@@ -720,10 +724,22 @@ Each step is one pull request with `Design: 0001` in its commit message. The gat
    `Design: 0002`, `Design: 0004` and `Design: 0005`.
 
 7. **The host object, the pack and the BVH** (Amendment 3, record 0003). Add `Sphere` in
-   `src/objects/Sphere.ts` and export it from `src/index.ts`. Run `bun run bake:api-surface`. In
-   `scene-pack.ts`, find each visible `Sphere`, write its instance words and its TLAS box, skip it
-   in the light table, and throw the three refusals of "The analytic sphere". Tests, each with its
-   number:
+   `src/objects/Sphere.ts` and export it from `src/index.ts`. Run `bun run bake:api-surface`. Then
+   change `scene-pack.ts`. Today every placed instance has a BLAS: `Placed.blas`, `#instanceList`
+   and `#lightTable` read it. A `Sphere` has none. Make these changes:
+   - In `#update`, collect each visible `Sphere` beside the meshes. The geometry loop skips it,
+     because a `Sphere` has no geometry.
+   - In the materials loop, register its material in `#materials`, the table a mesh uses. A material
+     shared by a mesh and a `Sphere` has one row.
+   - Give `Placed` an optional `sphere` field: the centre, the radius and the rows of `R^T`. `blas`
+     is `undefined` for a sphere. Push one `Placed` for each sphere that "What stores it" keeps.
+   - In `#instanceList`, a placed sphere skips `inverseAffine`, because step 3 of "What stores it"
+     drops it. It writes the words of that section and its exact box. It reads no `blas`.
+   - In `#lightTable`, skip a placed item that has no `blas`. A sphere whose material emits throws
+     the `TypeError` first, in the materials loop.
+   - Throw the three refusals of "The analytic sphere".
+
+   Tests, each with its number:
    - `Sphere.test.ts`: `new Sphere(0.5, material).radius` is 0.5, and `isSphere` is true.
    - `scene-pack.test.ts`, the words. One sphere with centre (1, 2, 3) and radius 2 gives these
      counts: 1 instance, 1 node, 0 triangles, 0 vertices and 0 lights. `[0]` is (1, 2, 3, 2).
@@ -785,14 +801,21 @@ Each step is one pull request with `Design: 0001` in its commit message. The gat
 10. **The comparison example and the docs** (Amendment 3, record 0002, step 9). Add
     `createSpheresScene` in `packages/addons/src/scenes/SpheresScene.ts`, and the example `spheres`
     in `site/examples/spheres.ts` and `site/examples/index.ts`. The scene shows three mirror balls
-    of radius 0.4 side by side, in a small room that the scene builds. The left ball is a
+    of radius 0.4 side by side, in a room that the scene builds. The room is 3.6 wide, 2 high and
+    2 deep, and it has no front wall. Its floor, ceiling and back wall are white, at y = 0, y = 2
+    and z = -1. The left wall is red, at x = -1.8. The right wall is green, at x = 1.8. The
+    colours are those of `createCornellBox`. The lamp is a `PlaneGeometry(1.2, 0.4)` of that
+    box's emissive colour, at (0, 1.98, 0), facing down. The three balls stand at (-1, 0.4, 0),
+    (0, 0.4, 0) and (1, 0.4, 0), all with a `MirrorMaterial`. The left ball is a
     `SphereGeometry(0.4, 32, 16)` mesh with smooth normals. The middle ball is the same geometry
-    with a material whose `flatShading` is true. The right ball is a `Sphere`. The panel of the
+    with a material whose `flatShading` is true. The right ball is a `Sphere`. The camera is a
+    `PerspectiveCamera(40, 1.5)` at (0, 1, 4.6), looking at (0, 0.7, 0). The scene returns the
+    fields of `createCornellBox`, with `bounds` from (-1.6, 0.1, -0.9) to (1.6, 1.9, 0.9). The panel of the
     example names each ball. The `geometries` example keeps its mesh sphere. Add an entry in
     `scripts/scenes.ts` and in `SCENES` in `differential.mjs`, and `ORACLE_SPHERES` in
     `scripts/gates.mjs`. Derive it by record 0002's rule: ten times the measured mean, rounded up,
     with `abs` and `rel` at M1's. Add a row for `Sphere(radius, material)` to the geometry table of
-    `scene-graph.mdx`, and a row for `flatShading` to the page on materials. Name the cost of each
+    `scene-graph.mdx`, and a row for `flatShading` to its Materials section. Name the cost of each
     sphere kind in one sentence of the guide. Append a `cornell` row to `docs/benchmarks.md` for
     the box on `Sphere`. Add the golden `spheres.png` and the still `spheres.webp` with its
     `.sha256`, and no other golden or still. Done when five things hold. `gate:site`, `gate:api`
@@ -922,6 +945,8 @@ packed, tracked and bounded. It changes these places:
 8. "What it touches".
 9. Steps 6 to 10, and the closing sentence of the steps.
 10. Decision 1, and decisions 10 to 15.
+11. "Configuration and validation record": the sentence that states steps 4 and 5 as delivered, and
+    steps 6 to 10 as not started.
 
 The merge of the pull request that carries it is the owner's acceptance of the primitive and of
 each decision marked "decided by default". Records 0002, 0003, 0004 and 0005 carry an amendment
