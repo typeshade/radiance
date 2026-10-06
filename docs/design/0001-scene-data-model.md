@@ -622,8 +622,8 @@ Alternatives considered and not taken:
   `trace.shade.ts`, of the seven bindings and of the tiles. Amendment 3 owes the tests that steps
   6 and 7 list, the scene test of step 8 and the example of step 10.
 - **Scripts and the site, from Amendment 3.** `scripts/scenes.test.ts`, `scripts/scenes.ts`,
-  `scripts/gates.mjs` (`ORACLE` and `ORACLE_SPHERES`), `scripts/gates/differential.mjs` (`SCENES` and the row `sphere`), `scripts/gates/render.mjs` (the
-  radius probe) and a probe in `scripts/`. The goldens and stills of the three examples that call
+  `scripts/gates.mjs` (`ORACLE` and `ORACLE_SPHERES`), `scripts/gates/differential.mjs` (`SCENES`, the row `sphere-hit` and `compareHits`), `scripts/gates/render.mjs` (the
+  radius probe), `scripts/probes/hit-sphere.shade.ts` and `scripts/harness-entry.ts`. The goldens and stills of the three examples that call
   `createCornellBox`: `cornell-box`, `determinism` and `scene-graph`. `site/examples/scene-graph.ts`,
   whose test `child.geometry instanceof SphereGeometry` no longer finds the Cornell box's spheres.
   The new scene `SpheresScene.ts`, the new example `site/examples/spheres.ts`, its golden and its
@@ -703,12 +703,14 @@ Each step is one pull request with `Design: 0001` in its commit message. The gat
    - `determinism.test.ts`: it passes with `ALLOWED` and `VALUE_ONLY` unchanged. The report has 0
      rows outside the lists. The rows `sqrt` and `/` name `hitSphere` among their functions
      (record 0005).
-   - The agreement of the kernel and the oracle on a hit. A probe in `scripts/` dispatches
-     `hitSphere` on the GPU over 4,096 stored rays and reads back `t` and `q`. The row `sphere` of
-     `gate:differential` holds them to the oracle's within the precision rule (record 0002). The
-     number is the count of rays outside the rule: 0 of 4,096. If the public runtime cannot dispatch
-     the probe from the harness page, the step amends records 0001 and 0002 before it merges. The
-     `cornell` row of step 8 then carries the GPU half alone.
+   - The agreement of the kernel and the oracle on a hit, the row `sphere-hit` of
+     `gate:differential`. Build it as record 0002 states ("The hit probe"). The probe is
+     `scripts/probes/hit-sphere.shade.ts`, with one compute entry, `probe`, that calls `hitSphere`.
+     The row runs it on the GPU and on the oracle over 4,096 stored rays. `compareHits` counts the
+     rays outside the rule. The number is 0 of 4,096. The step also edits `scripts/harness-entry.ts`,
+     `scripts/gates/differential.mjs` and `scripts/gates/gates.test.ts`. If the public runtime
+     cannot dispatch the probe from the harness page, stop. Amend records 0001 and 0002, and wait
+     for the owner's merge of the amendment. Do not drop the row.
 
    Done when these numbers hold and `bun run check` passes. No example uses a sphere yet, so the
    render gate passes with no golden changed. The differential gate passes on its four scenes with
@@ -979,10 +981,13 @@ dispositions:
 - **The precision rule.** Proposed numbers: 16 units of `ulp(S)` up to an impact parameter of 0.9,
   and 4e-7. They are measured on an emulation and not on the kernel. Step 6 measures the kernel,
   and amends the rule when a measure passes a bound. Decision 14 holds it.
-- **The GPU half of the agreement test.** Proposed: a probe that dispatches `hitSphere` on the
-  GPU. Fact: no existing gate runs a kernel function alone. Inference: the public runtime can
-  dispatch it from the harness page. Step 6 checks it. If it cannot, the step amends this record
-  and record 0002 before it merges.
+- **The GPU half of the agreement test.** Decided by default: a probe that dispatches `hitSphere`
+  on the GPU. Record 0002 states it ("The hit probe"). Fact: no existing gate runs a kernel
+  function alone. Fact (read): a compiled `.shade.ts` compute entry is a function of its bindings
+  and workgroups (`trace.shade.typeshade.ts`). `Resident` has `read()` (`PathTracer.ts`). The
+  harness page is bundled with `shadePlugin` (`scripts/bundle.ts`). Inference: the public runtime
+  can dispatch the probe from the harness page. Step 6 runs it. If it cannot, step 6 stops, and
+  the amendment waits for the owner's merge.
 - **The `spheres` scene of the first draft.** Replaced. The first draft's scene held a floor, an
   ellipsoid and a mirrored ball, and the ellipsoid is refused. The new `spheres` scene is the
   owner's comparison of three balls. It is both the example of step 10 and a differential scene,
