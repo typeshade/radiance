@@ -105,8 +105,8 @@ comment names the rules it leans on.
 quadratic to `intersect.shade.ts`. Record 0004 adds `sphereUv`. Both stay under the six rules, and
 neither adds a row to the lists:
 
-1. **Which rules.** The quadratic uses `+`, `-`, `*`, `/`, `sqrt`, `dot`, `normalize` and
-   comparisons. Rule 3 admits all of them. `sphereUv` uses `+`, `-`, `*`, `/`, `sqrt` and
+1. **Which rules.** The quadratic uses `+`, `-`, `*`, `/`, `sqrt`, `dot`, `normalize`, `select` and
+   comparisons. Its first step is one subtraction, the origin from the centre. Rule 3 admits all of them. `sphereUv` uses `+`, `-`, `*`, `/`, `sqrt` and
    comparisons. It calls neither `atan2` nor `acos`. Rule 2 does not list `sqrt`. It lists `sin`,
    `cos`, `exp`, `exp2`, `log`, `log2`, `pow`, `fract`, `tan`, `atan`, `atan2`, `asin` and `acos`.
 2. **What `sqrt` is.** Fact: the compiler's report gives `sqrt` the kind `inherited`, from
@@ -127,7 +127,7 @@ neither adds a row to the lists:
    with 0 and with `limit`, and the choice of the nearer root steer the path. A ray within a few
    ULP of the silhouette can hit on one device and miss on another. That moves one sample of one
    pixel by one sample's share. The gate's `rel` and `mean` bound it. Record 0001 states the
-   rays that have no bound at all, those within 1e-4 of the silhouette.
+   rays that have no bound, those whose impact parameter is above 0.9 radii.
 5. **The comparisons of `sphereUv`.** They choose between pieces of one continuous curve, as rule
    2 allows: the quarter of the circle, and the reduced angle. The pieces agree at their seams,
    within the error of the series (3.81e-7 rad). So a different rounding moves the value by
@@ -207,13 +207,13 @@ and no lint (the status quo, which caught the divergence late).
    by hand, and typeshade/radiance#21 delivers it with the determinism example.
 3. **The generated report** at M4: a page of the guide, generated from the lint's output. It has
    the rows of every kernel and the reason for each row.
-4. **The sphere's rows** (Amendment 3), with record 0001, step 7. The header of
+4. **The sphere's rows** (Amendment 3), with record 0001, step 6. The header of
    `intersect.shade.ts` names rules 2 and 3 for `hitSphere` and `sphereUv`. A new case in
    `determinism.test.ts` asserts that the `sqrt` row and the `/` row of that file name `hitSphere`
    among their functions, and that the file has 0 rows outside the lists. A second new case
    asserts that the report of the file has no row for `atan2`, `acos`, `sin` or `cos`. Done when
    `bun run test` passes with `determinism-lists.ts` unchanged. The `spheres` scene of record
-   0002 shows 0 differing floats for one seed in `gate:determinism`.
+   0002 (record 0001, step 10) shows 0 differing floats for one seed in `gate:determinism`.
 
 ## Decisions for the owner
 
@@ -315,8 +315,8 @@ places:
 4. Decision 6.
 
 The six rules and the two lists do not change. The merge of the pull request that carries it is
-the owner's acceptance. The code is not changed here. Record 0001, step 7, delivers it. The
-configuration is `main` at 55bde46, the compiler pinned at 596c805, on 2026-10-06. The facts come
+the owner's acceptance. The code is not changed here. Record 0001, step 6, delivers it. The
+configuration is `main` at 13b9e88, the compiler pinned at 596c805, on 2026-10-06. The facts come
 from `vendor/typeshade/src/core/passes/determinism.ts` at that pin, and from the throwaway scripts
 that record 0001, Amendment 3, describes. The dispositions:
 
@@ -330,7 +330,7 @@ that record 0001, Amendment 3, describes. The dispositions:
   report give the reason.
 - **Open: a hardware measure.** Fact: no measure of the sphere test on a hardware GPU exists. The
   precision rule of record 0001 comes from an emulation of `f32`, and the gate runs on SwiftShader.
-  Next action: record 0001, step 7, measures the kernel on the oracle. The pull request of step 8
+  Next action: record 0001, step 6, measures the kernel on the oracle. The pull request of step 10
   asks for one `gate:differential` row of the `spheres` scene from a hardware GPU, run by hand.
 
 **Approval and plan record.** Accepted on 2026-10-05 (UTC). The owner approved the merge of typeshade/radiance#6 in the conversation, which merged this record as `draft` at 9e8b479. The owner then said to implement the records with Opus 5.5 and Sonnet 5.5, and that go-ahead is the acceptance. Entries 1 to 3 of "Decisions for the owner" stand as proposed. Entries 4 and 5 come with Amendment 2.
