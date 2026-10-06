@@ -80,10 +80,10 @@ pull request), and these sections:
 | [0005](0005-determinism.md)           | Determinism: the promise, the kernel rules, and the lint that holds them                                      | accepted | M2, M4      |
 | [0006](0006-compiler-boundary.md)     | The compiler boundary: what the engine needs from the runtime, as proposals                                   | accepted | M2 to M5    |
 | [0007](0007-webgl2-tier.md)           | The WebGL2 tier: the same kernels, no WebGL call in the engine, and gates for both tiers                      | draft    | M8          |
-| [0008](0008-interaction-controls.md)  | Interaction controls: a host ray cast, four modes (orbit, select, translate, rotate) and a material inspector | draft    | none        |
+| [0008](0008-interaction-controls.md)  | Interaction controls: a host ray cast, four modes (orbit, select, translate, rotate) and a material inspector | accepted | none        |
 
 The order of implementation is 0001 and 0002 first, in parallel, because M2 is written on them.
 0003 is done before the first npm release. 0004 and 0005 are needed before M3. 0006 is a list
 of proposals the compiler's owner schedules. Each record names the item it waits on.
 0007 waits for the compiler's change 0054 and the pin that carries it. It serves milestone M8, which the plan pull request proposes, and merges after that pull request.
-0008 serves no milestone of the plan. It is a change to the engine's core (the ray cast), to the addons (the controls) and to the site. It waits for the owner's acceptance only.
+0008 serves no milestone of the plan. It is a change to the engine's core (the ray cast), to the addons (the controls) and to the site. The record is accepted, and its implementation runs in the steps the record lists, after the Sponza example (decision 20).

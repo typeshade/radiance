@@ -1,7 +1,7 @@
 ---
 id: '0008'
 title: A host ray cast picks objects, controls with four modes (orbit, select, translate, rotate) move them, and a material inspector edits their materials
-status: draft
+status: accepted
 milestones: []
 touches:
   - packages/radiance/src/index.ts
@@ -507,7 +507,7 @@ Each step is one pull request with `Design: 0008` in its commit message. Each te
 
 ## Record
 
-**Approval and plan record.** This record is a draft and does not yet apply. The owner's request of 2026-10-06 prompted it. It is not an approval. The record is accepted when the owner's review or go-ahead merges it with `status: accepted`. Every entry of "Decisions for the owner" then stands as proposed, unless the merge says otherwise.
+**Approval and plan record.** Accepted on 2026-10-06 (UTC). The owner pre-approved the merge of typeshade/radiance#46 in the conversation, which merged this record as `draft` at 06b2928. The owner then answered the decisions with "as recommended" (2026-10-06), and that answer is the acceptance. Every entry of "Decisions for the owner" stands as proposed.
 
 **Configuration and validation record.** This record does not yet apply. Implementation will record the commits of the eight steps, the pin and each gate's result. It will also record the numbers that "Before" and the steps label as measured later.
 
