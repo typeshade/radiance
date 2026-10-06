@@ -1,7 +1,8 @@
 // The benchmark records a speed and holds none (record 0002, decision 3), so these tests hold
 // what it can get wrong without a browser: the options, the summary of the frames and the row. The
-// run itself is `bun run bench`, and CI's smoke run is `node scripts/bench.mjs --smoke`. These
+// run itself is `bun run bench`, and its smoke run is `node scripts/bench.mjs --smoke`. These
 // tests verify none of the decisions for the owner in record 0002, so they carry no tag for one.
+// Decision 3 is verified by inspection (record 0002, Amendment 4): the script holds no bound.
 import { describe, expect, test } from 'bun:test';
 import {
   COLUMNS,
