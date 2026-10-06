@@ -193,6 +193,65 @@ A uniform array has a 16-byte stride, so 256 `vec4` hold 1,024 floats exactly (`
 
 **The sampler pairs.** The pairs of a bounce stay four. The lobe choice comes from `r.x`, the first number of the BSDF's triple. Reflection, transmission and clearcoat are separate lobes, so none needs a second choice.
 
+### Part 2: Textures
+
+Part 2 gives the material record its textures: texture arrays with mipmaps, a footprint for the mip level, sRGB decoding and filtering rules. It needs step 1.1 of Part 1 (the words of the record). Its upload needs the compiler's change 0050.
+
+**The compiler item.** Fact: record 0006 item 4 is the compiler's change 0050. It lets a host write an image or bytes into one layer and one level of a program runtime's `Texture`. Its status is `draft`. The folder `vendor/typeshade/changes/` at the pin 596c805 ends at 0047, so 0050 is not at the pin. Fact: the compiler's `main` holds the draft (read on 2026-10-06 through the GitHub API). This part uses four of its members: `Texture.write(bytes, { layer, level })`, `TextureOptions.mipLevelCount`, `Texture.layers` and `Texture.mipLevelCount`. It does not use `generateMipmaps()`. The draft's filter averages the stored codes of an unorm format, which is wrong for sRGB colour. The host builds the mip chain itself. This part opens no new item for the upload. Step 2.2 and the steps after it wait for the pin that carries 0050. Step 2.1 does not wait.
+
+**The public classes.** `Texture` joins the engine's names (record 0003, rule 1). `DataTexture` follows it.
+
+```ts
+class Texture {
+  image: TextureImage | undefined; // { width, height, data: Uint8Array | Uint8ClampedArray }, RGBA, 8 bits
+  name: string;
+  colorSpace: '' | 'srgb'; // advisory: the slot of the material decides how the texels are read
+  flipY: boolean; // default true, as three.js. The glTF loader sets false.
+  wrapS: 'repeat' | 'clamp' | 'mirror'; // default 'clamp'
+  wrapT: 'repeat' | 'clamp' | 'mirror';
+  version: number; // the setter of `image` adds 1
+}
+class DataTexture extends Texture {
+  constructor(data: Uint8Array, width: number, height: number);
+}
+```
+
+`Material` gains `map`, `normalMap`, `roughnessMap`, `metalnessMap` and `emissiveMap` (record 0003, rule 2), and `PhysicalMaterial` gains `normalScale`. An `ImageBitmap` is not an image of a `Texture`. The glTF loader decodes each file with `createImageBitmap` and reads its 8-bit RGBA bytes through an `OffscreenCanvas`. The oracle and the tests build a `DataTexture` from bytes and need no decoder.
+
+**The arrays.** The engine keeps four texture arrays, one for each size class. Each array is `rgba8unorm` with a full mip chain. A texture goes to the smallest class that is not smaller than its longer side. The loader's option `maxTextureSize` sets a cap, 2048 by default. The host resamples a texture that is not square or not of a class size. It uses a box filter in linear light.
+
+| Class | Size | Bytes of one layer with its mips |
+| ----- | ---- | -------------------------------- |
+| 0     | 256  | 349,525                          |
+| 1     | 512  | 1,398,101                        |
+| 2     | 1024 | 5,592,405                        |
+| 3     | 2048 | 22,369,621                       |
+
+WebGPU allows 256 layers in an array by default, so a class holds 256 textures. Fact, from the glTF Sample Assets (read on 2026-10-06): DamagedHelmet has five JPEG images of 2048 by 2048 texels. FlightHelmet has fifteen PNG images of the same size. At class 3 the helmet takes 111.8 MB and FlightHelmet takes 335.5 MB. At `maxTextureSize` 1024, FlightHelmet takes 83.9 MB. This is arithmetic from the table, and no run measured it. The renderer parameter `textureBudget` (bytes, default 536,870,912) makes the pack throw a `RangeError` that names the largest textures when the layers pass it. `info.textureBytes` reports the sum.
+
+**The id.** A texture id is the value of an `f32` below 2^24 (Part 1). Part 2 fills its form: `id = (1 + class * 256 + layer) + 2048 * wrap`, with `wrap = wrapS + 3 * wrapT` and the wrap modes numbered `repeat` 0, `clamp` 1 and `mirror` 2. An id of 0 is no texture. Part 1 stores the id without its wrap term, and step 2.1 adds it.
+
+**No sampler.** The kernel filters by itself. Fact: the compiler's reflection gives a texture that a program only loads the sample type `unfilterable-float` (`AUTHORING.md`, reflection of bindings), so no sampler is bound. The kernel reads texels with `textureLoad`. It applies the wrap mode with integer arithmetic, and it weights four texels in each of two levels with products. A hardware sampler's filtering is not exact across vendors, and the kernel's is. The one step that a device decides is the conversion of an 8-bit code to `f32` by `textureLoad`. Fact: no run measured it at the pin. Step 2.2 reads all 256 codes of a texture and compares each with `fround(code / 255)`.
+
+**sRGB.** Base colour and emission are sRGB-encoded. The other maps are data. The kernel decodes an sRGB code with a table of 256 floats, which joins `AlbedoTables` as `srgb: array<vec4, 64>`. The host builds a mip level by decoding, averaging four texels in f64 and encoding. The encode is a binary search over 255 baked thresholds, so no `pow` of the host's engine decides a code. A checker of codes 0 and 255 gives code 188 at the next level, and not 128.
+
+**The footprint.** The kernel picks the mip level from a ray cone (Akenine-Moller et al. 2021). A cone is a ray differential reduced to one width and one spread angle. A path carries `(width0, spread)`. The width at distance `t` is `width0 + spread * t`.
+
+- **The camera ray.** `width0` is 0. `spread` is `scale * 2 * tanY / height`, with `scale` the renderer's `footprintScale` (default 0.25, after pbrt-v4, which shrinks a differential by `1 / sqrt(spp)` with 0.125 as its floor).
+- **A hit.** The footprint on the surface has a major axis of `width / abs(dot(dir, ng))`. The level is `log2(major * N / sqrt(length(cross(dpdu, dpdv))))`, with `N` the size of the class.
+- **A bounce.** The new cone starts at the hit, `width0` equal to the width there. A delta lobe keeps `spread`. A glossy lobe adds `2 * alpha`. A diffuse lobe adds 1.
+- **The reference.** The camera ray's cone equals Igehy's ray differential in its major axis for a pinhole camera. Step 2.4 holds the kernel's level against a host implementation of Igehy's differentials, as pbrt-v4 computes them.
+
+`log2` is a transcendental function, and a level only blends two images, but a level also picks the pair of images. So the kernel computes it from the exponent bits of the `f32` and a polynomial in the mantissa. It uses sums and products, so record 0005, rule 2 holds.
+
+**The kernel files.** The reads of a texel are in one file, `fetch.shade.ts`. It declares `texels0` to `texels3` as `texture_2d_array<f32>` and has `fetchTexel(class, layer, level, x, y)`. All filtering is in `filter.shade.ts`. Fact: the compiler's CPU tier throws on `textureLoad` (`AUTHORING.md`, "Calls with no CPU meaning"), so the oracle cannot run `fetch.shade.ts`. The oracle's `compile` call takes a `readDocument` hook. For the import of `fetch.shade.ts` the hook returns `scripts/oracle-fetch.shade.ts`, which reads a `storage<array<vec4>>` that the oracle fills. The two files have a `LINT.IfChange` pair. The filter code is the same on both sides. A scene without textures binds four textures of 1 by 1 texel.
+
+**The surface.** `surface` and `surfaceAt` gain the footprint as a parameter and fill the fields of Part 1. `Surface` gains `dpdv`, the tangent along v, and the sign of the uv frame. The tints are `baseTint` (the `map` texel, with alpha), `mrTint` (green for roughness, blue for metalness), `emissiveTint` and `normalTint`. The shading normal turns by the normal map as follows. `T` is `dpdu` made orthogonal to `ns` and made unit. `B` is `cross(ns, T)` with the sign of the uv frame. The decoded texel `(x, y, z)` is `2 * texel - 1`, and `ns` becomes `normalize(T * x * normalScale + B * y * normalScale + ns * z)`. The existing rule applies: `ns` falls back to `ng` when its dot product with `ng` is 0 or less.
+
+**Alpha cutout.** A material with bit 10 of its flags tests alpha during traversal. `nearest` and `occluded` call `alphaPasses(instance, triangle, b1, b2)` at a triangle hit. The function reads `map` at level 0 and returns false when `alpha * [6].w` is under `[7].y`. The traversal then goes on. The glTF `alphaMode` MASK maps to this. BLEND is not modelled: the loader warns and treats it as OPAQUE.
+
+**What waits.** The loader knows `KHR_texture_transform` and ignores it with a warning. The record has no room for a transform for each texture. Compressed textures (KTX2) and UDIM wait. Each needs a decoder, and the boundary allows no import past the runtime. Streaming and an anisotropic filter wait too. The light table uses the emissive factor alone, so a textured emitter is sampled by its factor and not by its map.
+
 ## Why
 
 ### Part 1: The principled BSDF
@@ -213,6 +272,23 @@ Alternatives considered:
 - **Schlick for every Fresnel term.** It avoids `sqrt`. It breaks the furnace test for glass.
 - **A table baked at run time on the GPU.** It adds a pass and a dependency on first use. The baked file is data that a test can read.
 
+### Part 2: Textures
+
+- **The assets are textured.** DamagedHelmet has five textures and FlightHelmet has fifteen. Without textures the demo shows flat colours.
+- **Why arrays by size class.** Record 0004, decision 4 stands. An atlas needs its own uv mapping and wraps badly. A binding for each texture hits the limit of 16 sampled textures. Four arrays use four of the 16.
+- **Why the kernel filters.** WebGPU lets a sampler differ in precision from one vendor to the next. The oracle cannot run a sampler at all. If the kernel filters with `textureLoad`, the oracle runs the same filter code and only the fetch differs. Inference: this makes the `textures` differential scene as tight as the others. The cost is eight loads for one lookup, where a sampler needs one. Step 2.5 records the cost.
+- **Why the host builds the mips.** The draft change 0050 averages the stored codes of an unorm format. For an sRGB image this averages in gamma space and darkens the result. The host averages in linear light and keeps the choice in `mip.ts`, where a test holds it.
+- **Why a table for sRGB.** A 256-entry table is exact and needs no `pow`. The hardware's sRGB conversion is a second step that a device decides.
+- **Why a ray cone.** Full ray differentials carry two direction vectors and two origin vectors along a path. The cone carries two floats. The camera ray's cone matches the differential in its major axis. Step 2.4 measures the difference against a host implementation of Igehy's method.
+- **Why the footprint scale.** A progressive renderer averages many samples in a pixel. A level that covers the whole pixel blurs the result twice. pbrt-v4 scales the footprint down with the sample count. Step 2.6 measures the scale against the level 0 image.
+
+Alternatives considered:
+
+- **`textureSampleLevel` with a sampler** (record 0004's plan). It is faster and shorter. It has the three faults above, so the record changes the plan.
+- **One atlas texture.** It needs a uv remap in the kernel and bleeds across tiles at the mip levels.
+- **Hardware mipmaps through 0050's `generateMipmaps()`.** It averages codes. It is right for data textures only.
+- **A proposal to the compiler for CPU texture reads.** It would remove `oracle-fetch.shade.ts`. It is an issue to open, and nothing blocks on it.
+
 ## What it touches
 
 ### Part 1: The principled BSDF
@@ -224,6 +300,16 @@ Alternatives considered:
 - **Tests owed.** `materials.test.ts` grows by one group for each lobe. The density integrates to 1. The sample weight equals the quadrature of `f * cos`. The lobe is reciprocal. `scene-pack.test.ts` holds the record's words. `tables.test.ts` holds the baked file against a fresh bake. `trace.test.ts` (new) holds the three estimators of `mis` against each other. `GLTFLoader.test.ts` holds each extension.
 - **Gates.** `gate:differential` runs `physical`, `mis` and `glass`. `gate:determinism` runs the same scenes. `gate:furnace` is new. `gate:render` changes the goldens of any example that uses `PhysicalMaterial`. `gate:api` re-bakes.
 - **Site.** The guide's page on materials describes the lobes and the parameters. The API reference follows the JSDoc.
+
+### Part 2: Textures
+
+- **Engine host.** `textures/Texture.ts`, `textures/DataTexture.ts`, `textures/TexturePool.ts` and `textures/mip.ts` are new. `materials/Material.ts` and `PhysicalMaterial.ts` gain the map parameters. `renderers/scene-pack.ts` changes `packMaterial` and `cameraFrame`. `renderers/PathTracer.ts` binds the four arrays and gains `textureBudget`, `footprintScale` and `info.textureBytes`. `index.ts` and `__api__/surface.md` change.
+- **Engine kernels.** `fetch.shade.ts`, `filter.shade.ts` and `alpha.shade.ts` are new. `intersect.shade.ts` changes `surface`, `surfaceAt`, `nearest` and `occluded`. `materials.shade.ts` reads the tints. `trace.shade.ts` carries the cone in `radiance` and passes it to `direct`. `layout.shade.ts` gains `AlbedoTables.srgb` and `TraceParams.foot`.
+- **Addons.** `loaders/GLTFLoader.ts` reads images, samplers, `normalTexture.scale` and `alphaMode`. Its option `decode` is new. `scenes/` gains `TexturedScene` (the `textures` scene).
+- **Scripts.** `scripts/oracle-fetch.shade.ts` and `scripts/raydiff.ts` are new. `scripts/oracle.ts` binds the substitute. `scripts/bake-tables.ts` bakes the sRGB tables. `scripts/gates.mjs` gains the `ORACLE` bound of `textures`.
+- **Tests owed.** `mip.test.ts`, `TexturePool.test.ts`, `filter.test.ts` (new, on the oracle), `footprint.test.ts` (new, against `raydiff.ts`), `alpha.test.ts` and the loader's tests.
+- **Gates.** `gate:differential` runs `textures`. `gate:determinism` runs it too. `gate:render` changes the golden of any example that loads a texture. None does at the baseline.
+- **Site.** The guide gains a page on textures. The API reference follows the JSDoc.
 
 ## Amendments owed
 
@@ -273,6 +359,50 @@ Alternatives considered:
 
 > Rule 4 of the tier's integer words gains: "`materials` is the exception while record 0010, Part 1 stores its integer words as values. If this rule makes `materials` an `array<vec4u>`, that part moves its integer words back to bits."
 
+### Part 2: Textures
+
+**Record 0001.** Two places change.
+
+> `TraceParams` gains the field `foot: vec4`. Its first word is the footprint scale times the pixel's spread angle. Three words are reserved. The `trace` entry then binds four sampled textures, `texels0` to `texels3`. It binds seven storage buffers beside them.
+
+> "Limits" gains: "The `trace` entry samples 4 textures of the 16 that WebGPU allows each stage. The array of a class holds 256 layers (record 0010, Part 2)."
+
+**Record 0002.** Two places change.
+
+> The `textures` scene row reads: "A quad with a checker and a normal map, and a plane that runs to the horizon. The kernel chooses the mip level".
+
+> The probe list gains: "`textures`: the oracle's fetch shifted by one texel fails the `mean` bound. The device's conversion of the 256 codes of an 8-bit texture equals `fround(code / 255)`".
+
+**Record 0003.** One place changes.
+
+> "The public surface at 0.1.0" gains `Texture`, `DataTexture` and `TextureImage`. It gains the material parameters `map`, `normalMap`, `roughnessMap`, `metalnessMap`, `emissiveMap` and `normalScale`. It gains the renderer parameters `textureBudget` and `footprintScale`, and the loader option `decode`.
+
+**Record 0004.** Four places change.
+
+> "The texture plan (M3)" reads: "The engine keeps four `texture_2d_array<f32>`, one for each size class (256, 512, 1024 and 2048). Each is `rgba8unorm` with a full mip chain. The kernel reads them with `textureLoad` and filters them itself. No sampler is bound. A texture id is `(1 + class * 256 + layer) + 2048 * wrap`. The kernel chooses the level from a ray cone."
+
+> "The shading contract" gains the fields `Surface.dpdv` and `Surface.bsign`, and the parameter of `surface` and `surfaceAt` that carries the footprint.
+
+> Step 3 reads: "Delivered by record 0010, steps 2.1 to 2.7."
+
+> The sentence "A texture read happens in `surface` (M3), before the contract" stands.
+
+**Record 0005.** Two places change.
+
+> The rules gain Rule 7: "A texture is read by `textureLoad` and filtered in the kernel by sums and products. The conversion of an 8-bit code to `f32` is the one step a device decides. A probe measures it."
+
+> Rule 2 gains: "A mip level is computed from the exponent bits of an `f32` and a polynomial. It does not use `log2`."
+
+**Record 0006.** Two places change.
+
+> The paragraph on item 4 gains: "Record 0010, Part 2 uses `Texture.write(bytes, { layer, level })`, `mipLevelCount` and `layers` of change 0050. It does not use `generateMipmaps()`."
+
+> The table gains an item: "CPU-tier texture reads. `compileModuleJs` evaluates `textureLoad` and `textureNumLayers` over an image that the host sets. Needed by: record 0010, Part 2. Until it lands: `scripts/oracle-fetch.shade.ts`." The engine opens it as an issue.
+
+**Record 0007.** One place changes.
+
+> "The execution model" gains: "The `trace` entry reads 4 texture arrays with `textureLoad` and no sampler. On WebGL2 each read is a `texelFetch`. Each array holds at most 256 layers, the OpenGL ES 3.0 minimum of `MAX_ARRAY_TEXTURE_LAYERS`."
+
 ## Implementation, in steps
 
 ### Part 1: The principled BSDF
@@ -304,7 +434,7 @@ Each step is one pull request. The figures are proposals, and each step records 
 
 - Delivers: `scripts/bake-tables.ts`, `tables.ts`, the `AlbedoTables` block, its upload and its oracle binding, `msFactor`, `MATERIAL_NO_MS`, `PhysicalMaterial.multipleScattering`, and `gate:furnace`. The `furnace` scene is a sphere of radius 20 whose inner face emits 1 and reflects nothing, and a white sphere at its centre. The camera sits inside it.
 - Test: the table agrees with a Monte Carlo estimate of the kernel's own lobe within 1.5 % at eight grid points. The baked file agrees with a fresh bake within 2e-6. The gate holds a white metal sphere at roughness 0.25, 0.5 and 1, and a white dielectric sphere at 0.5 and 1.
-- Number: the mean over the pixels of the sphere lies within 0.03 of 1 for the metal rows. The dielectric rows get the bound that the step measures, because Burley's diffuse does not conserve energy exactly.
+- Number: the mean over the pixels of the sphere lies within 0.03 of 1 for the metal rows. The dielectric rows take the bound that the step measures, because Burley's diffuse does not conserve energy exactly.
 - Probe: the metal row at roughness 1 runs with `MATERIAL_NO_MS` set. The gate must fail. The step records the mean it reports, which the quadrature above puts well under 0.8.
 
 **1.5 Transmission, absorption and thin walls.**
@@ -337,6 +467,61 @@ Each step is one pull request. The figures are proposals, and each step records 
 
 Part 1 is done when step 1.8 has merged. At that point `bun run check` and `bun run harness` pass, and record 0004 steps 2 and 4 read "delivered".
 
+### Part 2: Textures
+
+Step 2.1 does not wait for the compiler. Steps 2.2 to 2.7 wait for the pin that carries change 0050. Each step is one pull request.
+
+**2.1 The classes, the ids and the mip chain.**
+
+- Delivers: `Texture`, `DataTexture` and the map parameters. `TexturePool` gives the class of a texture, the resample, the mip chain and the ids with their wrap term. It also delivers the sRGB tables in `bake-tables.ts` and `textureBudget`. A scene without textures binds four textures of 1 by 1 texel. No kernel reads a texel.
+- Test: a constant image stays constant through every level. A checker of codes 0 and 255 gives code 188 at the next level. Each sRGB code decodes and encodes back to itself. Each id from every class, layer and wrap survives an `f32`. The budget error names the largest texture.
+- Number: no golden changes. `gate:determinism` reports 0 of 1,024 floats that differ.
+- Probe: the checker test runs once with a gamma of 2.0 in the encode. It must read 180 and fail.
+
+**2.2 The fetch, the filter and the oracle substitute.**
+
+- Delivers: `fetch.shade.ts`, `filter.shade.ts`, the upload through `Texture.write`, `oracle-fetch.shade.ts` and its binding, and the `textures` scene with a checker quad at level 0.
+- Test: a lookup at a texel centre returns the texel. A lookup between two texels returns their mean. Each wrap mode agrees with a host reference within 1e-6 at 1,000 random coordinates. The probe of the 256 codes compares the device's conversion with `fround(code / 255)`.
+- Number: 0 of 256 codes differ on SwiftShader. No hardware device ran, and the step says so. The `ORACLE` bound of `textures` is derived by the rule of record 0002.
+- Probe: the oracle's fetch runs once shifted by one texel. The differential gate must fail its `mean` bound.
+
+**2.3 The colour maps.**
+
+- Delivers: `AlbedoTables.srgb`, the reads of `map` and `emissiveMap` in `surface`, the loader's images and samplers, its option `decode`, and `alphaMode` read as a warning.
+- Test: a glTF built by hand with a 2 by 2 image loads through a stub decoder. A texel of code 128 decodes to 0.2158 within 1e-4. Five 2048 by 2048 images take 111,848,105 bytes in the pool.
+- Number: no golden changes, because no example loads a texture.
+- Probe: the decode test runs once with the table of the linear maps. It must fail.
+
+**2.4 The normal map and the metallic-roughness map.**
+
+- Delivers: `Surface.dpdv` and `Surface.bsign`, `normalScale`, the normal map in `surface`, and the metallic-roughness tints. The `textures` scene gains a normal-mapped plane.
+- Test: a flat texel `(0.5, 0.5, 1)` leaves `ns` as it was within 1e-6. A texel tilted by 30 degrees turns `ns` by 30 degrees within 1e-4 on a flat quad. Roughness comes from green and metalness from blue within 1e-6.
+- Number: the `ORACLE` bound of `textures` is derived again with the new plane.
+- Probe: the test runs once with the sign of the uv frame inverted. The 30 degree test must fail.
+
+**2.5 The footprint.**
+
+- Delivers: the cone in `radiance`, `log2Approx`, the level choice, trilinear filtering, `TraceParams.foot` and `scripts/raydiff.ts`. The `textures` scene gains a checker plane that runs to the horizon.
+- Test: `log2Approx` has an absolute error of at most 1e-3 over 2^-20 to 2^20. The level of the kernel differs from Igehy's differentials by at most 0.5. The tilts are 0, 30, 60 and 80 degrees. The pixels lie at the centre and at the corner of a 60 degree field.
+- Number: the step records the cost of a lookup as frame milliseconds on `textures`, labelled SwiftShader. It records the far-field standard deviation at 4 samples a pixel, with and without mips.
+- Probe: the far-field test runs once with the level forced to 0. Its standard deviation must be more than twice the standard deviation with mips.
+
+**2.6 The footprint scale.**
+
+- Delivers: the measurement of `footprintScale` at 0, 0.125, 0.25, 0.5 and 1, and a default that follows from it.
+- Test: each scale renders `textures` at 1,024 samples a pixel, 16 by 16 pixels. The RMSE against the scale 0 image is recorded in linear light.
+- Number: the default is the largest scale whose RMSE is at most 2 times the noise floor. The floor is the RMSE between two seeds of the scale 0 render. If 0.25 meets this, it stays.
+- Probe: the floor measurement runs on two renders of one seed. It must read 0.
+
+**2.7 Alpha cutout.**
+
+- Delivers: `alpha.shade.ts`, the hooks in `nearest` and `occluded`, bit 10 of the flags, and the loader's `alphaMode` MASK with `alphaCutoff`.
+- Test: a quad with a checker of alpha 0 and 1 covers 0.5 of its pixels within 0.02 in a converged render. A shadow ray passes through a hole. `nearest` and `occluded` agree on 1,000 random rays.
+- Number: a scene with no cutout material loses at most 3 % of its speed on the bunny at 512 by 512. The step records the figure.
+- Probe: the coverage test runs once with `alphaCutoff` 0. It must fail.
+
+Part 2 is done when step 2.7 has merged. At that point record 0004 step 3 reads "delivered".
+
 ## Decisions for the owner
 
 1. Default. Part 1 models the physical material on Burley's Disney BRDF (2012) and BSDF (2015), with glTF's metallic-roughness parameters and glTF's layering. It has five lobes: diffuse, reflection, transmission, clearcoat and sheen. Proposed: yes.
@@ -348,9 +533,15 @@ Part 1 is done when step 1.8 has merged. At that point `bun run check` and `bun 
 7. For the owner. M3 takes `KHR_materials_ior`, `_transmission`, `_volume`, `_clearcoat`, `_sheen`, `_anisotropy` and `_specular` by their factors. Their textures, `specularColorFactor`, `_diffuse_transmission`, `_dispersion` and `_iridescence` wait. `occlusionTexture` is never read. Proposed: this scope.
 8. Default. A back face absorbs light along the ray's length, from `attenuationColor` and `attenuationDistance`. Media do not nest. A material with `thickness` 0 is thin walled. Proposed: yes.
 9. Default. Record 0002 gains the `furnace` gate and the scenes `mis`, `furnace` and `glass`. A furnace row holds a bound that its step measures. Proposed: yes.
+10. Default. The kernel filters textures itself with `textureLoad` and binds no sampler. The host builds the mip chain in linear light. sRGB decodes through a table. Proposed: yes.
+11. For the owner. Steps 2.2 to 2.7 wait for the pin that carries the compiler's change 0050, which is a draft. The owner chooses when the pin moves. Record 0006, decision 2 already puts item 4 on M3's critical path. Proposed: yes.
+12. Default. The mip level comes from a ray cone, not from full ray differentials. The default `footprintScale` is 0.25 until step 2.6 measures it. The alternative is full differentials for the camera ray, which costs four more vectors a path. Proposed: the cone.
+13. Default. The oracle reads textures through `scripts/oracle-fetch.shade.ts`. The engine opens an issue for CPU texture reads on the compiler's repository. Proposed: yes.
+14. For the owner. These wait: `KHR_texture_transform`, KTX2, UDIM, alpha BLEND, a nearest magnification filter, an anisotropic filter, and the sampling of a textured emitter by its map. Proposed: this scope.
+15. Default. A scene may hold 536,870,912 bytes of texture layers, and the loader keeps images up to 2048 texels. Past the budget the pack throws a `RangeError`. Proposed: yes.
 
 ## Record
 
 **Approval and plan record.** This record is a draft. No approval applies yet.
 
-**Configuration and validation record.** This record does not yet apply. No step is started. This draft has Part 1 written. Parts 2 to 6 are not written yet.
+**Configuration and validation record.** This record does not yet apply. No step is started. This draft has Parts 1 and 2 written. Parts 3 to 6 are not written yet.
