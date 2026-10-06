@@ -1,6 +1,6 @@
 ---
 title: Camera controls
-description: 'OrbitControls turns mouse, touch, pen and keyboard input into camera moves about a target, with damping and limits, in the shape three.js uses.'
+description: 'OrbitControls turns mouse, touch, pen and keyboard input into camera moves about a target, and FlyControls moves a camera freely, as a first-person view does.'
 sidebar:
   order: 4
 ---
@@ -57,3 +57,41 @@ and from behind. A wheel turn can go inside the Cornell box or far outside it.
 - `moving` is true while a pointer is down, the turn coasts, or a wheel just turned.
 - `start`, `change` and `end` fire through `addEventListener`.
 - `saveState()` remembers the view. `reset()` returns to it. `dispose()` removes the listeners.
+
+## Fly controls
+
+`FlyControls` moves a camera freely, as a first-person view does. It has the contract of
+`OrbitControls`: `update(dt)`, `moving`, the events `start`, `change` and `end`, `saveState()`,
+`reset()` and `dispose()`.
+
+```ts
+import { FlyControls } from '@typeshade/radiance-addons';
+
+const fly = new FlyControls(camera, canvas);
+fly.movementSpeed = 3;
+
+renderer.setAnimationLoop(async () => {
+  fly.update(clock.getDelta());
+  renderer.preview = fly.moving ? 4 : 1;
+  await renderer.render(scene, camera);
+});
+```
+
+| Input               | Move                                                     |
+| ------------------- | -------------------------------------------------------- |
+| Drag, or one finger | look around: yaw about world up, pitch limited to 89 deg |
+| W and S             | forward and back along the view direction                |
+| A and D             | strafe left and right                                    |
+| Q and E             | down and up along world up                               |
+| Left or right Shift | four times the speed                                     |
+
+- `movementSpeed` is the speed of a key in scene units a second. The default is 1.
+- `rotationSpeed` is the turn of a drag in radians for each pixel. The default is 0.0025.
+- Movement uses `dt`, so the speed does not depend on the frame rate.
+- There is no collision, so the camera may pass through a wall.
+- There is no pointer lock. A drag on the canvas turns the view, and no click is needed first.
+- The keys are read by `KeyboardEvent.code`, while the canvas or its page has focus.
+
+The Sponza example starts in fly mode. The key F swaps it to the orbit controls and back, and the
+camera keeps its place and look. The inactive controls are disabled, not removed. The other
+examples keep the orbit controls only.

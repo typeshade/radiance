@@ -3,8 +3,9 @@
 // over the 23 instances (22 meshes and the light). The nave is about 4 m wide and the roof opens
 // above it in a slot of 14.5 m by 3 m, so the light is a plane of that size: a larger one would
 // have most of its samples hidden by the roof. The galleries and the curtains are lit by the
-// paths that bounce in from the nave. Drag to look around: the orbit starts inside the nave and
-// is free.
+// paths that bounce in from the nave. The view starts in fly mode inside the nave: drag to look,
+// W A S D to move, Q and E to go down and up, Shift to go faster. KeyF swaps to the orbit, which
+// is free, and back (swap-controls.ts).
 // The model is by Frank Meinl (Crytek), from the Computer Graphics Archive of Morgan McGuire, under
 // CC BY 3.0 (site/public/assets/LICENSES.md has the credit and the source).
 //
@@ -20,7 +21,8 @@ import {
   PlaneGeometry,
   Scene,
 } from '@typeshade/radiance';
-import { GLTFLoader, OrbitControls } from '@typeshade/radiance-addons';
+import { FlyControls, GLTFLoader, OrbitControls } from '@typeshade/radiance-addons';
+import { swapControls } from './swap-controls.ts';
 import type { ExampleRun } from './types.ts';
 
 /**
@@ -65,6 +67,13 @@ export default async function sponza(canvas: HTMLCanvasElement): Promise<Example
   controls.update();
   controls.saveState();
 
+  // Fly mode starts. The orbit's `update` above aimed the camera at its target from the start
+  // position, and the fly controls take that place and look as they are, so the first frame is
+  // the one the orbit start gave.
+  const fly = new FlyControls(camera, canvas);
+  fly.movementSpeed = 3;
+  const swap = swapControls(camera, canvas, fly, controls, 'fly');
+
   // Fill the canvas: the frame follows its size, and the camera its shape.
   const resize = (): void => {
     renderer.setSize(canvas.clientWidth, canvas.clientHeight);
@@ -76,18 +85,20 @@ export default async function sponza(canvas: HTMLCanvasElement): Promise<Example
 
   const clock = new Clock();
   renderer.setAnimationLoop(async () => {
-    controls.update(clock.getDelta());
+    swap.update(clock.getDelta());
     // While the camera moves, trace one pixel in four by four: a quick preview.
-    renderer.preview = controls.moving ? 4 : 1;
+    renderer.preview = swap.moving ? 4 : 1;
     await renderer.render(scene, camera);
   });
 
   return {
     renderer,
-    controls,
+    get controls() {
+      return swap.active;
+    },
     dispose() {
       observer.disconnect();
-      controls.dispose();
+      swap.dispose();
       renderer.dispose();
     },
   };
