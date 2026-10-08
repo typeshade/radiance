@@ -1,13 +1,19 @@
 'use typeshade';
 import {
   Bounds,
+  INSTANCE_SPHERE,
   instanceBases,
+  instanceFlags,
   instanceNormalToWorld,
   instanceToObject,
   instanceToWorld,
   nodeBounds,
   nodeWords,
   params,
+  sphereCentre,
+  sphereRadius,
+  sphereToObject,
+  sphereToWorld,
   triangleWords,
   vertexNormal,
   vertexPosition,
@@ -31,11 +37,18 @@ import { Surface, tangentOf } from './materials.shade.ts';
 //   nearer one is walked first. A leaf's primitives are tested in their order.
 // - `occluded` is the same walk, and it stops at the first hit.
 // - The builder makes a leaf at depth 30, so a walk never holds more than 31 entries.
+// - An instance whose `flags` bit 0 (`INSTANCE_SPHERE`) is set is an analytic sphere (record
+//   0001, "The analytic sphere"). The walk tests it with `hitSphere`, in world space, and walks no
+//   BLAS for it. `surface` makes its `Surface` with `sphereSurfaceAt`, and `sphereUv` gives its uv.
 //
 // Determinism (design record 0005, "The six rules"). This file leans on these rules:
-//   Rule 2: no transcendental function.
-//   Rule 3: `/` (the slab test's 1 / d and the triangle test's 1 / det), `sqrt`, `normalize`,
-//           `length`, `dot` and `cross` may steer. The differential gate bounds them.
+//   Rule 2: no transcendental function. `sphereUv` and `atan2p` make the sphere's uv from `+`,
+//           `-`, `*`, `/`, `sqrt`, `abs`, `min`, `max` and comparisons, and call neither `atan2`
+//           nor `acos`. Their comparisons choose between pieces of one continuous curve.
+//   Rule 3: `/` (the slab test's 1 / d, the triangle test's 1 / det and the roots of `hitSphere`),
+//           `sqrt`, `normalize`, `length`, `dot` and `cross` may steer. `hitSphere` keeps the
+//           order of operations of record 0001, "The ray and the sphere". The differential gate
+//           bounds them.
 //   Rule 6: no `f16`, no subgroup operation, no `raw`.
 // The lint in determinism.test.ts reads the compiler's determinism report of this file.
 
@@ -49,6 +62,8 @@ const TINY: f32 = 1e-20;
 /** The slab test's far distance is widened by this factor (1 + 2 gamma(3), Ize 2013), so a hit
  *  the triangle test finds on a box's face is not culled by the box's rounding. */
 const SLAB_SLACK: f32 = 1.0000004;
+/** pi, to f32. */
+const PI: f32 = 3.141592653589793;
 
 /** What `nearest` finds. */
 export class Hit {
@@ -58,9 +73,13 @@ export class Hit {
   instance: u32;
   /** The triangle met: its index in `triangles`, the instance's `primBase` added. */
   triangle: u32;
-  /** The barycentric weights of the triangle's second and of its third vertex at the hit. */
+  /** The barycentric weights of the triangle's second and of its third vertex at the hit. 0 for
+   *  a sphere. */
   b1: f32;
   b2: f32;
+  /** For a sphere, the unit vector from its centre to the hit point, in world space. 0 for a
+   *  triangle. A sphere's hit has `triangle` NONE. */
+  q: vec3;
 }
 
 /** A ray made ready for the tests in one space. */
@@ -79,6 +98,50 @@ class Ray {
  *  through memory, and a select stays in registers. */
 export function pick(v: vec3, k: u32): f32 {
   return select(select(v.x, v.y, k === 1), v.z, k === 2);
+}
+
+/**
+ * Where the ray from `o` along `d` meets the sphere of centre `c` and radius `r`, all in world
+ * space, before `limit`: `(t, q)`, with `q` the unit vector from the centre to the hit point. `t`
+ * is -1 when the ray does not meet it. `d` need not be unit, so `t` is a parameter of the ray.
+ * The order of the operations is record 0001's ("The ray and the sphere"), after Haines,
+ * "Precision Improvements for Ray/Sphere Intersection" (Ray Tracing Gems, 2019): the
+ * discriminant from the line's distance to the centre, and the second root by the product of the
+ * roots, so no subtraction of near equal numbers feeds a root.
+ */
+export function hitSphere(o: vec3, d: vec3, c: vec3, r: f32, limit: f32): vec4 {
+  const miss = vec4(-1., 0., 0., 0.);
+  // The origin from the centre.
+  const oc = o - c;
+  const a = dot(d, d);
+  if (a === 0.) {
+    return miss;
+  }
+  const b = dot(oc, d);
+  // The point of the line nearest the centre, from the centre.
+  const f = oc - d * (b / a);
+  // b * b - a * (dot(oc, oc) - r * r), without the cancellation.
+  const disc = a * (r * r - dot(f, f));
+  if (disc < 0.) {
+    return miss;
+  }
+  const root = sqrt(disc);
+  const k = -(b + select(-root, root, b >= 0.));
+  if (k === 0.) {
+    return miss;
+  }
+  const cc = dot(oc, oc) - r * r;
+  const t1 = k / a;
+  const t2 = cc / k;
+  // The smaller root above 0, else the larger.
+  const lo = select(t2, t1, t1 < t2);
+  const hi = select(t1, t2, t1 < t2);
+  const t = select(hi, lo, lo > 0.);
+  if (!(t > 0. && t < limit)) {
+    return miss;
+  }
+  // The hit point from the centre, put back on the unit sphere.
+  return vec4(t, normalize(oc + d * t));
 }
 
 /** The ray from `o` along `d`, made ready for the box and triangle tests. */
@@ -180,7 +243,7 @@ function rayIn(i: u32, origin: vec3, dir: vec3): Ray {
 
 /** The nearest surface the ray meets before `limit`. `instance` is NONE when it meets none. */
 export function nearest(origin: vec3, dir: vec3, limit: f32): Hit {
-  let hit: Hit = { t: limit, instance: NONE, triangle: NONE, b1: 0., b2: 0. };
+  let hit: Hit = { t: limit, instance: NONE, triangle: NONE, b1: 0., b2: 0., q: vec3(0.) };
   if (params.scene.y === 0) {
     return hit;
   }
@@ -213,6 +276,14 @@ export function nearest(origin: vec3, dir: vec3, limit: f32): Hit {
     // A TLAS leaf's `a` is its first instance's slot, which the packer made its index.
     for (let k: u32 = 0; k < w.count; k++) {
       const i = w.a + k;
+      // A sphere is tested in world space, and has no BLAS to walk.
+      if ((instanceFlags(i) & INSTANCE_SPHERE) !== 0) {
+        const h = hitSphere(origin, dir, sphereCentre(i), sphereRadius(i), hit.t);
+        if (h.x >= 0.) {
+          hit = { t: h.x, instance: i, triangle: NONE, b1: 0., b2: 0., q: h.yzw };
+        }
+        continue;
+      }
       const bases = instanceBases(i);
       const ri = rayIn(i, origin, dir);
       inner[0] = 0;
@@ -246,7 +317,7 @@ export function nearest(origin: vec3, dir: vec3, limit: f32): Hit {
             hit.t,
           );
           if (h.x >= 0.) {
-            hit = { t: h.x, instance: i, triangle: triangle, b1: h.y, b2: h.z };
+            hit = { t: h.x, instance: i, triangle: triangle, b1: h.y, b2: h.z, q: vec3(0.) };
           }
         }
       }
@@ -256,7 +327,7 @@ export function nearest(origin: vec3, dir: vec3, limit: f32): Hit {
 }
 
 /** Whether the ray meets any surface before `limit`: the shadow ray's test. It is `nearest`'s
- *  walk, and it stops at the first triangle it meets. */
+ *  walk, and it stops at the first triangle or sphere it meets. */
 export function occluded(origin: vec3, dir: vec3, limit: f32): bool {
   if (params.scene.y === 0) {
     return false;
@@ -286,6 +357,12 @@ export function occluded(origin: vec3, dir: vec3, limit: f32): bool {
     }
     for (let k: u32 = 0; k < w.count; k++) {
       const i = w.a + k;
+      if ((instanceFlags(i) & INSTANCE_SPHERE) !== 0) {
+        if (hitSphere(origin, dir, sphereCentre(i), sphereRadius(i), limit).x >= 0.) {
+          return true;
+        }
+        continue;
+      }
       const bases = instanceBases(i);
       const ri = rayIn(i, origin, dir);
       inner[0] = 0;
@@ -383,7 +460,93 @@ export function surfaceAt(instance: u32, triangle: u32, b1: f32, b2: f32, dir: v
   };
 }
 
-/** The surface a ray along `dir` met at `hit` (record 0004, `Surface`). */
+/**
+ * The angle of the point `(x, y)` from the x axis, from -pi to pi, as `atan2(y, x)` gives it
+ * (record 0004, "The texture coordinates of a `Sphere`"). It uses `+`, `-`, `*`, `/`, `sqrt`,
+ * `abs`, `min`, `max` and comparisons: the ratio of the two lengths, halved twice by the half-angle
+ * identity, then the series of the arc tangent to its 15th power. It is 0 at the origin.
+ */
+export function atan2p(y: f32, x: f32): f32 {
+  const ay = abs(y);
+  const ax = abs(x);
+  const big = max(ay, ax);
+  if (big === 0.) {
+    return 0.;
+  }
+  // From 0 to 1.
+  const r = min(ay, ax) / big;
+  // The angle halved.
+  const r1 = r / (1. + sqrt(1. + r * r));
+  // Halved again: at most 0.1989.
+  const h = r1 / (1. + sqrt(1. + r1 * r1));
+  const h2 = h * h;
+  const s =
+    h *
+    (1. +
+      h2 *
+        (-1. / 3. +
+          h2 * (1. / 5. + h2 * (-1. / 7. + h2 * (1. / 9. + h2 * (-1. / 11. + h2 * (1. / 13. - h2 / 15.)))))));
+  let a = 4. * s;
+  if (ay > ax) {
+    a = PI / 2. - a;
+  }
+  if (x < 0.) {
+    a = PI - a;
+  }
+  return select(a, -a, y < 0.);
+}
+
+/**
+ * The uv of the unit vector `qo` from a sphere's centre, in the sphere's own space: three.js's
+ * spherical layout of `SphereGeometry` (record 0004, "The texture coordinates of a `Sphere`").
+ * `u` is 0 and 1 on the half-axis of -x and 0 at a pole. `v` is 1 at the north pole (+y).
+ */
+export function sphereUv(qo: vec3): vec2 {
+  const rho = sqrt(qo.x * qo.x + qo.z * qo.z);
+  let u = atan2p(qo.z, -qo.x) / (2. * PI);
+  if (u < 0.) {
+    u += 1.;
+  }
+  return vec2(u, 1. - atan2p(rho, qo.y) / PI);
+}
+
+/**
+ * The surface of the `Sphere` of instance `instance` at the unit vector `q` from its centre, in
+ * world space, met by a ray along `dir` (record 0001, "The analytic sphere"). `ng` is `q` turned
+ * toward the ray, and `ns` is `ng` (record 0004). The point is the centre plus the radius times
+ * `q`, moved off the surface along `ng` as `surfaceAt` moves it.
+ */
+export function sphereSurfaceAt(instance: u32, q: vec3, dir: vec3): Surface {
+  const front = dot(q, dir) < 0.;
+  const ng = select(-q, q, front);
+  const radius = sphereRadius(instance);
+  const p = sphereCentre(instance) + q * radius;
+  // The uv and dp/du in the sphere's own space, which the rows of R^T turn.
+  const qo = sphereToObject(instance, q);
+  const v = vec3(qo.z, 0., -qo.x) * (2. * PI);
+  // At a pole dp/du is 0, and the frame about ns takes its place.
+  let dpdu = tangentOf(ng);
+  if (v.x !== 0. || v.z !== 0.) {
+    dpdu = sphereToWorld(instance, v) * radius;
+  }
+  const a = abs(p);
+  const offset = OFFSET * max(1., max(a.x, max(a.y, a.z)));
+  return {
+    p: p + ng * offset,
+    ng: ng,
+    ns: ng,
+    uv: sphereUv(qo),
+    dpdu: dpdu,
+    material: instanceBases(instance).w,
+    front: front,
+  };
+}
+
+/** The surface a ray along `dir` met at `hit` (record 0004, `Surface`). A hit whose `triangle`
+ *  is NONE is a sphere's. */
 export function surface(hit: Hit, dir: vec3): Surface {
+  if (hit.triangle === NONE) {
+    return sphereSurfaceAt(hit.instance, hit.q, dir);
+  }
   return surfaceAt(hit.instance, hit.triangle, hit.b1, hit.b2, dir);
 }

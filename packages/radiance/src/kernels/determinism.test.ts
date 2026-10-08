@@ -21,7 +21,7 @@ import { ALLOWED, describeRow, outsideLists } from './determinism-lists.ts';
  * broken instrument, not a clean kernel, so the lint fails on it. A new kernel file needs no entry.
  */
 const KNOWN_OPS: Record<string, readonly string[]> = {
-  'intersect.shade.ts': ['/', 'cross', 'dot', 'normalize'],
+  'intersect.shade.ts': ['/', 'cross', 'dot', 'normalize', 'sqrt'],
   'materials.shade.ts': ['cross', 'dot', 'normalize', 'reflect', 'sqrt'],
   'sampler.shade.ts': ['/'],
   'trace.shade.ts': ['/', 'dot'],
@@ -76,6 +76,27 @@ describe('the determinism lint over src/kernels', () => {
       expect(missingOps(rows, KNOWN_OPS[file] ?? [])).toEqual([]);
     });
   }
+});
+
+// Record 0005, "The analytic sphere's arithmetic" and step 4, with record 0001, step 6: the
+// sphere's quadratic and its uv add no row outside the lists, and use no transcendental function.
+// Verifies: Design 0005.6
+describe('the rows of the analytic sphere in intersect.shade.ts', () => {
+  const path = join(kernelsDir, 'intersect.shade.ts');
+  const rows = determinismOf(readFileSync(path, 'utf8'), path);
+
+  it('has 0 rows outside the lists, and its sqrt and / rows name hitSphere and atan2p', () => {
+    expect(outsideLists(rows)).toEqual([]);
+    for (const op of ['sqrt', '/']) {
+      const row = rows.find((r) => r.op === op);
+      expect(row?.where).toContain('hitSphere');
+      expect(row?.where).toContain('atan2p');
+    }
+  });
+
+  it('has no row for atan2, acos, sin or cos', () => {
+    expect(rows.filter((r) => ['atan2', 'acos', 'sin', 'cos'].includes(r.op))).toEqual([]);
+  });
 });
 
 describe('the probe: an empty report', () => {

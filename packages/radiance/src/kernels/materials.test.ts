@@ -15,6 +15,14 @@ import { MirrorMaterial } from '../materials/MirrorMaterial.ts';
 import { PhysicalMaterial } from '../materials/PhysicalMaterial.ts';
 import { Color } from '../math/Color.ts';
 import { packMaterial } from '../renderers/scene-pack.ts';
+import {
+  INSTANCE_BASES,
+  INSTANCE_FLAGS,
+  INSTANCE_INVERSE,
+  INSTANCE_MATRIX,
+  INSTANCE_SPHERE,
+  INSTANCE_STRIDE,
+} from './layout.shade.ts';
 
 type Vec = [number, number, number];
 
@@ -251,4 +259,60 @@ describe('the helpers sampleBsdf draws with', () => {
       expect(d[0]! * n[0]! + d[1]! * n[1]! + d[2]! * n[2]!).toBeGreaterThan(0);
     }
   });
+});
+
+// Record 0004, "The fold on a `Sphere`", with record 0001, step 6: on a `Sphere` `ns` is `ng`,
+// so a mirror sample never goes under `ng`. Record 0004's Amendment 2 measured 0.416 % of the
+// area of a mesh sphere under `ng`, before its fold.
+describe('a mirror sample on a Sphere', () => {
+  const INTERSECT = join(import.meta.dir, 'intersect.shade.ts');
+  const geometry = compile(readFileSync(INTERSECT, 'utf8'), {
+    fileName: INTERSECT,
+    readDocument: read,
+  });
+  const hitFns = () => {
+    expect(geometry.diagnostics.filter((d) => d.category === 'error')).toEqual([]);
+    return compileModuleJs(geometry.module!, { precision: 'f32' });
+  };
+
+  it('never has dot(wi, ng) of 0 or less, on 100,000 primary rays across the silhouette: 0', () => {
+    const g = hitFns();
+    const call = (name: string) => g.fns[name]! as unknown as (...args: unknown[]) => CpuValue;
+    // One sphere of radius 0.4 at the origin, with the mirror (material 1), packed by hand as
+    // record 0001 lays it out.
+    const instances = new Float32Array(INSTANCE_STRIDE * 4);
+    const words = new Uint32Array(instances.buffer);
+    instances.set([0, 0, 0, 0.4], INSTANCE_MATRIX * 4);
+    instances.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0], INSTANCE_INVERSE * 4);
+    words.set([0, 0, 0, 1], INSTANCE_BASES * 4);
+    words.set([INSTANCE_SPHERE, 0xffffffff, 0, 0], INSTANCE_FLAGS * 4);
+    g.setBinding(
+      'instances',
+      Array.from({ length: INSTANCE_STRIDE }, (_, i) =>
+        Array.from(instances.subarray(i * 4, i * 4 + 4)),
+      ) as unknown as CpuValue,
+    );
+    // From an eye 3.4 away, rays through points spread evenly over the disc the sphere covers
+    // in the plane at unit distance (a sunflower), out to its rim.
+    const eye: Vec = [0, 0, 3.4];
+    const rim = 0.4 / Math.sqrt(3.4 * 3.4 - 0.4 * 0.4);
+    const golden = Math.PI * (3 - Math.sqrt(5));
+    const N = 100_000;
+    let hits = 0;
+    let under = 0;
+    for (let i = 0; i < N; i++) {
+      const rho = rim * Math.sqrt((i + 0.5) / N);
+      const d = f32v([rho * Math.cos(i * golden), rho * Math.sin(i * golden), -1]);
+      const h = call('hitSphere')(eye, d, [0, 0, 0], 0.4, 1e30) as number[];
+      if (h[0]! < 0) continue;
+      hits++;
+      const s = call('sphereSurfaceAt')(0, h.slice(1), d) as unknown as Surface;
+      expect(s.material).toBe(1);
+      const wo = norm([-d[0], -d[1], -d[2]]);
+      const b = fn('sampleBsdf')(s, f32v(wo), [0.5, 0.5, 0.5]) as unknown as BsdfSample;
+      if (dot(b.wi, s.ng) <= 0) under++;
+    }
+    expect(hits).toBe(N);
+    expect(under).toBe(0);
+  }, 60_000);
 });

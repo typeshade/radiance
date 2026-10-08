@@ -9,9 +9,9 @@
     "packages/*"
   ],
   "scripts": {
-    "sync": "bun vendor/typeshade/src/cli/bin.ts sync packages",
+    "sync": "bun vendor/typeshade/src/cli/bin.ts sync packages scripts/probes",
     "typecheck": "bun run sync && tsc -p tsconfig.json",
-    "check:shaders": "bun vendor/typeshade/src/cli/bin.ts check packages",
+    "check:shaders": "bun vendor/typeshade/src/cli/bin.ts check packages scripts/probes",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check:prose": "node scripts/check-prose.mjs",

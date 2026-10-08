@@ -47,6 +47,7 @@ const RECORD = {
   INSTANCE_INVERSE: 3,
   INSTANCE_BASES: 6,
   INSTANCE_FLAGS: 7,
+  INSTANCE_SPHERE: 1,
   LIGHT_TRIANGLE: 0,
 } as const;
 
@@ -54,6 +55,23 @@ describe('layout.shade.ts: the numbers', () => {
   it("the kernel's constants are the record's table", () => {
     const consts = Object.fromEntries(compiled.module!.consts.map((c) => [c.name, c.cpuValue]));
     expect(consts).toEqual(RECORD);
+  });
+
+  // Record 0001, step 6: the sphere's flag bit is 1, and it moves no stride.
+  it('INSTANCE_SPHERE is 1, and the strides do not change', () => {
+    const consts = Object.fromEntries(compiled.module!.consts.map((c) => [c.name, c.cpuValue]));
+    expect(consts.INSTANCE_SPHERE).toBe(1);
+    expect(layout.INSTANCE_SPHERE).toBe(1);
+    const strides = Object.entries(consts).filter(([name]) => name.endsWith('_STRIDE'));
+    expect(Object.fromEntries(strides)).toEqual({
+      NODE_STRIDE: 2,
+      TRIANGLE_STRIDE: 1,
+      VERTEX_STRIDE: 2,
+      INSTANCE_STRIDE: 8,
+      MATERIAL_STRIDE: 8,
+      LIGHT_STRIDE: 1,
+      ACCUM_STRIDE: 1,
+    });
   });
 
   it("the host imports the kernel's own constants through the host view, and keeps no copy", () => {
@@ -254,6 +272,44 @@ describe('layout.shade.ts: the decoders', () => {
         const back = fn('instanceToObject')(1, [...world, 1]) as number[];
         back.forEach((x, k) => expect(x).toBeCloseTo(p[k]!, 4));
       }
+    });
+  });
+
+  // Record 0001, "The analytic sphere": the words of a `Sphere`'s instance, packed by hand.
+  describe('the sphere decoders', () => {
+    // Instance 0 is a mesh. Instance 1 is a sphere of centre (1, 2, 3) and radius 0.5, turned a
+    // quarter turn about y: the rows of R^T are (0, 0, -1), (0, 1, 0) and (1, 0, 0).
+    const instances = new Float32Array(16 * 4);
+    const words = new Uint32Array(instances.buffer);
+    instances.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0], 0);
+    instances.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0], 12);
+    words.set([0, 0, 0, 5], 24);
+    words.set([0, 3, 0, 0], 28);
+    instances.set([1, 2, 3, 0.5], 32);
+    instances.set([0, 0, -1, 0, 0, 1, 0, 0, 1, 0, 0, 0], 44);
+    words.set([0, 0, 0, 7], 56);
+    words.set([RECORD.INSTANCE_SPHERE, 0xffffffff, 0, 0], 60);
+
+    it('instanceFlags reads bit 0 for the sphere and 0 for the mesh', () => {
+      cpu.setBinding('instances', vec4s(instances));
+      expect(fn('instanceFlags')(0)).toBe(0);
+      expect(fn('instanceFlags')(1)).toBe(RECORD.INSTANCE_SPHERE);
+      expect(fn('instanceBases')(1)).toEqual([0, 0, 0, 7]);
+    });
+
+    it('sphereCentre and sphereRadius read [0]', () => {
+      cpu.setBinding('instances', vec4s(instances));
+      expect(fn('sphereCentre')(1)).toEqual([1, 2, 3]);
+      expect(fn('sphereRadius')(1)).toBe(0.5);
+    });
+
+    it('sphereToObject and sphereToWorld move a vector by the rows of R^T, and back', () => {
+      cpu.setBinding('instances', vec4s(instances));
+      // R turns +x to -z: R^T takes -z back to +x.
+      expect(fn('sphereToObject')(1, [0, 0, -1])).toEqual([1, 0, 0]);
+      expect(fn('sphereToWorld')(1, [1, 0, 0])).toEqual([0, 0, -1]);
+      expect(fn('sphereToWorld')(1, [0.25, -0.5, 2])).toEqual([2, -0.5, -0.25]);
+      expect(fn('sphereToObject')(1, [2, -0.5, -0.25])).toEqual([0.25, -0.5, 2]);
     });
   });
 });

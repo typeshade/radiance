@@ -16,5 +16,5 @@
     "moduleSuffixes": [".typeshade", ""]
   },
   "include": ["packages/*/src/**/*.ts", "scripts/**/*.ts", "site/examples/**/*.ts"],
-  "exclude": ["packages/*/src/**/*.shade.ts", "**/node_modules", "**/dist"]
+  "exclude": ["packages/*/src/**/*.shade.ts", "scripts/**/*.shade.ts", "**/node_modules", "**/dist"]
 }

@@ -19,13 +19,18 @@
 //
 // `probe()` runs the gate once wrong on purpose and throws when the gate does not fail.
 //
+// `runHits(options)` is the row `sphere-hit` (record 0002, "The hit probe"): it runs `hitSphere`
+// alone over the 4,096 rays of `hitRays()`, on the GPU (the entry `hitSphereProbe` of the
+// harness page) and on the oracle, and `compareHits` counts the rays outside the rule.
+//
 // Options: `scene` names a key of `SCENES`. `session` is an open render page
 // (`openRenderPage` in ./_browser.mjs), which several gates may share. Without one, the gate
 // opens its own.
 
 import { spawn } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   GATE,
   GATE_M2,
@@ -200,9 +205,233 @@ export async function probe(options = {}) {
   });
 }
 
-if (import.meta.main) {
-  // `bun run gate:differential -- <scene>` renders the scene called `<scene>`. With no name it renders the Cornell box.
-  const result = await run({ scene: process.argv[2] });
+// ---- The row `sphere-hit` (record 0002, "The hit probe") -----------------------------------
+
+/** The rays of the row: 3,584 aimed rays of precision rule 1, then 512 away rays of rule 3. */
+export const HIT_AIMED = 3584;
+export const HIT_AWAY = 512;
+export const HIT_RAYS = HIT_AIMED + HIT_AWAY;
+/** The `limit` of every ray. */
+const HIT_LIMIT = 1e30;
+
+/** Numbers in [0, 1) from a seed: mulberry32. */
+function mulberry32(seed) {
+  let s = seed >>> 0;
+  return () => {
+    s = (s + 0x6d2b79f5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * The 4,096 rays of the row, 3 vec4 each: `(o.xyz, limit)`, `(d.xyz, 0)` and `(c.xyz, r)`. Drawn
+ * from `mulberry32` with seed 1, in f64, each word rounded to f32 (record 0002, "The hit probe").
+ */
+export function hitRays() {
+  const next = mulberry32(1);
+  const logUniform = (a, b) => a * Math.pow(b / a, next());
+  const unit = () => {
+    const z = next() * 2 - 1;
+    const phi = next() * 2 * Math.PI;
+    const s = Math.sqrt(1 - z * z);
+    return [s * Math.cos(phi), s * Math.sin(phi), z];
+  };
+  const out = new Float32Array(HIT_RAYS * 12);
+  for (let i = 0; i < HIT_RAYS; i++) {
+    const r = logUniform(0.01, 100);
+    const c = [0, 1, 2].map(() => next() * 2000 - 1000);
+    const len = logUniform(1e-3, 1e3);
+    let o;
+    let d;
+    if (i < HIT_AIMED) {
+      const n = unit();
+      const far = r * logUniform(1.0001, 1e5);
+      o = c.map((x, k) => x + n[k] * far);
+      // A spot in the plane through c at right angles to the line from o to c.
+      const w = n.map((x) => -x);
+      const helper = Math.abs(w[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+      const e1 = normalized(cross(helper, w));
+      const e2 = cross(w, e1);
+      const b = next() * 0.9 * r;
+      const angle = next() * 2 * Math.PI;
+      const spot = c.map((x, k) => x + b * (Math.cos(angle) * e1[k] + Math.sin(angle) * e2[k]));
+      d = normalized(spot.map((x, k) => x - o[k])).map((x) => x * len);
+    } else {
+      const n = unit();
+      const far = r * logUniform(1.00005, 1e5);
+      o = c.map((x, k) => x + n[k] * far);
+      const u = unit();
+      const side = u[0] * n[0] + u[1] * n[1] + u[2] * n[2] < 0 ? -1 : 1;
+      d = u.map((x) => x * side * len);
+    }
+    out.set([...o, HIT_LIMIT, ...d, 0, ...c, r], i * 12);
+  }
+  return out;
+}
+
+function cross(a, b) {
+  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+}
+function normalized(a) {
+  const l = Math.hypot(...a);
+  return a.map((x) => x / l);
+}
+
+/**
+ * Holds the GPU's `hits` to the oracle's, ray by ray, by the rule of record 0002 ("The hit
+ * probe"). `gpu`, `cpu` and `rays` are `Float32Array`s. Answers `{ ok, outside, total, worst,
+ * worstQ, message }`: `worst` is the largest `t` error in units of `ulp(S)`, `worstQ` the largest
+ * `length(q_gpu - q_cpu)`, and `message` names the first ray outside, with both answers.
+ */
+export function compareHits(gpu, cpu, rays) {
+  const total = rays.length / 12;
+  if (gpu.length !== total * 4 || cpu.length !== total * 4)
+    return {
+      ok: false,
+      outside: total,
+      total,
+      worst: NaN,
+      worstQ: NaN,
+      message: `${total} rays, and the GPU gave ${gpu.length / 4} hits and the oracle ${cpu.length / 4}`,
+    };
+  let outside = 0;
+  let worst = 0;
+  let worstQ = 0;
+  let first;
+  for (let i = 0; i < total; i++) {
+    const g = Array.from(gpu.subarray(i * 4, i * 4 + 4));
+    const w = Array.from(cpu.subarray(i * 4, i * 4 + 4));
+    const o = rays.subarray(i * 12, i * 12 + 3);
+    const d = rays.subarray(i * 12 + 4, i * 12 + 7);
+    const c = rays.subarray(i * 12 + 8, i * 12 + 11);
+    const r = rays[i * 12 + 11];
+    let reason;
+    if (Number.isNaN(g[0]) || Number.isNaN(w[0])) reason = 'a t is NaN';
+    else if (g[0] < 0 !== w[0] < 0) reason = 'one is a hit and the other a miss';
+    else if (g[0] >= 0) {
+      if (!g.every(Number.isFinite) || !w.every(Number.isFinite)) reason = 'a value is not finite';
+      else {
+        const s = Math.max(1, ...[0, 1, 2].map((k) => Math.abs(o[k] - c[k]) / r));
+        const ulp = Math.pow(2, Math.floor(Math.log2(s)) - 23);
+        const dt = (Math.abs(g[0] - w[0]) * Math.hypot(d[0], d[1], d[2])) / r / ulp;
+        const dq = Math.hypot(g[1] - w[1], g[2] - w[2], g[3] - w[3]);
+        worst = Math.max(worst, dt);
+        worstQ = Math.max(worstQ, dq);
+        if (dt > 16) reason = `the t error is ${dt.toFixed(2)} ulp(S), above 16`;
+        else if (dq > 16 * ulp + 8e-7) reason = `the q difference is ${dq.toExponential(2)}`;
+      }
+    }
+    if (reason !== undefined) {
+      outside++;
+      first ??= `ray ${i}: ${reason} (gpu ${JSON.stringify(g)}, oracle ${JSON.stringify(w)})`;
+    }
+  }
+  const message = [
+    `sphere-hit: ${outside} of ${total} rays outside the rule; the largest t error ${worst.toFixed(2)} ulp(S), the largest q difference ${worstQ.toExponential(2)}`,
+  ];
+  if (first !== undefined) message.push(`the first ray outside: ${first}`);
+  return { ok: outside === 0, outside, total, worst, worstQ, message: message.join('\n') };
+}
+
+/** The oracle's half: `hit-sphere.shade.ts` compiled with `compile` and run with
+ *  `compileModuleJs` at f32, one invocation for each ray. It runs under bun, which reads the
+ *  compiler's TypeScript. */
+async function hitsOnCpu(rays) {
+  const { compile, compileModuleJs } = await import('typeshade');
+  const path = fileURLToPath(new URL('../probes/hit-sphere.shade.ts', import.meta.url));
+  const read = (f) => {
+    try {
+      return readFileSync(f, 'utf8');
+    } catch {
+      return undefined;
+    }
+  };
+  const compiled = compile(readFileSync(path, 'utf8'), { fileName: path, readDocument: read });
+  const errors = compiled.diagnostics.filter((x) => x.category === 'error');
+  if (errors.length > 0 || compiled.module === undefined)
+    throw new Error(`hit-sphere.shade.ts does not compile: ${JSON.stringify(errors)}`);
+  const cpu = compileModuleJs(compiled.module, { precision: 'f32' });
+  const total = rays.length / 12;
+  const vec4s = Array.from({ length: total * 3 }, (_, i) =>
+    Array.from(rays.subarray(i * 4, i * 4 + 4)),
+  );
+  const hits = Array.from({ length: total }, () => [0, 0, 0, 0]);
+  cpu.setBinding('rays', vec4s);
+  cpu.setBinding('hits', hits);
+  for (let i = 0; i < total; i++) cpu.fns.probe([i, 0, 0]);
+  return new Float32Array(hits.flat());
+}
+
+/** The oracle's half, as a child process under bun: this file with `--hits <outfile>`. */
+function hitsOnOracle() {
+  const file = join(outDir(), 'oracle-sphere-hit.json');
+  return new Promise((resolve, reject) => {
+    const child = spawn('bun', [fileURLToPath(import.meta.url), '--hits', file], {
+      stdio: ['ignore', 'inherit', 'inherit'],
+    });
+    child.on('error', reject);
+    child.on('exit', (code) =>
+      code === 0
+        ? resolve(new Float32Array(JSON.parse(readFileSync(file, 'utf8'))))
+        : reject(new Error(`the oracle of sphere-hit exited with ${code}`)),
+    );
+  });
+}
+
+/** The GPU's half: the page of the session calls `hitSphereProbe` on 64 workgroups, which reads
+ *  `hits` back into the array it was given. The page requires the WebGPU tier first: an entry
+ *  call falls back to the CPU tier when it finds no device, and the row would then hold the
+ *  oracle to itself. */
+async function hitsOnGpu(session, rays) {
+  const page = await session.browser.newPage();
+  page.on('pageerror', (e) => session.errors.push(`sphere-hit: ${e.message}`));
+  page.on('console', (m) => {
+    if (m.type() === 'error' || m.type() === 'warning')
+      session.errors.push(`sphere-hit: console.${m.type()}: ${m.text()}`);
+  });
+  try {
+    await page.goto(`${session.origin}/__harness/`);
+    const hits = await page.evaluate(async (list) => {
+      const { configure, hitSphereProbe } = await import('/__harness/render.js');
+      configure({ prefer: ['webgpu'] });
+      const out = new Float32Array((list.length / 12) * 4);
+      await hitSphereProbe({ rays: new Float32Array(list), hits: out }, 64);
+      return Array.from(out);
+    }, Array.from(rays));
+    return new Float32Array(hits);
+  } finally {
+    await page.close();
+  }
+}
+
+/** The row `sphere-hit`: `hitSphere` on the GPU and on the oracle over `hitRays()`, held to each
+ *  other by `compareHits`. The number is the count of rays outside the rule: 0 of 4,096. */
+export async function runHits(options = {}) {
+  const rays = hitRays();
+  return withRenderPage(options, async (session) => {
+    const oracle = hitsOnOracle();
+    let gpu;
+    try {
+      gpu = await hitsOnGpu(session, rays);
+    } catch (e) {
+      oracle.catch(() => {});
+      throw e;
+    }
+    return compareHits(gpu, await oracle, rays);
+  });
+}
+
+if (import.meta.main && process.argv[2] === '--hits') {
+  // The oracle's half of the row `sphere-hit`, which `runHits` starts under bun.
+  writeFileSync(process.argv[3], JSON.stringify(Array.from(await hitsOnCpu(hitRays()))));
+} else if (import.meta.main) {
+  // `bun run gate:differential -- <scene>` renders the scene called `<scene>`. With no name it
+  // renders the Cornell box. `sphere-hit` runs the row of the hit probe.
+  const result =
+    process.argv[2] === 'sphere-hit' ? await runHits() : await run({ scene: process.argv[2] });
   (result.ok ? console.log : console.error)(result.message);
   process.exit(result.ok ? 0 : 1);
 }
