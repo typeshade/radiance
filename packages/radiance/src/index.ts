@@ -31,6 +31,7 @@ export { MirrorMaterial } from './materials/MirrorMaterial.ts';
 export { PhysicalMaterial, type PhysicalMaterialParameters } from './materials/PhysicalMaterial.ts';
 
 export { Mesh } from './objects/Mesh.ts';
+export { Sphere } from './objects/Sphere.ts';
 export { Scene } from './scenes/Scene.ts';
 
 export {
