@@ -1,7 +1,7 @@
 ---
 id: '0009'
 title: Six quality techniques for the path tracer, one part each
-status: draft
+status: accepted
 milestones: []
 touches:
   - packages/radiance/src/kernels/trace.shade.ts
@@ -620,7 +620,7 @@ Three rules hold for every step:
 
 ## Record
 
-**Approval and plan record.** This record does not yet apply. It is `draft`. The owner approved a quality wave of six techniques on 2026-10-06 (UTC), in the conversation, and asked for this record. The owner has not yet said to merge it. The owner's answer to the decisions will be the acceptance.
+**Approval and plan record.** Accepted on 2026-10-09. The owner approved a quality wave of six techniques on 2026-10-06 (UTC), in the conversation, and asked for this record. typeshade/radiance#58 merged this record as `draft` at 062dc45. The owner then approved the record in the conversation and answered the decisions as recommended (2026-10-09), and that answer is the acceptance. Every entry of "Decisions for the owner" stands as proposed.
 
 **Configuration and validation record.** This record does not yet apply. Implementation will record the commits of each part, the pin, each gate's result and each part's numbers. This record is documentation only. It ran no gate, no test and no benchmark. The documentation checks of the authoring session are in the pull request.
 
