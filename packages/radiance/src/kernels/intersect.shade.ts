@@ -13,7 +13,7 @@ import {
   vertexPosition,
   vertexUv,
 } from './layout.shade.ts';
-import { Surface, tangentOf } from './materials.shade.ts';
+import { Surface, materialFlat, tangentOf } from './materials.shade.ts';
 
 // The geometry tests and the traversal (design record 0001, "Traversal"): a ray against a box, a
 // ray against a triangle, the two-level walk of the TLAS and of each instance's BLAS, and the
@@ -345,13 +345,14 @@ export function surfaceAt(instance: u32, triangle: u32, b1: f32, b2: f32, dir: v
   const outward = normalize(instanceNormalToWorld(instance, cross(p1 - p0, p2 - p0)));
   const front = dot(outward, dir) < 0.;
   const ng = select(-outward, outward, front);
-  // The shading normal: the vertices' normals, interpolated, on the side of ng.
+  // The shading normal: the vertices' normals, interpolated, on the side of ng. A flat-shaded
+  // material takes ng itself (record 0004, "Flat shading").
   const n =
     vertexNormal(bases.z, tw.x) * b0 + vertexNormal(bases.z, tw.y) * b1 + vertexNormal(bases.z, tw.z) * b2;
   const nw = instanceNormalToWorld(instance, n);
   let ns = ng;
   const nl = length(nw);
-  if (nl > 0.) {
+  if (nl > 0. && !materialFlat(bases.w)) {
     ns = select(-nw, nw, front) / nl;
     if (dot(ns, ng) <= 0.) {
       ns = ng;

@@ -12,7 +12,8 @@ import { MATERIAL_STRIDE } from './layout.shade.ts';
 //   [3] bits(map), bits(normalMap), bits(roughnessMap), bits(metalnessMap)
 //   [4] to [6] M3's parameters, 0 at M2  [7] bits(emissiveMap), then reserved
 // The type is the low 8 bits of [2].w: 0 diffuse, 1 mirror, 2 physical. Bit 8 says the material
-// emits, bit 9 that it is double sided, bit 10 that it has an alpha cutout (M3).
+// emits, bit 9 that it is double sided, bit 10 that it has an alpha cutout (M3), bit 11 that it is
+// flat shaded: `surfaceAt` takes its shading normal as the geometric normal.
 //
 // At M2 there are two lobes: the diffuse (Lambert, sampled by the cosine) and the mirror (a delta
 // lobe). The physical type renders as a diffuse of its base colour until record 0004, step 2,
@@ -45,6 +46,8 @@ export const MATERIAL_EMITS: u32 = 0x100;
 export const MATERIAL_DOUBLE_SIDED: u32 = 0x200;
 /** The flag of a material with an alpha cutout (M3). */
 export const MATERIAL_ALPHA_CUTOUT: u32 = 0x400;
+/** The flag of a flat-shaded material: `ns` is `ng` (record 0004, "Flat shading"). */
+export const MATERIAL_FLAT_SHADING: u32 = 0x800;
 /** The texture id that names no texture. */
 export const TEXTURE_NONE: u32 = 0xffffffff;
 
@@ -101,6 +104,11 @@ function word(m: u32, k: u32): vec4 {
 /** The type and flags word of material `m`. */
 function flagsOf(m: u32): u32 {
   return bitcast<u32>(word(m, MATERIAL_PARAMS).w);
+}
+
+/** Whether material `m` is flat shaded: `surfaceAt` gives it `ns` equal to `ng`. */
+export function materialFlat(m: u32): bool {
+  return (flagsOf(m) & MATERIAL_FLAT_SHADING) !== 0;
 }
 
 /**
