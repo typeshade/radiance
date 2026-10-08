@@ -6,7 +6,7 @@
 // bun for the browser and serves it from 127.0.0.1 (a secure context, which WebGPU needs), and
 // the harness holds each scene of `SCENES` (scripts/gates/differential.mjs: the Cornell box of
 // M1's acceptance, docs/plan.md section 4, and the scenes `triangles`, `instances` and `lights`
-// of M2) to these gates:
+// of M2) to these gates, and runs the row `sphere-hit` of the differential gate:
 //
 //   1. Determinism (scripts/gates/determinism.mjs): two renders of one seed are bit-identical,
 //      and another seed differs.
@@ -91,6 +91,10 @@ try {
       }
     }
   }
+
+  // 2, the row sphere-hit: hitSphere alone on the GPU and on the oracle (record 0002, "The hit
+  // probe").
+  report(await differential.runHits({ session }));
 
   // 4: the render gate. Every example of the site is held to its golden.
   report(await render.run({ session }));

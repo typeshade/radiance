@@ -2,6 +2,9 @@
 // (`compileModuleJs`, at f32), over buffers a `ScenePack` packed: `nearest` through a TLAS of
 // inner nodes and leaves against a test of every triangle, the watertight triangle test on a
 // shared edge, an instance hit where its matrix puts it, and `surface` (record 0004's `Surface`).
+//
+// The analytic sphere (record 0001, "The analytic sphere", step 6) is held at the end of the
+// file, over buffers packed by hand: the pack makes no sphere before step 7.
 
 import { beforeEach, describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
@@ -18,8 +21,11 @@ import { Scene } from '../scenes/Scene.ts';
 import {
   INSTANCE_BASES,
   INSTANCE_FLAGS,
+  INSTANCE_INVERSE,
   INSTANCE_MATRIX,
+  INSTANCE_SPHERE,
   INSTANCE_STRIDE,
+  MATERIAL_STRIDE,
   NODE_COUNT_MASK,
   NODE_STRIDE,
 } from './layout.shade.ts';
@@ -421,6 +427,515 @@ describe('surface: the hit made a Surface (record 0004)', () => {
       [0, 1, 2].flatMap((r) => [e[r]!, e[4 + r]!, e[8 + r]!, e[12 + r]!]).map(Math.fround),
     );
   });
+});
+
+// ---- The analytic sphere (record 0001, "The analytic sphere", step 6) ----------------------
+
+/** A sphere's words: its centre and radius in world space, and the rows of `R^T`. */
+interface SphereWords {
+  c: Vec;
+  r: number;
+  rows?: readonly [Vec, Vec, Vec];
+}
+
+const IDENTITY: readonly [Vec, Vec, Vec] = [
+  [1, 0, 0],
+  [0, 1, 0],
+  [0, 0, 1],
+];
+
+/** The bits of `x` as an f32, for a test that holds two values bit for bit. */
+const f32bits = (x: number): number => new Uint32Array(Float32Array.of(x).buffer)[0]!;
+
+/**
+ * Binds `cpu` to a scene packed by hand, as record 0001 lays it out: one instance for each sphere
+ * (flags bit 0, `[0]` the centre and radius, `[3]` to `[5]` the rows of R^T), and then, when
+ * `triangle` is given, one mesh instance at the identity whose BLAS is one leaf of that triangle.
+ * The TLAS is one leaf of every instance, after the BLAS. The materials are 0.
+ */
+function bindByHand(spheres: readonly SphereWords[], triangle?: readonly [Vec, Vec, Vec]): void {
+  const count = spheres.length + (triangle === undefined ? 0 : 1);
+  const instances = new Float32Array(count * INSTANCE_STRIDE * 4);
+  const words = new Uint32Array(instances.buffer);
+  const lo = [Infinity, Infinity, Infinity];
+  const hi = [-Infinity, -Infinity, -Infinity];
+  const grow = (a: number[], b: number[]) => {
+    for (let k = 0; k < 3; k++) {
+      lo[k] = Math.min(lo[k]!, a[k]!);
+      hi[k] = Math.max(hi[k]!, b[k]!);
+    }
+  };
+  spheres.forEach((sphere, i) => {
+    const at = i * INSTANCE_STRIDE * 4;
+    instances.set([...sphere.c, sphere.r], at + INSTANCE_MATRIX * 4);
+    (sphere.rows ?? IDENTITY).forEach((row, k) =>
+      instances.set([...row, 0], at + (INSTANCE_INVERSE + k) * 4),
+    );
+    words.set([0, 0, 0, 0], at + INSTANCE_BASES * 4);
+    words.set([INSTANCE_SPHERE, NONE, 0, 0], at + INSTANCE_FLAGS * 4);
+    // The box, widened past the rounding of the words to f32.
+    const c = Array.from(instances.subarray(at, at + 3));
+    const r = instances[at + 3]! * (1 + 1e-6);
+    grow(
+      c.map((x) => x - r - 1e-6 * Math.abs(x)),
+      c.map((x) => x + r + 1e-6 * Math.abs(x)),
+    );
+  });
+  let vertices = new Float32Array(8);
+  let triangles = new Uint32Array(4);
+  let blas: number[] = [];
+  if (triangle !== undefined) {
+    const at = spheres.length * INSTANCE_STRIDE * 4;
+    instances.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0], at + INSTANCE_MATRIX * 4);
+    instances.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0], at + INSTANCE_INVERSE * 4);
+    words.set([0, 0, 0, 0], at + INSTANCE_BASES * 4);
+    words.set([0, 0, 0, 0], at + INSTANCE_FLAGS * 4);
+    vertices = new Float32Array(triangle.flatMap((p) => [...p, 0, 0, 0, 1, 0]));
+    triangles = Uint32Array.of(0, 1, 2, 0);
+    const tlo = [0, 1, 2].map((k) => Math.min(...triangle.map((p) => p[k]!)));
+    const thi = [0, 1, 2].map((k) => Math.max(...triangle.map((p) => p[k]!)));
+    blas = [...tlo, 0, ...thi, 1];
+    grow(tlo, thi);
+  }
+  const tlasBase = blas.length / 8;
+  const nodes = new Float32Array([...blas, ...lo, 0, ...hi, count]);
+  const nodeWords = new Uint32Array(nodes.buffer);
+  // The words a and b are bits: the BLAS leaf (a 0, count 1), the TLAS leaf (a 0, count).
+  if (triangle !== undefined) {
+    nodeWords[3] = 0;
+    nodeWords[7] = 1;
+  }
+  nodeWords[tlasBase * 8 + 3] = 0;
+  nodeWords[tlasBase * 8 + 7] = count;
+  cpu.setBinding('nodes', vec4s(nodes));
+  cpu.setBinding('triangles', vec4s(triangles));
+  cpu.setBinding('vertices', vec4s(vertices));
+  cpu.setBinding('instances', vec4s(instances));
+  cpu.setBinding('lights', vec4s(new Float32Array(4)));
+  cpu.setBinding('materials', vec4s(new Float32Array(MATERIAL_STRIDE * 4)));
+  cpu.setBinding('params', {
+    eye: [0, 0, 0, 0],
+    right: [1, 0, 0, 0],
+    up: [0, 1, 0, 0],
+    forward: [0, 0, -1, 0],
+    lens: [1, 1, 0, 0],
+    frame: [1, 1, 0, 1],
+    tile: [0, 0, 1, 1],
+    scene: [tlasBase, count, 0, 0],
+    path: [8, 3, 0, 0],
+  } as unknown as CpuValue);
+}
+
+const add = (a: Vec, b: Vec): Vec => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const scale = (a: Vec, k: number): Vec => [a[0] * k, a[1] * k, a[2] * k];
+const dot3 = (a: Vec, b: Vec): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross3 = (a: Vec, b: Vec): Vec => [
+  a[1] * b[2] - a[2] * b[1],
+  a[2] * b[0] - a[0] * b[2],
+  a[0] * b[1] - a[1] * b[0],
+];
+const len3 = (a: Vec): number => Math.hypot(...a);
+
+/** A unit vector, uniform over the sphere. */
+const onSphere = (next: () => number): Vec => {
+  const z = next() * 2 - 1;
+  const phi = next() * 2 * Math.PI;
+  const s = Math.sqrt(1 - z * z);
+  return [s * Math.cos(phi), s * Math.sin(phi), z];
+};
+/** A number log-uniform from `a` to `b`. */
+const logUniform = (next: () => number, a: number, b: number): number =>
+  a * Math.pow(b / a, next());
+
+/**
+ * The independent reference in f64: the nearest point of the line to the centre, and the half
+ * chord about it. The smaller root above 0, else the larger, as `hitSphere` takes them. Undefined
+ * for a miss.
+ */
+function sphereRef(o: Vec, d: Vec, c: Vec, r: number): number | undefined {
+  const oc = sub(o, c);
+  const a = dot3(d, d);
+  const tc = -dot3(oc, d) / a;
+  const f = add(oc, scale(d, tc));
+  const h2 = dot3(f, f);
+  if (h2 > r * r) return undefined;
+  const half = Math.sqrt((r * r - h2) / a);
+  if (tc - half > 0) return tc - half;
+  if (tc + half > 0) return tc + half;
+  return undefined;
+}
+
+/** `S` of the precision rule: the largest of 1 and every `abs(oc_k) / r`. */
+const scaleS = (o: Vec, c: Vec, r: number): number =>
+  Math.max(1, ...sub(o, c).map((x) => Math.abs(x) / r));
+/** The spacing of f32 at `s`: `2^(floor(log2(s)) - 23)`. */
+const ulpOf = (s: number): number => Math.pow(2, Math.floor(Math.log2(s)) - 23);
+
+/** The impact parameter of a ray, in radii, in f64 on its f32 words. */
+const impactOf = (o: Vec, d: Vec, c: Vec, r: number): number =>
+  len3(cross3(sub(c, o), d)) / len3(d) / r;
+
+/** A sphere and an origin drawn as the class of the precision rule draws them, rounded to f32. */
+function drawSphere(next: () => number, near: number): { c: Vec; r: number; o: Vec; len: number } {
+  const r = logUniform(next, 0.01, 100);
+  const c: Vec = [next() * 2000 - 1000, next() * 2000 - 1000, next() * 2000 - 1000];
+  const len = logUniform(next, 1e-3, 1e3);
+  const o = add(c, scale(onSphere(next), r * logUniform(next, near, 1e5)));
+  return { c: f32v(c), r: Math.fround(r), o: f32v(o), len };
+}
+
+/** `count` rays of precision rule 1: an origin 1.0001 to 10^5 radii out, aimed at an impact
+ *  parameter of at most 0.9. A ray whose f32 words leave the class is drawn again. */
+function aimedRays(seed: number, count: number) {
+  const next = random(seed);
+  const rays: { o: Vec; d: Vec; c: Vec; r: number }[] = [];
+  while (rays.length < count) {
+    const { c, r, o, len } = drawSphere(next, 1.0001);
+    const w = norm(sub(c, o));
+    const e1 = norm(cross3(Math.abs(w[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0], w));
+    const e2 = cross3(w, e1);
+    const b = next() * 0.9 * r;
+    const angle = next() * 2 * Math.PI;
+    const spot = add(c, add(scale(e1, b * Math.cos(angle)), scale(e2, b * Math.sin(angle))));
+    const d = f32v(scale(norm(sub(spot, o)), len));
+    if (len3(sub(o, c)) / r < 1.0001 || impactOf(o, d, c, r) > 0.9) continue;
+    rays.push({ o, d, c, r });
+  }
+  return rays;
+}
+
+/** `count` rays of precision rule 3: an origin at least 1.00005 radii out, pointing away from
+ *  the centre. A ray whose f32 words leave the class is drawn again. */
+function awayRays(seed: number, count: number) {
+  const next = random(seed);
+  const rays: { o: Vec; d: Vec; c: Vec; r: number }[] = [];
+  while (rays.length < count) {
+    const { c, r, o, len } = drawSphere(next, 1.00005);
+    const u = onSphere(next);
+    const out = sub(o, c);
+    const d = f32v(scale(dot3(u, out) < 0 ? scale(u, -1) : u, len));
+    if (len3(out) / r < 1.00005 || !(dot3(d, out) > 0)) continue;
+    rays.push({ o, d, c, r });
+  }
+  return rays;
+}
+
+const ROUNDS = 100_000;
+
+describe('hitSphere: the precision rule against an independent f64 formula', () => {
+  // Verifies: Design 0001.14
+  it('meets 100,000 rays of rule 1 within 16 ulp(S) of f64, with abs(length(q) - 1) <= 4e-7', () => {
+    let worst = 0;
+    let worstQ = 0;
+    let misses = 0;
+    for (const { o, d, c, r } of aimedRays(61, ROUNDS)) {
+      const h = fn('hitSphere')(o, d, c, r, FAR) as number[];
+      const ref = sphereRef(o, d, c, r);
+      if (h[0]! < 0 || ref === undefined) {
+        misses++;
+        continue;
+      }
+      const err = (Math.abs(h[0]! - ref) * len3(d)) / r / ulpOf(scaleS(o, c, r));
+      worst = Math.max(worst, err);
+      worstQ = Math.max(worstQ, Math.abs(len3([h[1]!, h[2]!, h[3]!]) - 1));
+    }
+    expect(misses).toBe(0);
+    expect(worst).toBeLessThanOrEqual(16);
+    expect(worstQ).toBeLessThanOrEqual(4e-7);
+  }, 60_000);
+
+  it('meets 0 of 100,000 rays of rule 3, from 1.00005 radii out or more, pointing away', () => {
+    let hits = 0;
+    for (const { o, d, c, r } of awayRays(62, ROUNDS))
+      if ((fn('hitSphere')(o, d, c, r, FAR) as number[])[0]! >= 0) hits++;
+    expect(hits).toBe(0);
+  }, 60_000);
+
+  it('misses when the ray meets the sphere at or beyond the limit, and when d is 0', () => {
+    const h = fn('hitSphere')([0, 0, 5], [0, 0, -1], [0, 0, 0], 1, FAR) as number[];
+    expect(h[0]).toBe(4);
+    expect(h.slice(1)).toEqual([0, 0, 1]);
+    expect((fn('hitSphere')([0, 0, 5], [0, 0, -1], [0, 0, 0], 1, 4) as number[])[0]).toBe(-1);
+    expect((fn('hitSphere')([0, 0, 5], [0, 0, 0], [0, 0, 0], 1, FAR) as number[])[0]).toBe(-1);
+  });
+});
+
+/** The rays of the silhouette: 256 by 256, through the plane at unit distance over the square
+ *  from -0.2 to 0.2, from an eye at (0, 0, 3.4), toward a sphere at the origin. */
+const SILHOUETTE = (() => {
+  const rays: Vec[] = [];
+  for (let j = 0; j < 256; j++)
+    for (let i = 0; i < 256; i++)
+      rays.push(f32v([-0.2 + ((i + 0.5) * 0.4) / 256, -0.2 + ((j + 0.5) * 0.4) / 256, -1]));
+  return rays;
+})();
+const EYE: Vec = [0, 0, 3.4];
+/** The area of the silhouette of a sphere of radius 0.4 from 3.4, in cells of the square. */
+const SILHOUETTE_AREA = 18_060;
+/** The tolerance of the count, against the area. */
+const withinSilhouette = (count: number): boolean =>
+  Math.abs(count - SILHOUETTE_AREA) <= 0.005 * SILHOUETTE_AREA;
+
+describe('nearest: the silhouette of a sphere (record 0002, "The probes")', () => {
+  it('counts the area of the silhouette in cells: pi tan^2 over the cell', () => {
+    const tan = 0.4 / Math.sqrt(3.4 * 3.4 - 0.4 * 0.4);
+    expect(Math.round((Math.PI * tan * tan) / (0.4 / 256) ** 2)).toBe(SILHOUETTE_AREA);
+  });
+
+  it('hits 256 by 256 rays 18,072 times, within 0.5 % of the 18,060 cells', () => {
+    bindByHand([{ c: [0, 0, 0], r: 0.4 }]);
+    let hits = 0;
+    for (const d of SILHOUETTE)
+      if ((fn('nearest')(EYE, d, FAR) as unknown as Hit).instance !== NONE) hits++;
+    expect(hits).toBe(18_072);
+    expect(withinSilhouette(hits)).toBe(true);
+  }, 60_000);
+
+  it('can fail: the same rays at radius 0.404 count 18,440 in f64, and 0.5 % rejects them', () => {
+    let at = 0;
+    let wide = 0;
+    for (const d of SILHOUETTE) {
+      if (sphereRef(EYE, d, [0, 0, 0], 0.4) !== undefined) at++;
+      if (sphereRef(EYE, d, [0, 0, 0], 0.404) !== undefined) wide++;
+    }
+    expect(at).toBe(18_072);
+    expect(wide).toBe(18_440);
+    expect(withinSilhouette(wide)).toBe(false);
+  });
+});
+
+describe('nearest and occluded: the walk over a sphere instance', () => {
+  // A sphere and a triangle that cuts through it, so either can be the nearer.
+  const sphere: SphereWords = { c: [0.1, -0.2, 0.05], r: 1 };
+  const triangle: [Vec, Vec, Vec] = [
+    [-2.5, -1.5, 0.3],
+    [2.5, -1.5, -0.4],
+    [0.2, 2.5, 0.1],
+  ];
+  const rays = (seed: number, count: number) => {
+    const next = random(seed);
+    return Array.from({ length: count }, () => {
+      const o = f32v(scale(onSphere(next), 6));
+      const to: Vec = [next() * 5 - 2.5, next() * 5 - 2.5, next() * 3 - 1.5];
+      return [o, f32v(norm(sub(to, o)))] as const;
+    });
+  };
+
+  /** The triangle in f64, by Moller and Trumbore: t, or undefined. */
+  const triangleRef = (o: Vec, d: Vec): number | undefined => {
+    const [p0, p1, p2] = triangle;
+    const e1 = sub(p1, p0);
+    const e2 = sub(p2, p0);
+    const p = cross3(d, e2);
+    const det = dot3(e1, p);
+    if (det === 0) return undefined;
+    const s = sub(o, p0);
+    const u = dot3(s, p) / det;
+    const q = cross3(s, e1);
+    const v = dot3(d, q) / det;
+    const t = dot3(e2, q) / det;
+    return u >= 0 && v >= 0 && u + v <= 1 && t > 0 ? t : undefined;
+  };
+
+  it('finds the nearest of a sphere and a triangle as a brute force in f64: 1,000 of 1,000', () => {
+    bindByHand([sphere], triangle);
+    let same = 0;
+    const met = [0, 0, 0];
+    for (const [o, d] of rays(71, 1000)) {
+      const ts = sphereRef(o, d, sphere.c, sphere.r) ?? Infinity;
+      const tt = triangleRef(o, d) ?? Infinity;
+      const want = ts === Infinity && tt === Infinity ? NONE : ts < tt ? 0 : 1;
+      const hit = fn('nearest')(o, d, FAR) as unknown as Hit;
+      if (hit.instance === want) same++;
+      met[want === NONE ? 2 : want]!++;
+    }
+    expect(same).toBe(1000);
+    // The rays meet both kinds, and miss too.
+    for (const n of met) expect(n).toBeGreaterThan(50);
+  }, 60_000);
+
+  it('occluded agrees with nearest on 10,000 rays, at a limit before and after the hit', () => {
+    bindByHand([sphere, { c: [1.6, 1.2, -0.8], r: 0.3 }], triangle);
+    const near = random(73);
+    let agree = 0;
+    const all = rays(72, 10_000);
+    for (const [o, d] of all) {
+      const hit = fn('nearest')(o, d, FAR) as unknown as Hit;
+      const limit = hit.instance === NONE ? 20 : hit.t * (0.5 + near());
+      const expected = (fn('nearest')(o, d, limit) as unknown as Hit).instance !== NONE;
+      if (fn('occluded')(o, d, limit) === expected) agree++;
+    }
+    expect(agree).toBe(10_000);
+  }, 120_000);
+
+  it('a sphere hit has triangle NONE, b1 and b2 0, and q the unit vector to the point', () => {
+    bindByHand([{ c: [0, 0, 0], r: 2 }]);
+    const hit = fn('nearest')([0, 0, 10], [0, 0, -1], FAR) as unknown as Hit & { q: Vec };
+    expect(hit).toEqual({ t: 8, instance: 0, triangle: NONE, b1: 0, b2: 0, q: [0, 0, 1] });
+  });
+});
+
+interface SurfaceOut {
+  p: Vec;
+  ng: Vec;
+  ns: Vec;
+  uv: [number, number];
+  dpdu: Vec;
+  material: number;
+  front: boolean;
+}
+
+/** The rows of a turn by `angle` about the unit axis `a`, transposed: R^T, rounded to f32. */
+function turnRows(a: Vec, angle: number): [Vec, Vec, Vec] {
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  const t = 1 - c;
+  const r: [Vec, Vec, Vec] = [
+    [t * a[0] * a[0] + c, t * a[0] * a[1] - s * a[2], t * a[0] * a[2] + s * a[1]],
+    [t * a[0] * a[1] + s * a[2], t * a[1] * a[1] + c, t * a[1] * a[2] - s * a[0]],
+    [t * a[0] * a[2] - s * a[1], t * a[1] * a[2] + s * a[0], t * a[2] * a[2] + c],
+  ];
+  return [0, 1, 2].map((k) => f32v([r[0][k]!, r[1][k]!, r[2][k]!])) as [Vec, Vec, Vec];
+}
+
+describe('surface: the Surface of a sphere hit (record 0004)', () => {
+  const c: Vec = [0.3, -0.2, 0.5];
+  const turned: SphereWords = { c, r: 0.7, rows: turnRows(norm([0.3, 1, -0.4]), 1.1) };
+  /** Random rays from 4 out toward points of the sphere's disc, each one a hit. */
+  const hits = (seed: number, count: number) => {
+    const next = random(seed);
+    const out: { d: Vec; hit: Hit & { q: Vec } }[] = [];
+    while (out.length < count) {
+      const o = f32v(add(c, scale(onSphere(next), 4)));
+      const to = add(c, scale(onSphere(next), 0.7 * Math.sqrt(next())));
+      const d = f32v(norm(sub(to, o)));
+      const hit = fn('nearest')(o, d, FAR) as unknown as Hit & { q: Vec };
+      if (hit.instance !== NONE) out.push({ d, hit });
+    }
+    return out;
+  };
+
+  it('gives ns equal to ng bit for bit, and ng at right angles to dpdu within 1e-6, on 10,000 hits', () => {
+    bindByHand([turned]);
+    let equal = 0;
+    let worst = 0;
+    for (const { d, hit } of hits(81, 10_000)) {
+      const s = fn('surface')(hit, d) as unknown as SurfaceOut;
+      if (s.ng.every((x, k) => f32bits(x) === f32bits(s.ns[k]!))) equal++;
+      worst = Math.max(worst, Math.abs(dot3(s.ng, s.dpdu)) / len3(s.dpdu));
+    }
+    expect(equal).toBe(10_000);
+    expect(worst).toBeLessThanOrEqual(1e-6);
+  }, 120_000);
+
+  it('gives the point, the outward normal toward the ray, and the instance material', () => {
+    bindByHand([turned]);
+    for (const { d, hit } of hits(82, 100)) {
+      const s = fn('surface')(hit, d) as unknown as SurfaceOut;
+      const point = add(c, scale(hit.q, 0.7));
+      const offset = 1e-4 * Math.max(1, ...point.map(Math.abs));
+      s.p.forEach((x, k) => expect(x).toBeCloseTo(point[k]! + s.ng[k]! * offset, 5));
+      expect(s.front).toBe(true);
+      expect(dot3(s.ng, sub(point, c))).toBeGreaterThan(0);
+      expect(dot3(s.ng, d)).toBeLessThan(0);
+      expect(s.material).toBe(0);
+    }
+  });
+
+  it('keeps ng pointing out on a mirrored sphere: rows of R^T with a determinant of -1', () => {
+    const rows: [Vec, Vec, Vec] = [
+      [-1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ];
+    expect(dot3(rows[0], cross3(rows[1], rows[2]))).toBe(-1);
+    bindByHand([{ c, r: 0.7, rows }]);
+    for (const { d, hit } of hits(83, 1000)) {
+      const s = fn('surface')(hit, d) as unknown as SurfaceOut;
+      expect(s.front).toBe(true);
+      expect(dot3(s.ng, hit.q)).toBeGreaterThan(0.999999);
+    }
+  });
+
+  it('meets the far side from the centre, and reports front false with ng toward the centre', () => {
+    bindByHand([turned]);
+    const next = random(84);
+    for (let i = 0; i < 100; i++) {
+      const d = f32v(onSphere(next));
+      const hit = fn('nearest')(c, d, FAR) as unknown as Hit & { q: Vec };
+      expect(hit.instance).toBe(0);
+      expect(hit.t).toBeCloseTo(0.7, 5);
+      expect(dot3(hit.q, d)).toBeGreaterThan(0.999999);
+      const s = fn('surface')(hit, d) as unknown as SurfaceOut;
+      expect(s.front).toBe(false);
+      expect(dot3(s.ng, hit.q)).toBeLessThan(-0.999999);
+    }
+  });
+
+  it('gives a sphere turned a quarter turn about y the uv of the unturned one at the point turned back, within 2e-7', () => {
+    // R turns +x to -z. Its transpose's rows: (0, 0, -1), (0, 1, 0), (1, 0, 0).
+    const rows: [Vec, Vec, Vec] = [
+      [0, 0, -1],
+      [0, 1, 0],
+      [1, 0, 0],
+    ];
+    turnRows([0, 1, 0], Math.PI / 2).forEach((row, k) =>
+      row.forEach((x, j) => expect(x).toBeCloseTo(rows[k]![j]!, 7)),
+    );
+    bindByHand([
+      { c, r: 0.7 },
+      { c, r: 0.7, rows },
+    ]);
+    const next = random(85);
+    let worst = 0;
+    for (let i = 0; i < 1000; i++) {
+      const q = f32v(onSphere(next));
+      const back: Vec = [-q[2], q[1], q[0]];
+      const a = (fn('sphereSurfaceAt')(1, q, scale(q, -1)) as unknown as SurfaceOut).uv;
+      const b = (fn('sphereSurfaceAt')(0, back, scale(back, -1)) as unknown as SurfaceOut).uv;
+      const du = Math.abs(a[0] - b[0]);
+      worst = Math.max(worst, Math.min(du, 1 - du), Math.abs(a[1] - b[1]));
+    }
+    expect(worst).toBeLessThanOrEqual(2e-7);
+  });
+
+  it('falls back to a unit tangent about ns at a pole, where dpdu is 0', () => {
+    bindByHand([{ c: [0, 0, 0], r: 1 }]);
+    const s = fn('sphereSurfaceAt')(0, [0, 1, 0], [0, -1, 0]) as unknown as SurfaceOut;
+    expect(len3(s.dpdu)).toBeCloseTo(1, 6);
+    expect(dot3(s.dpdu, s.ns)).toBeCloseTo(0, 6);
+    expect(s.uv).toEqual([0, 1]);
+  });
+});
+
+describe("sphereUv: three.js's spherical layout, from sums, products and sqrt", () => {
+  it('puts u 0 on -x, 0.25 on +z, 0.5 on +x, and v 1 at +y, 0.5 on the equator, 0 at -y', () => {
+    const uv = (q: Vec) => fn('sphereUv')(q) as number[];
+    expect(uv([-1, 0, 0])).toEqual([0, 0.5]);
+    expect(uv([0, 0, 1])[0]).toBeCloseTo(0.25, 7);
+    expect(uv([1, 0, 0])[0]).toBeCloseTo(0.5, 7);
+    expect(uv([0, 0, -1])[0]).toBeCloseTo(0.75, 7);
+    expect(uv([0, 1, 0])[1]).toBe(1);
+    expect(uv([0, -1, 0])[1]).toBeCloseTo(0, 7);
+  });
+
+  it('is within 2e-7 of atan2 and acos in f64 at 100,000 points, u compared on the circle', () => {
+    const next = random(91);
+    let worstU = 0;
+    let worstV = 0;
+    for (let i = 0; i < ROUNDS; i++) {
+      const q = f32v(onSphere(next));
+      const [u, v] = fn('sphereUv')(q) as [number, number];
+      let refU = Math.atan2(q[2], -q[0]) / (2 * Math.PI);
+      if (refU < 0) refU += 1;
+      const refV = 1 - Math.acos(q[1] / len3(q)) / Math.PI;
+      const du = Math.abs(u - refU);
+      worstU = Math.max(worstU, Math.min(du, 1 - du));
+      worstV = Math.max(worstV, Math.abs(v - refV));
+    }
+    expect(worstU).toBeLessThanOrEqual(2e-7);
+    expect(worstV).toBeLessThanOrEqual(2e-7);
+  }, 60_000);
 });
 
 describe('surface: a flat-shaded material (record 0004, "Flat shading")', () => {

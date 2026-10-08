@@ -6,7 +6,15 @@ import { describe, expect, test } from 'bun:test';
 import { crc32, inflateSync } from 'node:zlib';
 import { encodePng } from './_png.mjs';
 import { bitwiseDifference, judge } from './determinism.mjs';
-import { compareImages, gatedScene, meanBoundOnly, shiftOnePixel } from './differential.mjs';
+import {
+  compareHits,
+  compareImages,
+  gatedScene,
+  hitRays,
+  HIT_RAYS,
+  meanBoundOnly,
+  shiftOnePixel,
+} from './differential.mjs';
 
 /** A 16 x 16 image of RGBA floats: a gradient left to right, 1024 samples in each pixel. */
 const WIDTH = 16;
@@ -161,5 +169,72 @@ describe('the PNG encoder', () => {
     expect([...raw]).toEqual([
       0, 0, 128, 255, 255, 255, 64, 0, 255, 0, 51, 102, 153, 255, 0, 0, 0, 0,
     ]);
+  });
+});
+
+// The row `sphere-hit` (record 0002, "The hit probe" and "The probes"): `compareHits` sees a
+// planted fault before it is trusted to count 0.
+describe('the hit comparison of the row sphere-hit', () => {
+  const N = 4096;
+  /** Every ray from (1.5, 0, 0) toward a unit sphere at the origin, so S is 1.5 and ulp(S) is
+   *  2^-23. Each hit is t = 0.5 and q = (1, 0, 0). */
+  const rays = new Float32Array(N * 12);
+  for (let i = 0; i < N; i++) rays.set([1.5, 0, 0, 1e30, -1, 0, 0, 0, 0, 0, 0, 1], i * 12);
+  const hits = () => {
+    const h = new Float32Array(N * 4);
+    for (let i = 0; i < N; i++) h.set([0.5, 1, 0, 0], i * 4);
+    return h;
+  };
+  const ULP = 2 ** -23;
+
+  test('4,096 pairs of equal hits: 0 of 4,096 outside', () => {
+    const r = compareHits(hits(), hits(), rays);
+    expect([r.ok, r.outside, r.total, r.worst]).toEqual([true, 0, 4096, 0]);
+  });
+  test('one t moved by 17 ulp(S), one over 16, fails: 1 of 4,096', () => {
+    const gpu = hits();
+    gpu[400] = 0.5 + 17 * ULP;
+    const r = compareHits(gpu, hits(), rays);
+    expect([r.ok, r.outside]).toEqual([false, 1]);
+    expect(r.worst).toBe(17);
+    expect(r.message).toMatch(/ray 100: the t error is 17.00/);
+  });
+  test('one t moved by 15 ulp(S) passes: 0 of 4,096', () => {
+    const gpu = hits();
+    gpu[400] = 0.5 + 15 * ULP;
+    const r = compareHits(gpu, hits(), rays);
+    expect([r.ok, r.outside, r.worst]).toEqual([true, 0, 15]);
+  });
+  test('one hit paired with a miss fails: 1 of 4,096', () => {
+    const cpu = hits();
+    cpu[8] = -1;
+    const r = compareHits(hits(), cpu, rays);
+    expect([r.ok, r.outside]).toEqual([false, 1]);
+    expect(r.message).toMatch(/ray 2: one is a hit and the other a miss/);
+  });
+  test('one q moved by 1e-5 fails: 1 of 4,096', () => {
+    const gpu = hits();
+    gpu[4 * 7 + 2] = 1e-5;
+    const r = compareHits(gpu, hits(), rays);
+    expect([r.ok, r.outside]).toEqual([false, 1]);
+  });
+  test('two misses are inside the rule, and a NaN is not', () => {
+    const gpu = hits();
+    const cpu = hits();
+    gpu[0] = -1;
+    cpu[0] = -1;
+    expect(compareHits(gpu, cpu, rays).outside).toBe(0);
+    gpu[4] = NaN;
+    expect(compareHits(gpu, cpu, rays).outside).toBe(1);
+  });
+  test('hitRays gives 4,096 rays of 3 vec4, each with limit 1e30 and a radius from 0.01 to 100', () => {
+    const r = hitRays();
+    expect(HIT_RAYS).toBe(4096);
+    expect(r.length).toBe(4096 * 12);
+    for (let i = 0; i < 4096; i++) {
+      expect(r[i * 12 + 3]).toBe(Math.fround(1e30));
+      expect(r[i * 12 + 11]).toBeGreaterThanOrEqual(Math.fround(0.01));
+      expect(r[i * 12 + 11]).toBeLessThanOrEqual(100);
+    }
   });
 });
