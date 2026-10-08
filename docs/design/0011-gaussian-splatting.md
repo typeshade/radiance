@@ -46,10 +46,10 @@ compiler: ['0006-1', '0006-5']
 
 | Field         | Value                                                                                                                                                                                                                     |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Identity      | Design record 0011, status `draft`. Five parts, 26 decisions, 8 amendments owed (A to H), 7 compiler proposals owed (C1 to C7). Branch `claude/record-0011-gaussians`                                                     |
+| Identity      | Design record 0011, status `draft`. Five parts, 26 decisions, 8 amendments owed (A to H), 8 compiler proposals owed (C1 to C8). Branch `claude/record-0011-gaussians`                                                     |
 | Date          | 2026-10-09 (UTC), the date of authorship. On that date the owner asked for a plan for 2D and 3D Gaussian splatting. The owner then put training in scope, set the gradients on the compiler, and asked for fallback tiers |
 | Author        | Written in an agent session for the owner. The owner's review is the approval                                                                                                                                             |
-| Applicability | The kernels and the host of `@typeshade/radiance`. The loaders and exporters of `@typeshade/radiance-addons`. A new package `@typeshade/radiance-capture`. The gates in `scripts/`. Seven proposals to the compiler       |
+| Applicability | The kernels and the host of `@typeshade/radiance`. The loaders and exporters of `@typeshade/radiance-addons`. A new package `@typeshade/radiance-capture`. The gates in `scripts/`. Eight proposals to the compiler       |
 | Baseline      | `main` at a0106e0. The compiler pinned at 596c805. Every line number below is a line of that commit                                                                                                                       |
 | Source        | The survey `.claude/research/survey-gaussian-splatting.md`, written in the same pull request. Every claim about a paper, a model, a format or a viewer rests on it, with its URL. Item numbers below are the survey's     |
 | Pull request  | The pull request that carries this record and its survey is its review                                                                                                                                                    |
@@ -71,7 +71,7 @@ This record writes the whole pipeline as five parts. Each part has its own steps
 | Part 1. Render | A `SplatGeometry` (trained or loaded) | Splats in the path tracer's image, beside meshes and spheres          | The path tracer's tiers (record 0007 for WebGL2) | None at the pin. A probe of `unpack2x16float` |
 | Part 2. Ingest | A video file, or a set of photos      | 100 to 300 sharp frames, downscaled, with EXIF intrinsics where known | The browser (WebCodecs), the M7 host             | None                                          |
 | Part 3. Poses  | The frames and the known intrinsics   | A `CaptureDataset`: intrinsics, a pose for each frame, sparse points  | A server or the M7 host first. The browser later | None                                          |
-| Part 4. Train  | A `CaptureDataset`                    | A trained `SplatGeometry` of surfels                                  | WebGPU first, WebGL2 and the CPU as fallbacks    | C1 to C7 (below)                              |
+| Part 4. Train  | A `CaptureDataset`                    | A trained `SplatGeometry` of surfels                                  | WebGPU first, WebGL2 and the CPU as fallbacks    | C1 to C8 (below)                              |
 | Part 5. Output | The trained surfels                   | A `Splats` in the scene, a `.ply`, a glTF, and an optional TSDF mesh  | Every tier                                       | None beyond part 4's                          |
 
 **The chosen primitive is the 2D surfel.** A surfel is a flat Gaussian disk. The training rasterizer (part 4) and the path tracer (part 1) meet it with one formula, the ray-plane test of 2DGS (survey item 2). So the trained scene renders by ray tracing much as it was trained (inference, measured by step 4.5). 3D Gaussians (3DGS) stay as a second kind, for imported assets only.
@@ -285,14 +285,22 @@ The defaults are 30,000 steps, with a preview at 7,000. The SH degree rises by o
 | WebGL2 (change 0054)        | A backward entry runs on the WebGL2 tier too, or is reported as outside it with a reason, as change 0054 reports `f16` and subgroups                                                                                                |
 | Determinism                 | The compiler's determinism report lists the backward entry's rows, as it lists a forward entry's                                                                                                                                    |
 
-**The fixed-point sum.** Part 4 asks C1 for one result on every tier. Each contribution `g` to an adjoint becomes the integer `round(g * 2^F)`, where `F` is the scale of its parameter group. The integers add in 64 bits, as two `u32` words. The carry goes to the high word when the low word wraps. Integer addition is associative, so the sum is the same in any order. WebGPU adds by atomics. WebGL2 and the CPU add by a sorted gather or a plain loop. The adjoint is that sum divided by `2^F`. Step 4.1 sets `F` for each group from the gradients of the gate scene. A contribution outside the range is clamped and counted, and each step reports the count.
+**The fixed-point sum.** Part 4 asks C1 for one result on every tier. Fact: WebGPU and WGSL have no float atomic, up to Chrome 153 and 154 (September 2026, https://developer.chrome.com/docs/web-platform/webgpu/news). So the primary accumulation is integer atomics on scaled gradients:
+
+- Each contribution `g` to an adjoint becomes the integer `round(g * 2^F)`, where `F` is the scale of its parameter group. `atomicAdd` on `i32` adds it.
+- Integer addition is associative and commutative, so the sum is the same in any order. Two runs give the same bits, unlike a float `atomicAdd` on CUDA.
+- A group whose range does not fit 32 bits uses two `u32` words. Each sum adds to the low word, and adds the carry to the high word when the low word wraps. Step 4.1 decides the width of each group from the gradients of the gate scene.
+- WebGL2 and the CPU add the same integers by a sorted gather or a plain loop. So every tier gives the same sum from the same contributions.
+- The adjoint is the sum divided by `2^F`. A contribution outside the range is clamped and counted, and each step reports the count.
+
+**Subgroup pre-reduction, an optional speed path.** A subgroup adds its lanes' integers with `subgroupAdd` before one lane calls `atomicAdd`. This cuts the atomic traffic. An integer sum is exact, so the bits stay the same. Fact: Chrome ships subgroups (Chrome 134), `subgroup_id` (144), `subgroup_uniformity` (145) and `@subgroup_size` (151 and 152). TypeShade defers subgroups to after 1.0 (plan section 9), so this path waits on C8. Rule 6 of record 0005 forbids subgroup operations in a gated kernel. Amendment D admits exact integer subgroup sums in training kernels.
 
 **The interim alternative: hand-written backward kernels.** The engine writes the adjoint of steps 2, 4 and 6 by hand. gsplat, Brush and the 3DGS code do the same. Forward-mode `grad` and finite differences on the oracle check it. It does not wait on the compiler. Its cost: each backward kernel is about as large as its forward kernel. Every change to a forward kernel needs its twin, and each pair needs its own gradient check. This record does not take it by default.
 
 ### Determinism in training
 
 - **The promise** (decision 11). On one device and one driver, one `CaptureDataset`, one seed and one step count give one trained scene, bit for bit. Across devices and tiers, there is no bit promise. The PSNR of the trained scene on held-out frames stays in a band of the WebGPU run, which step 4.5 measures.
-- **Why no bits across devices.** An optimisation amplifies a one-ulp difference over thousands of steps (inference). So rule 2 of record 0005 buys nothing across devices for a training kernel. Amendment D exempts the training kernels from rule 2 and keeps rules 1, 3, 5 and 6. Rule 4 becomes: an accumulation is integer, so its order does not matter.
+- **Why no bits across devices.** An optimisation amplifies a one-ulp difference over thousands of steps (inference). So rule 2 of record 0005 buys nothing across devices for a training kernel. Amendment D exempts the training kernels from rule 2 and keeps rules 1, 3, 5 and 6. Rule 4 forbids atomics on the accumulation path. Amendment D admits integer atomics whose sum does not depend on the order, in training kernels only.
 - **One mode.** The record proposes one mode, the deterministic one. A fast mode with float compare-and-swap or subgroups is not proposed. If the measured speed needs one, a later record adds it behind an option that names it (rule 6).
 
 ### Budgets
@@ -306,7 +314,7 @@ The engine runs on WebGPU first. WebGL2 and the CPU are fallbacks. The oracle ho
 
 | Tier   | Render (part 1)               | Train: forward | Train: reverse                   | Sort                                                      | Adjoint sum                                  | Cost against WebGPU (inference) | What the gates check                                      |
 | ------ | ----------------------------- | -------------- | -------------------------------- | --------------------------------------------------------- | -------------------------------------------- | ------------------------------- | --------------------------------------------------------- |
-| WebGPU | Yes                           | Yes            | Yes, when C1 lands               | Radix sort with integer atomics                           | Fixed point by `u32` atomics                 | 1                               | Every gate of this record                                 |
+| WebGPU | Yes                           | Yes            | Yes, when C1 lands               | Radix sort with integer atomics                           | Fixed point by integer atomics               | 1                               | Every gate of this record                                 |
 | WebGL2 | Yes, when record 0007 lands   | Yes            | If C1 covers change 0054         | Radix sort if change 0054 runs atomics, else a merge sort | The same fixed-point sum, by a sorted gather | 3 to 30 times slower            | The differential and determinism gates against the oracle |
 | CPU    | Yes, the reference mode of M4 | Yes            | Yes, the oracle's backward entry | A plain sort on the host                                  | The same fixed-point sum, in one loop        | 100 to 10,000 times slower      | It is the reference, and the gradient check runs on it    |
 
@@ -394,6 +402,7 @@ These are needs that typeshade/typeshade's `changes/` would carry. This record o
 - **C5. Device limits** (record 0006, item 1). Training buffers pass 128 MiB.
 - **C6. GPU time** (record 0006, item 5). The budgets need it.
 - **C7. The cost of many dispatches** (plan section 9). A step is about ten dispatches, and a run is 30,000 steps.
+- **C8. Subgroups and immediates.** `subgroupAdd` and the other subgroup builtins, `@subgroup_size` (`subgroup_size_control`), and immediates, the small per-dispatch values that Chrome ships in 149 and 150. Each needs a form on the oracle, or a reported refusal on a tier without it. It speeds part 4 and blocks nothing.
 
 ## Amendments owed
 
@@ -402,8 +411,8 @@ Each amendment goes into its record in its own pull request, before the step tha
 - **A. Record 0001.** A section "Gaussian splats": the instance words, the geometry and colour words, the BLAS, the limits, the walk's branch and the `Hit` fields. Before step 1.2.
 - **B. Record 0002.** The scenes, rows, tests, training gates, bounds and probes of "The gates". Before step 1.3.
 - **C. Record 0003.** The exports `SplatGeometry`, `Splats`, `SplatLoader` and `SplatExporter`, and the package `@typeshade/radiance-capture` with its exports. Before step 1.2.
-- **D. Record 0005.** "The splats' arithmetic" for part 1. For part 4: the training promise, the exemption of training kernels from rule 2, and integer accumulation under rule 4. Before steps 1.1 and 4.1.
-- **E. Record 0006.** Items C1 to C7 as new rows. Before part 4.
+- **D. Record 0005.** "The splats' arithmetic" for part 1. For part 4: the training promise and the exemption of training kernels from rule 2. Also integer atomics under rule 4, and exact integer subgroup sums under rule 6. Before steps 1.1 and 4.1.
+- **E. Record 0006.** Items C1 to C8 as new rows. Before part 4.
 - **F. Record 0007.** The WebGL2 rows of the tiers table. When record 0007 is accepted.
 - **G. Record 0008.** The cast meets a `Splats` at its nearest Gaussian whose `alpha` at the hit is at least 0.5. Before step 1.5.
 - **H. `docs/plan.md`.** Milestones M3g and M5c, the package in section 3, C1 in section 9, and section 3.3's scope ("not a neural field") read against training. After acceptance, as its own pull request.
@@ -447,7 +456,7 @@ Each step is one pull request. Each commit names `Design: 0011` on a line of its
 11. Training has one mode. It is bit-identical on one device and driver for one seed, and in a PSNR band across devices and tiers. Training kernels are exempt from rule 2 and use integer accumulation (Amendment D). No fast mode now. Proposed: yes. This asks the owner, because it changes the scope of record 0005.
 12. The tiers are WebGPU first, then WebGL2, then the CPU. The oracle holds the result of a fallback. The plan promises no speed on a fallback. Proposed: yes. This asks the owner, because it adds a promise.
 13. The CPU is a supported training fallback with a reduced default budget: 400-pixel frames, 50,000 surfels, 7,000 steps. It states the expected time before it starts. It is also the reference for every gate. Proposed: a supported fallback with the reduced budget. This asks the owner, because it decides what the product supports.
-14. Adjoint sums are 64-bit fixed point in two `u32` words: atomics on WebGPU, a sorted gather or a loop elsewhere. A clamped contribution is counted and reported. Proposed: yes. This is a default.
+14. Adjoints accumulate as fixed-point integers by `atomicAdd` on `i32`, or on two `u32` words where the range needs 64 bits. Other tiers add the same integers by a sorted gather or a loop. Subgroup pre-reduction is an optional speed path after C8. Proposed: yes. This asks the owner, because it amends rules 4 and 6 of record 0005.
 15. The training defaults are 30,000 steps with a preview at 7,000, and the 2DGS loss at the paper's weights. The SH degree rises each 1,000 steps to 3. Densification runs every 100 steps until 15,000. Proposed: yes. This is a default.
 16. The capacity is fixed and allocated once: 500,000 surfels in a browser on WebGPU, 2,000,000 on the M7 host. Proposed: yes. This asks the owner, because it bounds the scene size.
 17. Frames are at most 1,600 pixels on the long side, 200 frames by default from a video. They stay on the host, and one is uploaded a step. Proposed: yes. This is a default.
@@ -472,7 +481,7 @@ Each step is one pull request. Each commit names `Design: 0011` on a line of its
 - The survey: done, `.claude/research/survey-gaussian-splatting.md`.
 - The plan: this record, `draft`.
 - Training in scope, gradients from the compiler, the tiers: written into this record.
-- The compiler proposals C1 to C7: not opened, by the owner's instruction. The owner opens them.
+- The compiler proposals C1 to C8: not opened, by the owner's instruction. The owner opens them.
 - The implementation of every step: not started.
 
 **Open items at authorship.**

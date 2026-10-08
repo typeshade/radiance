@@ -378,10 +378,22 @@ Dawn desktop host of plan milestone M7. "Server" is a process outside the engine
 - The forward pass of a pixel reads many Gaussians (a gather). Its adjoint adds into many
   Gaussians (a scatter). CUDA trainers use float `atomicAdd`, whose result depends on the order
   (https://github.com/YihangChen-ee/FCGS/blob/main/docs/atomic_statement.md).
-- Fixed point with integer atomics: scale each contribution to an integer and add it with
-  `atomicAdd` on `u32`. Integer addition is associative, so the sum does not depend on the order.
-  Two words make a 64-bit sum: add the low word, and add the carry to the high word when the
-  returned old value overflows. Inference: deterministic, one pass, a range and a scale to choose.
+- **Recommended: fixed point with integer atomics.** Scale each contribution to an integer and add
+  it with `atomicAdd` on `i32`. Integer addition is associative and commutative, so the sum does
+  not depend on the order, and two runs are bit-identical. Where the range needs it, two words make
+  a 64-bit sum: add the low word, and add the carry to the high word when the returned old value
+  wraps. Record 0005 rule 4 forbids atomics on the accumulation path, so it needs an amendment that
+  admits order-independent integer atomics in training kernels.
+- **Optional speed path: subgroup pre-reduction.** `subgroupAdd` of the integers in a subgroup, then
+  one `atomicAdd` a subgroup. An integer sum is exact, so the bits stay the same. Record 0005 rule 6
+  forbids subgroups in gated kernels, and TypeShade defers subgroups to after 1.0.
+- **WebGPU features as of Chrome 153 and 154 (September 2026).** Still no float atomic. Shipped and
+  relevant to training: subgroups (Chrome 134), `subgroup_id` (144), `subgroup_uniformity` (145),
+  `subgroup_size_control` with `@subgroup_size` (151 and 152), immediates (149 and 150, small
+  push-constant-like values), synchronous buffer mapping in workers (145, experimental),
+  `buffer_view` (153 and 154, typed views of a storage buffer), `linear_indexing` (147 and 148).
+  Subgroups, `subgroup_size_control` and immediates are compiler-side needs (record 0011, C8).
+  https://developer.chrome.com/docs/web-platform/webgpu/news
 - Sorted gather: write each (pixel tile, Gaussian) contribution to its own slot, sort by Gaussian,
   and reduce each segment in one order (record 0005, rule 5). Deterministic, more memory and a
   second sort.
@@ -469,8 +481,9 @@ recommended option is the whole pipeline, with option B as its output.
     checkpoint), reverse through a runtime-length loop, the adjoint of a gather as a deterministic
     scatter, the API (a backward entry over buffers, or `vjp` of a function), the oracle's
     gradient check against finite differences, and the WebGL2 limits of change 0054.
-  - A, D: the scatter of adjoints uses fixed-point integer atomics (order-independent), or a sorted
-    gather. Record 0005 needs an amendment: rule 4 forbids atomics on the accumulation path of the
+  - A, D: the scatter of adjoints uses fixed-point integer atomics (`i32` `atomicAdd`,
+    order-independent), with subgroup pre-reduction as an optional speed path, or a sorted gather
+    on a tier without atomics. Record 0005 needs an amendment: rule 4 forbids atomics on the accumulation path of the
     image, and training adds a new accumulation path.
   - D: a training run is bit-identical on one device and driver for one seed. Across devices the
     optimisation amplifies one-ulp differences, so the promise there is statistical (a PSNR band).
@@ -481,7 +494,8 @@ recommended option is the whole pipeline, with option B as its output.
 - Compiler changes (proposals for typeshade/typeshade `changes/`, to be opened by the owner's
   procedure, not by this survey): reverse-mode `grad` before 1.0, a sort primitive or a radix sort
   package, atomics on the CPU oracle with a defined result, device limits (record 0006 item 1),
-  GPU time (item 5), and the cost of thousands of dispatches (plan section 9).
+  GPU time (item 5), the cost of thousands of dispatches (plan section 9), and subgroups,
+  `subgroup_size_control` and immediates.
 
 ### Interim alternative: hand-written backward kernels
 
