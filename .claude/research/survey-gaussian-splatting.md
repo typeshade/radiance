@@ -5,6 +5,12 @@ splatting exists in the repository at `main` a0106e0. This survey reads the pape
 the web viewers, and ranks the options for the engine. Design record 0011
 (`docs/design/0011-gaussian-splatting.md`) is the draft that follows from it.
 
+**Revision 2 (2026-10-09).** The owner then directed: "A half-way implementation is meaningless.
+If we do it, do it properly." The target became a relightable surfel inside the path tracer, trained
+by inverse rendering. Revision 2 adds items 29 to 42 (relightable Gaussians, poses in the browser,
+scale), corrects the VGGT licence and the focal-length formula, and reads Chrome's WebGPU notes up to
+Chrome 155-156. Record 0011's baseline is now `main` 265f89d.
+
 Two owner decisions of the same day changed the scope while the survey was written:
 
 1. Training is in. A user uploads a video or several photos, and the system produces a 3D scene
@@ -258,23 +264,25 @@ binding. So the packing (record 0001's buffers) and the file format are design i
       and indirect light on the mesh.
     - Why here: relighting needs a material per Gaussian, which ordinary assets do not have. The
       engine can shade a 2DGS surfel by its BSDF only if a trainer gives it albedo and roughness.
-      So relighting is later than render-only (inference).
+      Revision 2 makes that trainer part of record 0011 (items 29 to 35). Imported assets without
+      materials stay baked.
     - https://nju-3dv.github.io/projects/Relightable3DGaussian/ ,
       https://cvpr.thecvf.com/virtual/2026/poster/39867
 
 **What mixes, and how, in a path tracer** (inference, from items 3, 7, 17 and 18). A plain 3DGS
 asset holds radiance with the light of the capture baked in. In a path tracer it acts as an
-emitter that also blocks light:
+emitter that also blocks light. The right column is what revision 2 of record 0011 builds: a
+surfel with material words that the path tracer shades by its BSDF.
 
-| Effect                                         | With a baked-radiance splat (option B, first step) | Needs                                   |
-| ---------------------------------------------- | -------------------------------------------------- | --------------------------------------- |
-| A mesh mirror or glass shows the splat         | Yes. A path that meets a splat takes its radiance  | Nothing more                            |
-| The splat lights a mesh (colour bleeding)      | Yes, by BSDF sampling. No light sampling of it     | Nothing more. Noisy. MIS later          |
-| The splat casts a shadow on a mesh             | Yes. A shadow ray is blocked stochastically        | Nothing more                            |
-| A mesh casts a shadow on the splat             | No. The splat's light is baked                     | A relightable splat (albedo, normal)    |
-| A new light changes the splat (relighting)     | No                                                 | Item 18's decomposition, or a 2DGS BSDF |
-| Depth of field, motion blur, fisheye, panorama | Yes. Every camera ray is a ray                     | Nothing more (M3's thin lens for bokeh) |
-| A splat in a volume (M3v), fog in front of it  | Yes, by the order of events on the path            | M3v                                     |
+| Effect                                         | With a baked-radiance splat                       | With a physical surfel (record 0011, revision 2)     |
+| ---------------------------------------------- | ------------------------------------------------- | ---------------------------------------------------- |
+| A mesh mirror or glass shows the splat         | Yes. A path that meets a splat takes its radiance | Yes                                                  |
+| The splat lights a mesh (colour bleeding)      | Yes, by BSDF sampling. No light sampling of it    | Yes. Its emission by BSDF sampling, with MIS         |
+| The splat casts a shadow on a mesh             | Yes. A shadow ray is blocked stochastically       | Yes, the same way                                    |
+| A mesh casts a shadow on the splat             | No. The splat's light is baked                    | Yes. Next-event estimation at the surfel             |
+| A new light changes the splat (relighting)     | No                                                | Yes. The BSDF of record 0010 with the surfel's words |
+| Depth of field, motion blur, fisheye, panorama | Yes. Every camera ray is a ray                    | Yes                                                  |
+| A splat in a volume (M3v), fog in front of it  | Yes, by the order of events on the path           | Yes, after M3v                                       |
 
 ## The capture pipeline: from a video or photos to a trained 2DGS scene
 
@@ -284,7 +292,7 @@ Dawn desktop host of plan milestone M7. "Server" is a process outside the engine
 | Stage         | Input                               | Output                                               | Browser                                       | Host M7 or server              |
 | ------------- | ----------------------------------- | ---------------------------------------------------- | --------------------------------------------- | ------------------------------ |
 | 1. Ingest     | A video file, or a set of photos    | 100 to 300 sharp frames, downscaled, with EXIF focal | Yes: WebCodecs decode, a GPU sharpness kernel | Yes                            |
-| 2. Poses      | The frames, the EXIF intrinsics     | Intrinsics, a pose for each frame, sparse points     | Not practical today (below)                   | Yes: GLOMAP or COLMAP, or VGGT |
+| 2. Poses      | The frames, the EXIF intrinsics     | Intrinsics, a pose for each frame, sparse points     | Yes, with a small model (items 36, 37)        | Yes: GLOMAP or COLMAP, or VGGT |
 | 3. Initialise | The sparse points and their colours | The first surfels                                    | Yes                                           | Yes                            |
 | 4. Optimise   | Frames, poses, surfels              | The trained surfels                                  | Yes, with a memory cap                        | Yes, larger scenes             |
 | 5. Output     | The trained surfels                 | A `Splats` in the scene, a `.ply`, a glTF, a mesh    | Yes                                           | Yes                            |
@@ -300,7 +308,9 @@ Dawn desktop host of plan milestone M7. "Server" is a process outside the engine
       https://tguilbert-google.github.io/webcodecs/mp4-decode/index.html
 20. **Frame selection.** The variance of the Laplacian of the luminance is the common sharpness
     score. A pipeline keeps the sharpest frame of each window of `k` frames, and drops frames that
-    move too little. Photos carry EXIF: `FocalLengthIn35mmFilm` gives `fx = f35 / 36 * width`.
+    move too little. Photos carry EXIF: `FocalLengthIn35mmFilm` is the focal length on a 36 by 24
+    mm frame, so `fx = f35 / 36 * longSide`, with `longSide` the image's long side in pixels after
+    the EXIF orientation. (Revision 1 wrote `width`, which is wrong for a portrait image.)
     - Why here: a sharpness score is a small compute kernel with one reduction a frame (record 0005,
       rule 5). EXIF is a small byte parser.
     - https://pyimagesearch.com/2015/09/07/blur-detection-with-opencv/
@@ -314,7 +324,8 @@ Dawn desktop host of plan milestone M7. "Server" is a process outside the engine
       magnitude faster (paper's claim). Both are BSD-licensed. COLMAP's sparse model is the input
       format of 3DGS, 2DGS, gsplat and Brush.
     - Where: native code with a CUDA option for features. No supported WebAssembly build is known
-      (not found). So a server or the M7 host runs it.
+      (not found) in revision 1. Revision 2 found an unofficial port (item 37). A server or the M7
+      host runs the native build first.
     - https://colmap.github.io/ , https://arxiv.org/abs/2407.20219 ,
       https://github.com/colmap/glomap
 22. **DUSt3R, MASt3R, MASt3R-SfM** (Naver, 2024)
@@ -326,9 +337,11 @@ Dawn desktop host of plan milestone M7. "Server" is a process outside the engine
       https://arxiv.org/abs/2409.19152 , https://github.com/naver/mast3r
 23. **VGGT: Visual Geometry Grounded Transformer** (Wang et al., Meta and Oxford, CVPR 2025)
     - What: one feed-forward network that gives cameras, depth maps, point maps and tracks from one
-      to hundreds of views, in under one second (paper's claim). About 1 billion parameters. Since
-      2025-07-29 the licence permits commercial use, and `facebook/VGGT-1B-Commercial` is the
-      checkpoint. An ONNX export exists in `fp32` and `fp16`.
+      to hundreds of views, in under one second (paper's claim). About 1 billion parameters.
+      `facebook/VGGT-1B-Commercial` is the checkpoint for commercial use. Fact (its model card and
+      the Hugging Face metadata, read on 2026-10-09): the licence is `vggt-aup-license`, which
+      permits commercial use "with the exception of military applications". The download is gated:
+      a user accepts the terms first. An ONNX export exists in `fp32` and `fp16`.
     - Browser: ONNX Runtime Web caps WebAssembly memory at 4 GB and a protobuf at 2 GB (external
       data above it). The `fp16` weights alone are about 2.4 GB (inference from 1B parameters).
       Inference: possible on a large desktop browser at best, not a default. A server or the M7
@@ -348,7 +361,7 @@ Dawn desktop host of plan milestone M7. "Server" is a process outside the engine
     - What: pose-free splatting. InstantSplat starts from a feed-forward point map and optimises
       poses with the Gaussians. AnySplat predicts Gaussians and poses in one network pass.
     - Why here: evidence that joint pose refinement in training fixes rough feed-forward poses.
-      A pose parameter in training is a later step.
+      Revision 2 trains a pose correction in every run (record 0011, P3, and item 41).
     - https://arxiv.org/abs/2403.20309 , https://arxiv.org/abs/2505.23716
 
 ### Optimisation
@@ -380,19 +393,24 @@ Dawn desktop host of plan milestone M7. "Server" is a process outside the engine
   (https://github.com/YihangChen-ee/FCGS/blob/main/docs/atomic_statement.md).
 - **Recommended: fixed point with integer atomics.** Scale each contribution to an integer and add
   it with `atomicAdd` on `i32`. Integer addition is associative and commutative, so the sum does
-  not depend on the order, and two runs are bit-identical. Where the range needs it, two words make
-  a 64-bit sum: add the low word, and add the carry to the high word when the returned old value
-  wraps. Record 0005 rule 4 forbids atomics on the accumulation path, so it needs an amendment that
+  not depend on the order, and two runs are bit-identical. Two `u32` words make a 64-bit sum: add
+  the low word, then add to the high word the carry (the returned old value wraps) plus the sign
+  extension of the contribution (`0xffffffff` for a negative one). Record 0011 gives the proof that
+  the pair is exact in any order, and the bound that keeps the running sum from overflowing. Record 0005 rule 4 forbids atomics on the accumulation path, so it needs an amendment that
   admits order-independent integer atomics in training kernels.
 - **Optional speed path: subgroup pre-reduction.** `subgroupAdd` of the integers in a subgroup, then
   one `atomicAdd` a subgroup. An integer sum is exact, so the bits stay the same. Record 0005 rule 6
   forbids subgroups in gated kernels, and TypeShade defers subgroups to after 1.0.
-- **WebGPU features as of Chrome 153 and 154 (September 2026).** Still no float atomic. Shipped and
+- **WebGPU features up to Chrome 155-156 (read on 2026-10-09).** Still no float atomic. The
+  155-156 post (https://developer.chrome.com/blog/new-in-webgpu-155-156) adds the WGSL
+  `fragment_depth` extension, `texture-compression-unaligned` and a preview of bindless resource
+  tables, and no float atomic. Shipped and
   relevant to training: subgroups (Chrome 134), `subgroup_id` (144), `subgroup_uniformity` (145),
   `subgroup_size_control` with `@subgroup_size` (151 and 152), immediates (149 and 150, small
   push-constant-like values), synchronous buffer mapping in workers (145, experimental),
   `buffer_view` (153 and 154, typed views of a storage buffer), `linear_indexing` (147 and 148).
-  Subgroups, `subgroup_size_control` and immediates are compiler-side needs (record 0011, C8).
+  Subgroups, `subgroup_size_control` and immediates are compiler-side needs (record 0011, C8,
+  filed as typeshade/typeshade#536). Bindless is a watch item, typeshade/typeshade#537.
   https://developer.chrome.com/docs/web-platform/webgpu/news
 - Sorted gather: write each (pixel tile, Gaussian) contribution to its own slot, sort by Gaussian,
   and reduce each segment in one order (record 0005, rule 5). Deterministic, more memory and a
@@ -403,6 +421,118 @@ Dawn desktop host of plan milestone M7. "Server" is a process outside the engine
 reference trainers store the final transmittance and the count of contributors of each pixel, and
 re-walk the list backwards, recovering each step's transmittance by division by `1 - alpha`
 (3DGS's backward pass). That is recompute with an invertible state, not a stored tape.
+
+### Relightable Gaussians and inverse rendering (revision 2)
+
+These items are read at abstract depth on 2026-10-09, from the arXiv pages and the CVF open-access
+page. Record 0011's stage B rests on them.
+
+29. **GS-IR: 3D Gaussian Splatting for Inverse Rendering** (Liang, Zhang, Feng, Shan, Jia, CVPR 2024)
+    - What: estimates geometry, surface material and environment light from multi-view images under
+      unknown light. Normals by a depth-derivation regularization. Occlusion and indirect light by
+      baking.
+    - Why here: the first Gaussian inverse renderer. Its deferred shading of the blended surface is
+      the default of record 0011's stage B.
+    - https://arxiv.org/abs/2311.16473
+30. **Relightable 3D Gaussians (R3DG)** (Gao et al., ECCV 2024, item 18)
+    - What: Gaussians with a normal, BRDF parameters and incident light, decomposed by physically
+      based differentiable rendering. Point-based ray tracing with a BVH gives the visibility.
+    - Why here: the closest model to record 0011's design: a BVH over Gaussians for shadows, as
+      part 1's walk gives.
+    - https://arxiv.org/abs/2311.16043 , https://nju-3dv.github.io/projects/Relightable3DGaussian/
+31. **IRGS: Inter-Reflective Gaussian Splatting with 2D Gaussian Ray Tracing** (Gu et al., CVPR 2025)
+    - What: the full rendering equation, with incident radiance computed on the fly by a
+      differentiable 2D Gaussian ray tracer. Monte Carlo sampling with an efficient optimisation
+      scheme.
+    - Why here: evidence that 2D Gaussian ray tracing serves inverse rendering with inter-reflection.
+      Record 0011 traces part 1's walk for the visibility and the indirect sample.
+    - https://arxiv.org/abs/2412.15867 , https://fudan-zvg.github.io/IRGS
+32. **Ref-GS: Directional Factorization for 2D Gaussian Splatting** (Zhang et al., CVPR 2025)
+    - What: deferred rendering of 2DGS with a directional encoding and a spherical Mip-grid for
+      roughness, for view-dependent appearance and precise geometry.
+    - Why here: 2DGS with deferred shading recovers glossy surfaces. Its light is a learned
+      encoding, not an environment that a path tracer can use, so record 0011 does not take it.
+    - https://arxiv.org/abs/2412.00905 , https://ref-gs.github.io/
+33. **RadioGS: Radiometrically Consistent Gaussian Surfels for Inverse Rendering** (Han, Kim, Kim,
+    Seo, Yoon, ICLR 2026, oral)
+    - What: radiometric consistency, a constraint that the learned radiance of each Gaussian surfel
+      equals its physically based rendered radiance, also for views that no image saw. Built on
+      Gaussian surfels and 2D Gaussian ray tracing. A relighting by fine-tuning in minutes.
+    - Why here: record 0011's stage B uses the baked radiance as the indirect light and holds it to
+      the shaded radiance by this constraint.
+    - https://arxiv.org/abs/2603.01491
+34. **Spec-Gloss Surfels and Normal-Diffuse Priors for Relightable Glossy Objects** (Kouros, Wu,
+    Tuytelaars, WACV 2026)
+    - What: a microfacet BRDF with the specular-glossiness parameters in 2DGS with deferred shading.
+      Diffusion priors for normals and diffuse colour early in the optimisation. A coarse-to-fine
+      environment map, clipped only below.
+    - Why here: a microfacet BRDF on 2DGS surfels relights glossy objects. Record 0011 uses record
+      0010's metallic-roughness BSDF instead, so training and rendering share one model. The
+      diffusion priors are a large dependency and are not proposed.
+    - https://openaccess.thecvf.com/content/WACV2026/html/Kouros_Spec-Gloss_Surfels_and_Normal-Diffuse_Priors_for_Relightable_Glossy_Objects_WACV_2026_paper.html ,
+      https://arxiv.org/abs/2510.02069
+35. **GUS-IR: Gaussian Splatting with Unified Shading for Inverse Rendering** (2024)
+    - What: compares forward shading and deferred shading for inverse rendering of rough and glossy
+      surfaces, and combines the two.
+    - Why here: the evidence for record 0011's decision 37 (deferred shading by default).
+    - https://arxiv.org/abs/2411.07478
+
+**Inference for radiance.** The common recipe is: train geometry and radiance first, then train
+materials and light with a physically based renderer, with visibility from a ray tracer over the
+Gaussians. Record 0011 follows it with the path tracer's own BSDF and walk. The reference code of
+several of these is under a non-commercial licence, so the engine writes its own from the papers.
+
+### Poses in the browser (revision 2)
+
+36. **Depth Anything 3** (ByteDance Seed, 2025), model `depth-anything/DA3-SMALL`
+    - Fact (model card, read on 2026-10-09): an any-view model for multi-view depth and camera pose
+      estimation, with pose conditioning. 0.08 billion parameters. Licence Apache 2.0. The
+      repository's code is Apache-2.0 too (its `LICENSE` file). A single plain transformer.
+    - Why here: small enough for a browser (inference: about 0.16 GB of weights at 16 bits), with a
+      licence that permits commercial use. It is plain matrix arithmetic, so TypeShade kernels can
+      run it with no dependency past the boundary.
+    - Not checked: the licences of the larger DA3 models, and whether an ONNX export exists.
+    - https://huggingface.co/depth-anything/DA3-SMALL ,
+      https://github.com/ByteDance-Seed/Depth-Anything-3
+37. **COLMAP in the browser** (Rafael Spring, an unofficial port, reported on 2026-09-21)
+    - Fact (the report): COLMAP's sparse reconstruction runs locally in a browser, through
+      WebAssembly, Emscripten and Dawn's WebGPU bindings, with an experimental WebGPU SIFT. It
+      writes standard COLMAP data. Upstream COLMAP is BSD-3-Clause. The site's own code has
+      separate terms, and automated use needs a separate licence.
+    - Why here: evidence that SfM in a page is possible. The port itself is not usable by the engine.
+      A WebAssembly build of COLMAP or GLOMAP from the BSD source is record 0011's second choice for
+      P2.
+    - https://digitalproduction.com/2026/09/21/colmap-moves-into-the-browser/
+38. **Pi3 and Pi3X** (Wang et al., ICLR 2026)
+    - Fact (its README): code BSD 3-Clause, model weights CC BY-NC 4.0, "strictly non-commercial".
+    - Why here: a strong feed-forward pose model that radiance cannot use for a product. Not
+      proposed.
+    - https://github.com/yyfz/Pi3 , https://arxiv.org/abs/2507.13347
+
+### Scale (revision 2)
+
+39. **A Hierarchical 3D Gaussian Representation for Real-Time Rendering of Very Large Datasets**
+    (Kerbl et al., SIGGRAPH 2024)
+    - What: a hierarchy of Gaussians with merged interior nodes for level of detail, and a
+      divide-and-conquer training of very large scenes in chunks.
+    - Why here: the model for record 0011's merged Gaussian in each inner BLAS node and for block
+      training.
+    - https://arxiv.org/abs/2406.12080
+40. **Octree-GS** (2024)
+    - What: level-of-detail structured Gaussians in an octree, for consistent speed in large scenes.
+    - Why here: a second witness that level of detail over Gaussians keeps the image while it cuts
+      the count of tested Gaussians.
+    - https://arxiv.org/abs/2403.17898
+41. **COLMAP-Free 3D Gaussian Splatting (CF-3DGS)** (Fu et al., CVPR 2024)
+    - What: trains Gaussians and camera poses together from a video, without precomputed poses.
+    - Why here: evidence for record 0011's P3, the pose correction trained in every run.
+    - https://arxiv.org/abs/2312.07504
+42. **LightGaussian** (Fan et al., NeurIPS 2024)
+    - What: pruning, distillation of the SH and vector quantisation, about 15 times smaller.
+    - Why here: compression is the other way to fit a large scene. Record 0011 quantises only the
+      training moments and the SH (by integer arithmetic, for determinism) and leaves codebooks to a
+      later record.
+    - https://arxiv.org/abs/2311.17245
 
 ## Formats
 
@@ -459,20 +589,25 @@ is the gap radiance's axes (plan section 2) fill.
 The owner's decisions (training is in, gradients from the compiler) change the ranking. The
 recommended option is the whole pipeline, with option B as its output.
 
-### Recommended: the capture pipeline, 2DGS trained on the compiler's reverse-mode `grad`, rendered as ray-traced surfels
+### Recommended: the capture pipeline, relightable 2DGS trained by inverse rendering on the compiler's reverse-mode `grad`, rendered as ray-traced surfels
 
-- What: stages 1 to 5 above. The trained surfels become a `Splats` of kernel kind "surfel" in the
-  path tracer's TLAS (option B below), so path-traced meshes reflect them, receive their light and
-  their shadow. Export as `.ply` and glTF. An optional TSDF mesh.
+- What: stages 1 to 5 above. The trained surfels carry material words (base colour, roughness,
+  metalness, emission) and their own normal. They become a `Splats` in the path tracer's TLAS
+  (option B below). A ray that meets one shades it by the principled BSDF of record 0010, so the
+  scene's lights and meshes light and shadow it. Training is inverse rendering (items 29 to 35):
+  geometry and baked radiance first, then materials and an environment. Export as `.ply` and glTF,
+  and a mesh with baked PBR textures.
 - Why 2DGS and not 3DGS: a surfel is met by a plane test, the same formula in the training
   rasterizer and in the path tracer. So the trained scene renders by ray tracing much as it was
   trained (inference). 3DGS trains with the EWA projection, which a ray does not reproduce. 2DGS
   also gives the normals and depth that a mesh and a later relighting need.
 - Where: ingest, initialise, optimise and output in the browser (WebGPU) or on the M7 host. Poses
   on a server or the M7 host first, behind a dataset contract (COLMAP sparse model or
-  `transforms.json`). Browser-only poses later.
-- Milestone: render first (M3g, after M3), capture after M5 (proposal: M5c), in a new package
-  `@typeshade/radiance-capture` beside `@typeshade/radiance-fit`.
+  `transforms.json`). Poses in the browser at M5p (items 36 and 37), and a pose correction trained
+  in every run (item 41).
+- Milestone: render first (M3g, after M3), capture after M5 (proposal: M5c), poses in the browser
+  (M5p), and scale (M5h), in a new package `@typeshade/radiance-capture` beside
+  `@typeshade/radiance-fit`.
 - Cost: large. The training kernels, the sort, the accumulation and the budgets are each a
   medium piece. The compiler change is the largest dependency.
 - Collisions and answers:
@@ -489,13 +624,14 @@ recommended option is the whole pipeline, with option B as its output.
     optimisation amplifies one-ulp differences, so the promise there is statistical (a PSNR band).
   - B: a training entry binds the parameters, the adjoints, the moments, the tile lists and the
     image. Packing keeps it under eight.
-  - Memory: about 1.2 KB a surfel at degree 3 with the adjoints and Adam's moments (inference), so
-    a browser cap of about 500,000 surfels.
-- Compiler changes (proposals for typeshade/typeshade `changes/`, to be opened by the owner's
-  procedure, not by this survey): reverse-mode `grad` before 1.0, a sort primitive or a radix sort
-  package, atomics on the CPU oracle with a defined result, device limits (record 0006 item 1),
-  GPU time (item 5), the cost of thousands of dispatches (plan section 9), and subgroups,
-  `subgroup_size_control` and immediates.
+  - Memory: 1,320 bytes a surfel at degree 3 with materials, two-word adjoints and Adam's moments
+    (arithmetic), so a browser cap of about 500,000 surfels at the default limits. Items 39 to 42
+    and record 0011's part 6 reach 6 million.
+- Compiler changes: reverse-mode `grad` before 1.0, with the differentiable BSDF in its scope
+  (filed as typeshade/typeshade#535), and subgroups, `subgroup_size_control` and immediates
+  (#536). Not filed: a sort primitive or a radix sort package, `i32` and two-word `u32` atomics on
+  the CPU oracle with a defined result, indirect dispatch, device limits (record 0006 item 1), GPU
+  time (item 5), the cost of thousands of dispatches (plan section 9).
 
 ### Interim alternative: hand-written backward kernels
 
@@ -512,8 +648,9 @@ recommended option is the whole pipeline, with option B as its output.
   an instance with a flag, as it holds the analytic `Sphere` (record 0001, Amendment 3). The kernel
   tests a surfel on its plane (item 2), or a 3D Gaussian at its point of largest response (item 3).
   Each Gaussian a ray crosses is accepted with the chance of its alpha, by a hash of the ray and the
-  Gaussian's index (item 7). The nearest accepted Gaussian ends the path with its SH radiance. A
-  shadow ray is blocked by an accepted Gaussian.
+  Gaussian's index and the instance (item 7). The nearest accepted Gaussian is the hit. A surfel
+  with materials is shaded by the BSDF, and the path goes on. A Gaussian without materials ends the
+  path with its SH radiance. A shadow ray is blocked by an accepted Gaussian.
 - Why: it is the output stage of the recommended pipeline, and it also renders imported 3DGS assets.
   It uses what only radiance has: a path tracer around the splats, a CPU oracle and the determinism
   promise. It adds no storage buffer, no atomics and no sort.
