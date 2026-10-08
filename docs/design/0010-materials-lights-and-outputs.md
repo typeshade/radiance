@@ -1,7 +1,7 @@
 ---
 id: '0010'
 title: The first public demo (M3) has a principled BSDF, textures, lights, a physical camera, AOVs with EXR output and a product viewer beside Cycles
-status: draft
+status: accepted
 milestones: [M3]
 touches:
   - packages/radiance/src/materials
@@ -1197,7 +1197,7 @@ Part 6 is done when step 6.7 has merged and the owner has seen the page. M3's ac
 
 ## Record
 
-**Approval and plan record.** This record is a draft. No approval applies yet. The owner's review of the pull request that carries it is the approval. This record is new, and each part changes a design rule, a public export or a layout. So no part merges before that review.
+**Approval and plan record.** Accepted on 2026-10-09. typeshade/radiance#59 merged this record as `draft` at a0106e0. The owner then approved the record in the conversation and answered the decisions as proposed (2026-10-09), and that answer is the acceptance. Every entry of "Decisions for the owner" stands as proposed. Each part changes a design rule, a public export or a layout.
 
 **Configuration and validation record.** This record does not yet apply. No step is started. The draft has six parts, 35 steps and 33 decisions. It was written on `main` at 55bde46 with the compiler pinned at 596c805. The commits are 9feacc4 (skeleton), 47be68e (Part 1), 1a8e624 (Part 2), b8bcd8a (Part 3), 981db8a (Part 4) and 44e581d (Part 5). The commit that carries Part 6 follows them.
 
