@@ -1,12 +1,13 @@
 # TypeShade Radiance
 
-A reproducible, differentiable path-tracing renderer for the web, written in
-[TypeShade](https://typeshade.dev).
+A reproducible path-tracing renderer for the web, written in [TypeShade](https://typeshade.dev),
+and planned to be differentiable.
 
 A scene is assembled in TypeScript. The same kernels render it on WebGPU and are checked on the
-CPU, so an image is the same wherever it is rendered. And the image can be differentiated with
-respect to the scene's parameters, so a material, a light or a camera can be fitted to a
-photograph in the browser. [`docs/plan.md`](docs/plan.md) is the plan: what the product is, what
+CPU, so an image is the same wherever it is rendered. The plan then makes the image
+differentiable with respect to the scene's parameters, so a material, a light or a camera can be
+fitted to a photograph in the browser. That is milestone M5 (`@typeshade/radiance-fit`), which has
+not started: see Status below. [`docs/plan.md`](docs/plan.md) is the plan: what the product is, what
 it is not, how it is built in layers on the compiler's public runtime, and the milestones with
 their acceptance criteria.
 
