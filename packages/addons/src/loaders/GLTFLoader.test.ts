@@ -220,6 +220,15 @@ describe('a triangle', () => {
     expect(material.doubleSided).toBe(true);
   });
 
+  // Verifies: Design 0004.10
+  it('makes a material whose flatShading is false, and keeps the normals of the file', async () => {
+    const { json, bin } = triangle();
+    (json.buffers as Json[])[0]!.uri = dataUri(bin);
+    const tri = mesh((await load(json)).scene.children[0]!);
+    expect(tri.material.flatShading).toBe(false);
+    expect([...tri.geometry.normal!]).toEqual([0, 0, 1, 0, 0, 1, 0, 0, 1]);
+  });
+
   it('is the same from a .glb whose buffer is the binary chunk', async () => {
     const { json, bin } = triangle();
     const gltf = await new GLTFLoader().parseAsync(glb(json, bin));

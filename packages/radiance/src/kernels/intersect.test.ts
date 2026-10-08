@@ -937,3 +937,46 @@ describe("sphereUv: three.js's spherical layout, from sums, products and sqrt", 
     expect(worstV).toBeLessThanOrEqual(2e-7);
   }, 60_000);
 });
+
+describe('surface: a flat-shaded material (record 0004, "Flat shading")', () => {
+  const material = new DiffuseMaterial();
+  const ball = new Mesh(new SphereGeometry(1, 12, 8), material);
+  const scene = new Scene();
+  scene.add(ball);
+  const next = random(11);
+  // 1,000 rays from a sphere of radius 6, each aimed at a point within 0.5 of the centre, so
+  // each meets the mesh.
+  const rays = Array.from({ length: 1000 }, () => {
+    const z = next() * 2 - 1;
+    const phi = next() * 2 * Math.PI;
+    const s = Math.sqrt(1 - z * z);
+    const o: Vec = f32v([6 * s * Math.cos(phi), 6 * s * Math.sin(phi), 6 * z]);
+    const to: Vec = [next() - 0.5, next() - 0.5, next() - 0.5];
+    return [o, f32v(norm(sub(to, o)))] as const;
+  });
+  /** The surface at each ray's hit, with the flag as given. */
+  const surfaces = (flat: boolean): { ng: Vec; ns: Vec }[] => {
+    material.flatShading = flat;
+    bind(cpu, scene);
+    return rays.map(([o, d]) => {
+      const hit = fn('nearest')(o, d, FAR) as unknown as Hit;
+      expect(hit.instance).toBe(0);
+      return fn('surface')(hit, d) as unknown as { ng: Vec; ns: Vec };
+    });
+  };
+
+  // Verifies: Design 0004.10
+  it('gives ns equal to ng bit for bit on 1,000 of 1,000 hits', () => {
+    const same = surfaces(true).filter((s) => s.ns.every((x, k) => Object.is(x, s.ng[k])));
+    expect(same.length).toBe(1000);
+  });
+
+  // Verifies: Design 0004.10
+  it('can fail: with the flag clear, the same rays give dot(ns, ng) below 0.99999 on 950 or more', () => {
+    const tilted = surfaces(false).filter(
+      (s) => s.ns[0] * s.ng[0] + s.ns[1] * s.ng[1] + s.ns[2] * s.ng[2] < 0.99999,
+    );
+    console.log(`flat shading, flag clear: dot(ns, ng) < 0.99999 on ${tilted.length} of 1000`);
+    expect(tilted.length).toBeGreaterThanOrEqual(950);
+  });
+});

@@ -213,6 +213,49 @@ describe('ScenePack: the words of each buffer (record 0001, "The GPU layout")', 
     expect(bitsOf(packMaterial(new EmissiveMaterial()))[11]).toBe(0x100);
   });
 
+  // Verifies: Design 0004.10
+  it('clears the flatShading flag by default: 3 of 3 material classes', () => {
+    const fresh = [new DiffuseMaterial(), new MirrorMaterial(), new PhysicalMaterial()];
+    const clear = fresh.filter(
+      (m) => !m.flatShading && (bitsOf(packMaterial(m))[11]! & 0x800) === 0,
+    );
+    expect(clear.length).toBe(3);
+  });
+
+  // Verifies: Design 0004.10
+  it('sets the flatShading flag in byte 45 alone, as 0x08, and the setter adds 1 to version', () => {
+    for (const make of [
+      () => new DiffuseMaterial({ color: 0x336699 }),
+      () => new MirrorMaterial(),
+      () => new PhysicalMaterial({ roughness: 0.3 }),
+    ]) {
+      const smooth = new Uint8Array(packMaterial(make()).buffer);
+      const m = make();
+      const version = m.version;
+      m.flatShading = true;
+      expect(m.flatShading).toBe(true);
+      expect(m.version).toBe(version + 1);
+      const flat = new Uint8Array(packMaterial(m).buffer);
+      expect(flat.length).toBe(128);
+      const differ = [...flat.keys()].filter((i) => flat[i] !== smooth[i]);
+      expect(differ).toEqual([45]);
+      expect(flat[45]! ^ smooth[45]!).toBe(0x08);
+      expect(flat[45]! & 0x08).toBe(0x08);
+    }
+  });
+
+  // Verifies: Design 0004.10
+  it('takes flatShading from the parameters, with no change to version', () => {
+    for (const m of [
+      new DiffuseMaterial({ flatShading: true }),
+      new MirrorMaterial({ flatShading: true }),
+    ]) {
+      expect(m.flatShading).toBe(true);
+      expect(m.version).toBe(0);
+      expect(bitsOf(packMaterial(m))[11]! & 0x800).toBe(0x800);
+    }
+  });
+
   it('lists every triangle of the emissive instance as a light, with its slot and index', () => {
     const slot = slotOf(pack, b);
     const primBase = bitsOf(pack.arrays.instances)[

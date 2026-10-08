@@ -13,8 +13,11 @@ import { EmissiveMaterial } from '../materials/EmissiveMaterial.ts';
 import type { Material } from '../materials/Material.ts';
 import { MirrorMaterial } from '../materials/MirrorMaterial.ts';
 import { PhysicalMaterial } from '../materials/PhysicalMaterial.ts';
+import { SphereGeometry } from '../geometries/SphereGeometry.ts';
 import { Color } from '../math/Color.ts';
-import { packMaterial } from '../renderers/scene-pack.ts';
+import { Mesh } from '../objects/Mesh.ts';
+import { SCENE_BUFFERS, ScenePack, packMaterial } from '../renderers/scene-pack.ts';
+import { Scene } from '../scenes/Scene.ts';
 import {
   INSTANCE_BASES,
   INSTANCE_FLAGS,
@@ -40,6 +43,20 @@ function load(): CpuModule {
   expect(compiled.diagnostics.filter((d) => d.category === 'error')).toEqual([]);
   return compileModuleJs(compiled.module!, { precision: 'f32' });
 }
+
+/** intersect.shade.ts on the oracle: `nearest` and `surface`, which this file's module lacks. */
+function loadIntersect(): CpuModule {
+  const path = join(import.meta.dir, 'intersect.shade.ts');
+  const c = compile(readFileSync(path, 'utf8'), { fileName: path, readDocument: read });
+  expect(c.diagnostics.filter((d) => d.category === 'error')).toEqual([]);
+  return compileModuleJs(c.module!, { precision: 'f32' });
+}
+
+/** `a`, four numbers at a time, as the oracle takes an `array<vec4>` or an `array<vec4u>`. */
+const vec4s = (a: Float32Array | Uint32Array): CpuValue =>
+  Array.from({ length: a.length / 4 }, (_, i) =>
+    Array.from(a.subarray(i * 4, i * 4 + 4)),
+  ) as unknown as CpuValue;
 
 /** The materials, packed by the host's packer, as the oracle takes an `array<vec4>`. */
 function bindMaterials(cpu: CpuModule, list: readonly Material[]): void {
@@ -238,6 +255,104 @@ describe('the contract, as the record states it', () => {
   });
 });
 
+// Verifies: Design 0004.10
+describe('a flat-shaded mesh sphere (record 0004, "Flat shading")', () => {
+  const RAYS = 100_000;
+  const material = new MirrorMaterial();
+  const scene = new Scene();
+  scene.add(new Mesh(new SphereGeometry(1, 12, 8), material));
+  scene.updateMatrixWorld();
+  const intersect = loadIntersect();
+  const shade = load();
+  const call = (m: CpuModule, name: string) =>
+    m.fns[name]! as unknown as (...args: unknown[]) => CpuValue;
+
+  /** Numbers in [0, 1) from a seed: mulberry32. */
+  const random = (seed: number): (() => number) => {
+    let s = seed >>> 0;
+    return () => {
+      s = (s + 0x6d2b79f5) >>> 0;
+      let t = s;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  };
+
+  /**
+   * RAYS primary rays along -z that meet the ball, at offsets 0.7 to 1 from its axis, so the
+   * hits lie across its silhouette. At each hit, a mirror sample. Returns how many samples have
+   * `dot(wi, ng)` of 0 or less, how many reflections about `ns` went under `ng` before the fold,
+   * and how many rays missed the ball on the way to RAYS hits.
+   */
+  const run = (flat: boolean): { under: number; folded: number; missed: number } => {
+    material.flatShading = flat;
+    const pack = new ScenePack();
+    pack.update(scene);
+    for (const name of SCENE_BUFFERS) intersect.setBinding(name, vec4s(pack.arrays[name]));
+    intersect.setBinding(
+      'params',
+      JSON.parse(
+        JSON.stringify(
+          pack.params({
+            camera: {
+              eye: [0, 0, 0, 0],
+              right: [1, 0, 0, 0],
+              up: [0, 1, 0, 0],
+              forward: [0, 0, -1, 0],
+              lens: [1, 1, 0, 0],
+            },
+            frame: [1, 1, 0, 1],
+            tile: [0, 0, 1, 1],
+            seed: 0,
+            bounces: 8,
+            rouletteFrom: 3,
+          }),
+        ),
+      ) as CpuValue,
+    );
+    shade.setBinding('materials', vec4s(pack.arrays.materials));
+    const next = random(17);
+    const d: Vec = [0, 0, -1];
+    const wo: Vec = [0, 0, 1];
+    let hits = 0;
+    let missed = 0;
+    let under = 0;
+    let folded = 0;
+    while (hits < RAYS) {
+      const r = Math.sqrt(0.49 + 0.51 * next());
+      const phi = 2 * Math.PI * next();
+      const o = f32v([r * Math.cos(phi), r * Math.sin(phi), 4]);
+      const hit = call(intersect, 'nearest')(o, d, 1e30) as unknown as { instance: number };
+      if (hit.instance !== 0) {
+        missed++;
+        continue;
+      }
+      hits++;
+      const s = call(intersect, 'surface')(hit, d) as unknown as Surface;
+      const c = 2 * dot(wo, s.ns);
+      if (dot([c * s.ns[0] - wo[0], c * s.ns[1] - wo[1], c * s.ns[2] - wo[2]], s.ng) < 0) folded++;
+      const b = call(shade, 'sampleBsdf')(s, wo, [0.5, 0.5, 0.5]) as unknown as BsdfSample;
+      if (dot(b.wi, s.ng) <= 0) under++;
+    }
+    return { under, folded, missed };
+  };
+
+  it('gives no mirror sample at or under ng: 0 of 100,000, and the fold has nothing to do', () => {
+    const flat = run(true);
+    console.log(`flat mesh sphere: ${JSON.stringify(flat)} of ${RAYS} hits`);
+    expect(flat.under).toBe(0);
+    expect(flat.folded).toBe(0);
+  }, 120_000);
+
+  it('can fail: with the flag clear, some reflections about ns go under ng', () => {
+    // The count of `under` here depends on the fold of record 0004, step 7, so it is not held.
+    const smooth = run(false);
+    console.log(`smooth mesh sphere: ${JSON.stringify(smooth)} of ${RAYS} hits`);
+    expect(smooth.folded).toBeGreaterThan(0);
+  }, 120_000);
+});
+
 describe('the helpers sampleBsdf draws with', () => {
   it('turn is cos and sin of 2 pi r to below f32 resolution', () => {
     for (let i = 0; i < 4096; i++) {
@@ -265,18 +380,8 @@ describe('the helpers sampleBsdf draws with', () => {
 // so a mirror sample never goes under `ng`. Record 0004's Amendment 2 measured 0.416 % of the
 // area of a mesh sphere under `ng`, before its fold.
 describe('a mirror sample on a Sphere', () => {
-  const INTERSECT = join(import.meta.dir, 'intersect.shade.ts');
-  const geometry = compile(readFileSync(INTERSECT, 'utf8'), {
-    fileName: INTERSECT,
-    readDocument: read,
-  });
-  const hitFns = () => {
-    expect(geometry.diagnostics.filter((d) => d.category === 'error')).toEqual([]);
-    return compileModuleJs(geometry.module!, { precision: 'f32' });
-  };
-
   it('never has dot(wi, ng) of 0 or less, on 100,000 primary rays across the silhouette: 0', () => {
-    const g = hitFns();
+    const g = loadIntersect();
     const call = (name: string) => g.fns[name]! as unknown as (...args: unknown[]) => CpuValue;
     // One sphere of radius 0.4 at the origin, with the mirror (material 1), packed by hand as
     // record 0001 lays it out.
