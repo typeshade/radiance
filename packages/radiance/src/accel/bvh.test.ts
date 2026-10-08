@@ -6,8 +6,15 @@
 //
 // The walk here is TypeScript over the packed words, as the kernel will read them (record 0001,
 // "Traversal"). The kernel's own walk on the oracle is step 3's (intersect.shade.ts).
+//
+// The TLAS over 1,000 analytic spheres (record 0001, "The analytic sphere", step 7) is held at the
+// end of the file: the pack's tree, and the kernel's walk on the oracle (`compileModuleJs`)
+// against a brute force in f64.
 
 import { describe, expect, it } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { compile, compileModuleJs, type CpuValue } from 'typeshade';
 import {
   BVH_LEAF_SIZE,
   BVH_MAX_DEPTH,
@@ -16,7 +23,20 @@ import {
   type Bvh,
   type TriangleSource,
 } from './bvh.ts';
-import { NODE_AXIS_SHIFT, NODE_COUNT_MASK, NODE_STRIDE } from '../kernels/layout.shade.ts';
+import {
+  INSTANCE_FLAGS,
+  INSTANCE_MATRIX,
+  INSTANCE_SPHERE,
+  INSTANCE_STRIDE,
+  NODE_AXIS_SHIFT,
+  NODE_COUNT_MASK,
+  NODE_STRIDE,
+} from '../kernels/layout.shade.ts';
+import { DiffuseMaterial } from '../materials/DiffuseMaterial.ts';
+import { Box3 } from '../math/Box3.ts';
+import { Sphere } from '../objects/Sphere.ts';
+import { SCENE_BUFFERS, ScenePack } from '../renderers/scene-pack.ts';
+import { Scene } from '../scenes/Scene.ts';
 
 /** WebGPU's default `maxStorageBufferBindingSize` (record 0001, "Limits"). */
 const MAX_BINDING_BYTES = 134_217_728;
@@ -759,4 +779,130 @@ describe('the checks above can fail (record 0002, "The probes")', () => {
     nodes.set([0, 0, 0], left * FLOATS + 4);
     expect(blasMismatches(ball, { ...bvh, nodes }, 1234, 1000)).toBeGreaterThan(100);
   });
+});
+
+describe('buildTlas over 1,000 spheres (record 0001, "The analytic sphere", step 7)', () => {
+  const COUNT = 1000;
+  const next = random(91);
+  const scene = new Scene();
+  const material = new DiffuseMaterial();
+  for (let i = 0; i < COUNT; i++) {
+    const s = new Sphere(0.05 + next() * 0.45, material);
+    s.position.set(next() * 20 - 10, next() * 20 - 10, next() * 20 - 10);
+    scene.add(s);
+  }
+  scene.updateMatrixWorld();
+  const pack = new ScenePack();
+  pack.update(scene);
+  const words = pack.arrays.instances;
+  const bits = new Uint32Array(words.buffer, words.byteOffset, words.length);
+  /** The centre and the radius of slot `s`: the f32 words the kernel tests. */
+  const sphereOf = (s: number): { c: Vec; r: number } => {
+    const at = (s * INSTANCE_STRIDE + INSTANCE_MATRIX) * 4;
+    return { c: [words[at]!, words[at + 1]!, words[at + 2]!], r: words[at + 3]! };
+  };
+  /** Each slot's exact box, six numbers. */
+  const boxes = new Float64Array(COUNT * 6);
+  for (let s = 0; s < COUNT; s++) {
+    const { c, r } = sphereOf(s);
+    boxes.set([c[0] - r, c[1] - r, c[2] - r, c[0] + r, c[1] + r, c[2] + r], s * 6);
+  }
+
+  // Verifies: Design 0001.11
+  it('puts each sphere in exactly one leaf, no leaf of more than 4, the depth at 30 or under', () => {
+    expect(pack.counts).toMatchObject({ instances: COUNT, tlasBase: 0, triangles: 0 });
+    for (let s = 0; s < COUNT; s++)
+      expect(bits[(s * INSTANCE_STRIDE + INSTANCE_FLAGS) * 4]).toBe(INSTANCE_SPHERE);
+    // The pack writes the instances in the TLAS's leaf order, so slot s is order[s].
+    const tlas: Bvh = {
+      nodes: pack.arrays.nodes,
+      order: Uint32Array.from({ length: COUNT }, (_, s) => s),
+      box: new Box3(),
+    };
+    const stats = checkTree(tlas, boxes);
+    expect(stats.largestLeaf).toBeLessThanOrEqual(BVH_LEAF_SIZE);
+    expect(stats.depth).toBeLessThanOrEqual(BVH_MAX_DEPTH);
+  });
+
+  // Verifies: Design 0001.11
+  it('the walk on the oracle finds the nearest sphere of a brute force in f64: 1,000 of 1,000', () => {
+    const path = join(import.meta.dir, '../kernels/intersect.shade.ts');
+    const read = (f: string): string | undefined => {
+      try {
+        return readFileSync(f, 'utf8');
+      } catch {
+        return undefined;
+      }
+    };
+    const compiled = compile(readFileSync(path, 'utf8'), { fileName: path, readDocument: read });
+    expect(compiled.diagnostics.filter((d) => d.category === 'error')).toEqual([]);
+    const cpu = compileModuleJs(compiled.module!, { precision: 'f32' });
+    for (const name of SCENE_BUFFERS) {
+      const a = pack.arrays[name];
+      cpu.setBinding(
+        name,
+        Array.from({ length: a.length / 4 }, (_, i) =>
+          Array.from(a.subarray(i * 4, i * 4 + 4)),
+        ) as unknown as CpuValue,
+      );
+    }
+    const params = pack.params({
+      camera: {
+        eye: [0, 0, 0, 0],
+        right: [1, 0, 0, 0],
+        up: [0, 1, 0, 0],
+        forward: [0, 0, -1, 0],
+        lens: [1, 1, 0, 0],
+      },
+      frame: [1, 1, 0, 1],
+      tile: [0, 0, 1, 1],
+      seed: 0,
+      bounces: 8,
+      rouletteFrom: 3,
+    });
+    cpu.setBinding('params', JSON.parse(JSON.stringify(params)) as CpuValue);
+    const nearest = cpu.fns['nearest']! as unknown as (...a: unknown[]) => { instance: number };
+    const NONE = 0xffffffff;
+    /** The sphere of slot `s` in f64: the smaller root above 0, else the larger, or Infinity. */
+    const hit = (s: number, o: Vec, d: Vec): number => {
+      const { c, r } = sphereOf(s);
+      const oc = [o[0] - c[0], o[1] - c[1], o[2] - c[2]];
+      const a = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+      const tc = -(oc[0]! * d[0] + oc[1]! * d[1] + oc[2]! * d[2]) / a;
+      const f = [oc[0]! + d[0] * tc, oc[1]! + d[1] * tc, oc[2]! + d[2] * tc];
+      const h2 = f[0]! ** 2 + f[1]! ** 2 + f[2]! ** 2;
+      if (h2 > r * r) return Infinity;
+      const half = Math.sqrt((r * r - h2) / a);
+      return tc - half > 0 ? tc - half : tc + half > 0 ? tc + half : Infinity;
+    };
+    const rays = random(92);
+    let same = 0;
+    let hits = 0;
+    for (let i = 0; i < 1000; i++) {
+      const z = rays() * 2 - 1;
+      const phi = rays() * 2 * Math.PI;
+      const sin = Math.sqrt(1 - z * z);
+      const o = [20 * sin * Math.cos(phi), 20 * sin * Math.sin(phi), 20 * z].map(
+        Math.fround,
+      ) as Vec;
+      const to = [rays() * 20 - 10, rays() * 20 - 10, rays() * 20 - 10];
+      const l = Math.hypot(to[0]! - o[0], to[1]! - o[1], to[2]! - o[2]);
+      const d = [0, 1, 2].map((k) => Math.fround((to[k]! - o[k]!) / l)) as Vec;
+      let want = NONE;
+      let best = Infinity;
+      for (let s = 0; s < COUNT; s++) {
+        const t = hit(s, o, d);
+        if (t < best) {
+          best = t;
+          want = s;
+        }
+      }
+      if (want !== NONE) hits++;
+      if (nearest(o, d, Math.fround(1e30)).instance === want) same++;
+    }
+    expect(same).toBe(1000);
+    // The rays meet spheres, and miss too.
+    expect(hits).toBeGreaterThan(100);
+    expect(hits).toBeLessThan(900);
+  }, 120_000);
 });

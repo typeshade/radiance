@@ -18,6 +18,12 @@
 // BLAS's triangles in its leaves' order, and the instances in the TLAS's leaves' order, so a TLAS
 // leaf's slot is the index into `instances` (record 0001, Amendment 1).
 //
+// A `Sphere` (record 0001, "The analytic sphere") is one instance and nothing else: no BLAS, no
+// triangle and no vertex. Its words hold its centre and radius in world space and the rows of its
+// world to object rotation, and bit 0 of its flags (`INSTANCE_SPHERE`) marks it. Its TLAS box is
+// the centre plus and minus the radius. The pack refuses a sphere under a non-uniform scale or a
+// shear, a radius that is not above 0 and finite, and a material that emits.
+//
 // The light table lists every triangle of every instance whose material emits. A light's chance
 // is its share of the scene's emitted power: its area in world space times the mean of its
 // emitted colour. `cdf` is that chance added up, the last light's exactly 1.
@@ -35,6 +41,7 @@ import {
   INSTANCE_FLAGS,
   INSTANCE_INVERSE,
   INSTANCE_MATRIX,
+  INSTANCE_SPHERE,
   INSTANCE_STRIDE,
   LIGHT_STRIDE,
   LIGHT_TRIANGLE,
@@ -43,6 +50,7 @@ import {
   TRIANGLE_STRIDE,
   VERTEX_STRIDE,
 } from '../kernels/layout.shade.ts';
+import { NONE } from '../kernels/intersect.shade.ts';
 import {
   MATERIAL_BASE,
   MATERIAL_DOUBLE_SIDED,
@@ -59,6 +67,7 @@ import type { Material } from '../materials/Material.ts';
 import { PhysicalMaterial } from '../materials/PhysicalMaterial.ts';
 import { Vector3 } from '../math/Vector3.ts';
 import { Mesh } from '../objects/Mesh.ts';
+import { Sphere } from '../objects/Sphere.ts';
 import type { Scene } from '../scenes/Scene.ts';
 import { checkStorageBinding, DEFAULT_LIMITS, type Limits } from './limits.ts';
 
@@ -149,9 +158,19 @@ interface MaterialEntry {
   readonly words: Float32Array;
 }
 
-/** One visible mesh, placed. */
+/** A `Sphere` in world space: the words of record 0001, "What stores it", before f32. */
+interface SphereWords {
+  readonly centre: readonly [number, number, number];
+  /** The radius times the world scale. */
+  readonly radius: number;
+  /** The rows of `R^T`, the world to object rotation: the world axes over the scale. */
+  readonly rows: readonly (readonly [number, number, number])[];
+}
+
+/** One visible mesh or `Sphere`, placed. A sphere has no BLAS. */
 interface Placed {
-  readonly blas: Blas;
+  readonly blas: Blas | undefined;
+  readonly sphere?: SphereWords;
   readonly material: MaterialEntry;
   /** The world matrix, column-major. */
   readonly world: Float64Array;
@@ -203,6 +222,39 @@ function inverseAffine(m: Float64Array): Float64Array | undefined {
     i02, i12, i22, 0,
     -(i00 * tx + i01 * ty + i02 * tz), -(i10 * tx + i11 * ty + i12 * tz), -(i20 * tx + i21 * ty + i22 * tz), 1,
   );
+}
+
+/**
+ * The words of a `Sphere` of `radius` under the world matrix `m` (record 0001, "What stores it"),
+ * or undefined when its scale is 0 or not finite: such a sphere is drawn as nothing.
+ *
+ * @throws `RangeError` when the scale is not uniform or the matrix shears.
+ */
+function sphereWords(m: Float64Array, radius: number): SphereWords | undefined {
+  const c = [0, 4, 8].map((at) => [m[at]!, m[at + 1]!, m[at + 2]!] as const);
+  const dot = (a: readonly number[], b: readonly number[]): number =>
+    a[0]! * b[0]! + a[1]! * b[1]! + a[2]! * b[2]!;
+  const lengths = c.map((v) => Math.sqrt(dot(v, v)));
+  const s = lengths[0]!;
+  if (s === 0 || !Number.isFinite(s)) return undefined;
+  // A test written as "not within", so a length or a product that is not a number refuses too.
+  const uniform =
+    Math.abs(lengths[1]! - s) <= 1e-5 * s &&
+    Math.abs(lengths[2]! - s) <= 1e-5 * s &&
+    Math.abs(dot(c[0]!, c[1]!)) <= 1e-5 * s * s &&
+    Math.abs(dot(c[0]!, c[2]!)) <= 1e-5 * s * s &&
+    Math.abs(dot(c[1]!, c[2]!)) <= 1e-5 * s * s;
+  if (!uniform) {
+    const [a, b, d] = lengths.map((l) => String(Number(l.toPrecision(6))));
+    throw new RangeError(
+      `a Sphere needs a uniform scale and no shear: its world axes have lengths ${a}, ${b} and ${d}`,
+    );
+  }
+  return {
+    centre: [m[12]!, m[13]!, m[14]!],
+    radius: radius * s,
+    rows: c.map((v) => [v[0] / s, v[1] / s, v[2] / s] as const),
+  };
 }
 
 /** The three rows of the affine matrix `m` (column-major), written at `out[at]` as three vec4. */
@@ -342,8 +394,11 @@ export class ScenePack {
    * unchanged scene writes none.
    *
    * @throws `RangeError` when a buffer would be more than one storage binding covers, or a
-   *   geometry's index names a vertex it does not have. The pack then forgets what it held, so the
-   *   next update builds everything again.
+   *   geometry's index names a vertex it does not have, or a `Sphere` has a radius that is not
+   *   above 0 and finite or a world matrix that is not a uniform scale without a shear.
+   * @throws `TypeError` when a mesh holds a geometry that is not a `BufferGeometry`, or the
+   *   material of a `Sphere` emits. After any of these the pack forgets what it held, so the next
+   *   update builds everything again.
    */
   update(scene: Scene): ReadonlySet<SceneBuffer> {
     try {
@@ -401,11 +456,13 @@ export class ScenePack {
   #update(scene: Scene): ReadonlySet<SceneBuffer> {
     const written = new Set<SceneBuffer>();
     const meshes: Mesh[] = [];
+    const spheres: Sphere[] = [];
     scene.traverseVisible((o) => {
       if (o instanceof Mesh) meshes.push(o);
+      else if (o instanceof Sphere) spheres.push(o);
     });
 
-    // 1. The geometries.
+    // 1. The geometries. A `Sphere` has none.
     let geometryChanged = this.#geometryMoved;
     this.#geometryMoved = false;
     for (const mesh of meshes) {
@@ -428,11 +485,18 @@ export class ScenePack {
       written.add('triangles').add('vertices').add('nodes');
     }
 
-    // 2. The materials.
+    // 2. The materials, of the meshes and the spheres in one table.
     let materialsChanged = false;
-    for (const mesh of meshes) {
-      const m = mesh.material;
+    for (const o of [...meshes, ...spheres]) {
+      const m = o.material;
       const words = packMaterial(m);
+      if (o instanceof Sphere) {
+        if (!(o.radius > 0 && Number.isFinite(o.radius)))
+          throw new RangeError(`a Sphere's radius must be above 0 and finite: ${o.radius}`);
+        // The light table lists triangles, so next-event estimation could not sample the sphere.
+        if ((new Uint32Array(words.buffer)[MATERIAL_PARAMS * VEC4 + 3]! & MATERIAL_EMITS) !== 0)
+          throw new TypeError('a Sphere does not emit: the light table lists triangles only');
+      }
       const known = this.#materials.get(m);
       if (known === undefined) {
         this.#materials.set(m, { version: m.version, index: this.#materials.size, words });
@@ -459,6 +523,16 @@ export class ScenePack {
         blas,
         material: this.#materials.get(mesh.material)!,
         world: mesh.matrixWorld.elements,
+      });
+    }
+    for (const o of spheres) {
+      const sphere = sphereWords(o.matrixWorld.elements, o.radius);
+      if (sphere === undefined) continue;
+      placed.push({
+        blas: undefined,
+        sphere,
+        material: this.#materials.get(o.material)!,
+        world: o.matrixWorld.elements,
       });
     }
     const list = this.#instanceList(placed);
@@ -569,7 +643,8 @@ export class ScenePack {
 
   /**
    * The instance array in the scene's order, one INSTANCE_STRIDE record per placed mesh whose
-   * matrix has an inverse, with each one's world box. `kept` lists the placed meshes it holds.
+   * matrix has an inverse and per placed sphere, with each one's world box. `kept` lists the
+   * placed items it holds.
    */
   #instanceList(placed: readonly Placed[]): {
     words: Float32Array;
@@ -579,7 +654,9 @@ export class ScenePack {
     const kept: number[] = [];
     const inverses: Float64Array[] = [];
     placed.forEach((p, i) => {
-      const inverse = inverseAffine(p.world);
+      // A placed sphere has passed its own check of the matrix (`sphereWords`), and needs no
+      // inverse.
+      const inverse = p.sphere === undefined ? inverseAffine(p.world) : new Float64Array(0);
       if (inverse === undefined) return;
       kept.push(i);
       inverses.push(inverse);
@@ -590,22 +667,36 @@ export class ScenePack {
     kept.forEach((index, i) => {
       const p = placed[index]!;
       const at = i * WIDTH.instances;
+      if (p.sphere !== undefined) {
+        const { centre, radius, rows } = p.sphere;
+        words.set([...centre, radius], at + INSTANCE_MATRIX * VEC4);
+        rows.forEach((row, r) => words.set([...row, 0], at + (INSTANCE_INVERSE + r) * VEC4));
+        bits.set([0, 0, 0, p.material.index], at + INSTANCE_BASES * VEC4);
+        bits.set([INSTANCE_SPHERE, NONE, 0, 0], at + INSTANCE_FLAGS * VEC4);
+        // The exact box, in f64 from the f32 words the kernel tests. `buildTlas` stores it
+        // rounded outward to f32.
+        const c = words.subarray(at + INSTANCE_MATRIX * VEC4, at + INSTANCE_MATRIX * VEC4 + 3);
+        const r = words[at + INSTANCE_MATRIX * VEC4 + 3]!;
+        boxes.set([c[0]! - r, c[1]! - r, c[2]! - r, c[0]! + r, c[1]! + r, c[2]! + r], i * 6);
+        return;
+      }
+      const blas = p.blas!;
       writeRows(words, at + INSTANCE_MATRIX * VEC4, p.world);
       writeRows(words, at + INSTANCE_INVERSE * VEC4, inverses[i]!);
       bits.set(
-        [p.blas.nodeBase, p.blas.primBase, p.blas.vertexBase, p.material.index],
+        [blas.nodeBase, blas.primBase, blas.vertexBase, p.material.index],
         at + INSTANCE_BASES * VEC4,
       );
-      bits.set([0, p.blas.id, 0, 0], at + INSTANCE_FLAGS * VEC4);
+      bits.set([0, blas.id, 0, 0], at + INSTANCE_FLAGS * VEC4);
       // The world box: the BLAS's box with its eight corners moved.
       const lo = [Infinity, Infinity, Infinity];
       const hi = [-Infinity, -Infinity, -Infinity];
       for (let c = 0; c < 8; c++) {
         const q = transformPoint(
           p.world,
-          p.blas.box[c & 1 ? 3 : 0]!,
-          p.blas.box[c & 2 ? 4 : 1]!,
-          p.blas.box[c & 4 ? 5 : 2]!,
+          blas.box[c & 1 ? 3 : 0]!,
+          blas.box[c & 2 ? 4 : 1]!,
+          blas.box[c & 4 ? 5 : 2]!,
         );
         for (let k = 0; k < 3; k++) {
           lo[k] = Math.min(lo[k]!, q[k]!);
@@ -653,16 +744,18 @@ export class ScenePack {
   }
 
   /** The light table over the instances whose material emits, by slot, each triangle's chance
-   *  its share of the emitted power. */
+   *  its share of the emitted power. A sphere has no triangle, and is no light. */
   #lightTable(kept: readonly Placed[], slots: readonly number[]): Float32Array {
     const rows: { slot: number; triangle: number; power: number }[] = [];
     kept.forEach((p, i) => {
+      const blas = p.blas;
+      if (blas === undefined) return;
       const words = p.material.words;
       const e = words.subarray(MATERIAL_EMISSIVE * VEC4, MATERIAL_EMISSIVE * VEC4 + 3);
       const mean = (e[0]! + e[1]! + e[2]!) / 3;
       if (!(mean > 0)) return;
-      const tris = p.blas.triangles;
-      const verts = p.blas.vertices;
+      const tris = blas.triangles;
+      const verts = blas.vertices;
       const corner = (s: number, k: number): [number, number, number] => {
         const v = tris[s * WIDTH.triangles + k]! * WIDTH.vertices;
         return transformPoint(p.world, verts[v]!, verts[v + 1]!, verts[v + 2]!);
@@ -678,7 +771,7 @@ export class ScenePack {
             u[0]! * v[1]! - u[1]! * v[0]!,
           ) / 2;
         if (area > 0)
-          rows.push({ slot: slots[i]!, triangle: p.blas.primBase + s, power: area * mean });
+          rows.push({ slot: slots[i]!, triangle: blas.primBase + s, power: area * mean });
       }
     });
     // By slot, then by triangle, so the table does not depend on the scene's order.
