@@ -83,6 +83,7 @@ pull request), and these sections:
 | [0008](0008-interaction-controls.md)         | Interaction controls: a host ray cast, four modes (orbit, select, translate, rotate) and a material inspector                               | accepted | none        |
 | [0009](0009-sampling-quality.md)             | Six quality techniques for the path tracer, one part each                                                                                   | accepted | none        |
 | [0010](0010-materials-lights-and-outputs.md) | The first public demo (M3): a principled BSDF, textures, lights, a physical camera, AOVs with EXR output and a product viewer beside Cycles | accepted | M3          |
+| [0011](0011-gaussian-splatting.md)           | Photos or a video become a 2DGS scene, trained on the compiler's reverse-mode grad and path-traced beside meshes                            | draft    | none        |
 
 The order of implementation is 0001 and 0002 first, in parallel, because M2 is written on them.
 0003 is done before the first npm release. 0004 and 0005 are needed before M3. 0006 is a list
@@ -91,3 +92,4 @@ of proposals the compiler's owner schedules. Each record names the item it waits
 0010 serves M3. It has six parts, and each part merges alone. It waits for the analytic sphere record and for record 0009 (sampling quality), which merge before it. Its texture parts wait for the compiler's change 0050.
 0008 serves no milestone of the plan. It is a change to the engine's core (the ray cast), to the addons (the controls) and to the site. The record is accepted, and its implementation runs in the steps the record lists, after the Sponza example (decision 20).
 0009 serves no milestone. It holds six parts that make the path tracer converge faster or look cleaner. The default order of the parts is 1, 2, 3, 5, 4, 6 (decision 1 of the record). The record is accepted.
+0011 serves no milestone of the plan yet. It proposes two, M3g (splats in the path tracer, after M3) and M5c (capture and training, after M5), in decision 3. Its training part waits on reverse-mode `grad` in the compiler (its C1). The owner approves it with the record.
