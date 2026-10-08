@@ -16,6 +16,28 @@ editor), **docs**.
 
 ## Log
 
+### 2026-10-09 · language · Records 0010 and 0011: three compiler needs filed as issues
+
+Pin 596c805. Draft record 0011 (2DGS capture and training, typeshade/radiance#67) and record
+0010 (M3 textures) need three things the compiler does not have. Each is now an issue on
+typeshade/typeshade. Each issue has a section "WebGL2 and CPU". There, the owner's requirement
+is that a WebGPU extension the engine uses stays usable on WebGL2 by a lowering, or falls back
+observably to the CPU tier (#130, #138). The lowerings in the issues are proposals.
+
+- Reverse-mode `grad` before 1.0 (record 0011, need C1). Forward mode needs one pass for each
+  parameter, so it cannot train a scene of many thousands of splats. The issue lists the tape,
+  runtime-length loops, a deterministic fixed-point sum for the scatter, the API, the gradient
+  check and the tiers. Filed as typeshade/typeshade#535
+  (https://github.com/typeshade/typeshade/issues/535).
+- Subgroups, `@subgroup_size` and immediates (record 0011, need C8). They are a speed path for
+  the adjoint sum, and they block nothing. The issue proposes a subgroup of size 1 on WebGL2 and
+  on the oracle, and plain uniforms for immediates on GLSL. Filed as typeshade/typeshade#536
+  (https://github.com/typeshade/typeshade/issues/536).
+- Bindless resource tables, marked "watch and design", since Chrome has them as an experiment
+  only. A table would let the path tracer sample any texture after any hit. Records 0004 and
+  0010 use four texture arrays by size class instead. Filed as typeshade/typeshade#537
+  (https://github.com/typeshade/typeshade/issues/537).
+
 ### 2026-10-06 · tooling · Change 0054 answers #468, and the direction changed
 
 Pin 596c805. The entry of 2026-10-05, "a warning on every compute module", called this renderer
