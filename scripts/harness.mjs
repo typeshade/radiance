@@ -19,6 +19,7 @@
 //   5. The probes: each gate runs once wrong on purpose and must fail. A gate that does not fail
 //      there cannot be trusted to pass.
 //   6. The site (dist/site) runs its Cornell box example, and the camera answers the mouse.
+//   7. The Sponza example starts in fly mode, and KeyF swaps the controls to orbit and back.
 //
 // It also writes a larger render to .harness/cornell.png, to look at; nothing holds that one.
 //
@@ -179,6 +180,35 @@ try {
   console.log(
     `site: the Cornell box example renders, ${during} while dragged, a new view after it, and a wheel turn dollies; .harness/site.png`,
   );
+
+  // 7: KeyF swaps the camera controls in the Sponza example (design record 0008 step 9, test 2).
+  // The example starts in fly mode and sets `data-controls` on its canvas to the active mode
+  // each time the swap helper swaps (site/src/lib/swap-controls.ts). The check needs the
+  // example set up, not a rendered frame, so it does not wait for samples.
+  const fly = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  fly.on('pageerror', (e) => errors.push(`sponza: ${e.message}`));
+  fly.on('console', (m) => {
+    if (m.type() === 'error' || m.type() === 'warning')
+      errors.push(`sponza: console.${m.type()}: ${m.text()}`);
+  });
+  await fly.goto(`${origin}/examples/sponza/`);
+  const mode = () =>
+    fly.evaluate(() => document.querySelector('canvas[data-controls]')?.dataset.controls);
+  const modeIs = (want, timeout = 2 * FRAME) =>
+    fly.waitForFunction(
+      (w) => document.querySelector('canvas[data-controls]')?.dataset.controls === w,
+      want,
+      { timeout },
+    );
+  await modeIs('fly', 4 * FRAME);
+  await fly.keyboard.press('KeyF');
+  await modeIs('orbit');
+  await fly.keyboard.press('KeyF');
+  await modeIs('fly');
+  console.log(
+    `sponza: the example starts in fly mode and KeyF swaps to orbit and back (${await mode()})`,
+  );
+  await fly.close();
 } catch (e) {
   fail(e instanceof Error ? e.message : String(e));
 }

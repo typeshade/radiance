@@ -58,7 +58,8 @@ and a 1024 spp render on WebGPU is within tolerance of the CPU oracle's render o
 kernel. Milestone **M2** is in progress. The kernel draws triangle meshes through a two-level
 BVH, behind the material record and the shading contract (design records 0001 and 0004). The
 `GLTFLoader` reads `.gltf` and `.glb` files, and the `bunny` example draws the Stanford bunny from
-one. Sponza and the benchmark scenes come next.
+one. The `sponza` example draws the Sponza atrium without its textures. `bun run bench` measures the
+speed of each scene, and `docs/benchmarks.md` holds the rows.
 
 ## Layout
 
@@ -66,7 +67,7 @@ one. Sponza and the benchmark scenes come next.
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `vendor/typeshade`           | The compiler, pinned as a git submodule. Every package is built on its public `typeshade/runtime` exports and nothing else.                                                                                                |
 | `packages/radiance`          | `@typeshade/radiance`: the engine. The math, the scene graph, cameras, geometries, materials, `Scene`, and the `PathTracer` renderer. Its kernels in TypeShade under `src/kernels` (`trace.shade.ts`, `sampler.shade.ts`). |
-| `packages/addons`            | `@typeshade/radiance-addons`: `OrbitControls`, `GLTFLoader`, the Cornell box scene and the differential scenes.                                                                                                            |
+| `packages/addons`            | `@typeshade/radiance-addons`: `OrbitControls`, `FlyControls`, `GLTFLoader`, the Cornell box scene and the differential scenes.                                                                                             |
 | `site/`                      | radiance.typeshade.dev: Starlight (the guide, the search, the API reference from the packages' JSDoc), the front page and the examples (`site/examples`), built by `bun run site` into `dist/site`.                        |
 | `site/public/stills`         | One still per example, the picture a page shows before its canvas runs, with a `.sha256` the build checks. `bun run capture:stills` captures them.                                                                         |
 | `scripts/boundary.mjs`       | The check that no package imports past `typeshade/runtime` or calls WebGPU itself.                                                                                                                                         |
@@ -77,7 +78,7 @@ one. Sponza and the benchmark scenes come next.
 | `scripts/bench.mjs`          | The benchmark. It prints a row of triangles, BVH time, frame time and paths a second for each scene. `docs/benchmarks.md` holds the rows.                                                                                  |
 | `scripts/gates/`             | One module for each gate: `differential.mjs`, `determinism.mjs` and `render.mjs`. Each exports `run()` and `probe()`. `_browser.mjs` and `_png.mjs` are shared by the gates and the harness.                               |
 | `scripts/__goldens__`        | One PNG for each example, 96 x 64 at 64 samples a pixel. The render gate holds the example's picture to it. `UPDATE_GOLDENS=1 bun run gate:render` rewrites them.                                                          |
-| `site/public/assets`         | The assets the examples load, such as `bunny.glb`. `LICENSES.md` lists the source, the licence and the SHA-256 of each one.                                                                                                |
+| `site/public/assets`         | The assets the examples load, such as `bunny.glb` and `sponza.glb`. `LICENSES.md` lists the source, the licence and the SHA-256 of each one.                                                                               |
 | `scripts/assets`             | One script for each asset. The script builds the file again from its public source (`node scripts/assets/bunny.mjs --check`).                                                                                              |
 | `scripts/scenes.ts`          | The scene table. The harness page and the oracle build each scene from it. It holds the Cornell box and the scenes `triangles`, `instances` and `lights`.                                                                  |
 | `scripts/oracle.ts`          | The path tracer's kernel on the compiler's CPU oracle, over the same scene pack the renderer uploads. It splits the frame over up to four processes (`RADIANCE_ORACLE_JOBS`).                                              |
@@ -112,6 +113,8 @@ bun run site            # the site into dist/site; site:dev serves it while you 
 bun run capture:stills  # the examples' stills, after a change to what an example draws
 RADIANCE_GPU=1 bun run capture:stills  # the same on this machine's GPU instead of SwiftShader
 ```
+
+The `harness (headless WebGPU)` and `compiler bump impact` jobs skip their steps on a docs-only pull request. Such a pull request changes only files under `docs/`, `reqs/` and `.claude/`, `README.md`, `CLAUDE.md`, `LICENSE`, and Markdown pages under `site/src/content/docs/` outside `api/`.
 
 A gate shows that it can fail before it is trusted to pass: the harness runs each gate's `probe()`.
 The probes of `gate:api` and `gate:site` need no browser, so `bun run test` runs them.

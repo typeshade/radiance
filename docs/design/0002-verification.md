@@ -57,21 +57,101 @@ ruleset will name. The gates run as steps inside them.
 to render in under three minutes on CI, each a function in `packages/addons/src/scenes/` so
 the site can show it too:
 
-| Scene       | Feature it holds                                                                 | Added at |
-| ----------- | -------------------------------------------------------------------------------- | -------- |
-| `cornell`   | Diffuse, mirror, an area light, next-event estimation, Russian roulette          | M1       |
-| `triangles` | A low-polygon mesh (a 12 x 8 sphere) with smooth normals, the BVH traversal      | M2       |
-| `instances` | Two instances of one geometry, one scaled non-uniformly, two materials           | M2       |
-| `lights`    | Three emissive triangles of different areas and colours: the light table's CDF   | M2       |
-| `physical`  | The principled BSDF at three roughness values and one transmission (record 0004) | M3       |
-| `textures`  | A textured quad under a mip level the kernel chooses (record 0004)               | M3       |
-| `hdri`      | An environment map with importance sampling                                      | M3       |
+| Scene       | Feature it holds                                                                                        | Added at             |
+| ----------- | ------------------------------------------------------------------------------------------------------- | -------------------- |
+| `cornell`   | Diffuse, mirror, an area light, next-event estimation, Russian roulette                                 | M1                   |
+| `triangles` | A low-polygon mesh (a 12 x 8 sphere) with smooth normals, the BVH traversal                             | M2                   |
+| `instances` | Two instances of one geometry, one scaled non-uniformly, two materials                                  | M2                   |
+| `lights`    | Three emissive triangles of different areas and colours: the light table's CDF                          | M2                   |
+| `spheres`   | Three mirror balls: a mesh sphere with smooth normals, a mesh sphere with `flatShading`, and a `Sphere` | record 0001, step 10 |
+| `physical`  | The principled BSDF at three roughness values and one transmission (record 0004)                        | M3                   |
+| `textures`  | A textured quad under a mip level the kernel chooses (record 0004)                                      | M3                   |
+| `hdri`      | An environment map with importance sampling                                                             | M3                   |
 
 A scene's `ORACLE` thresholds are derived when it is added: the pull request records the
 measured `mean` and the largest difference on SwiftShader, and sets `mean` at ten times the
 measured value and `abs` and `rel` at M1's (`1e-3` and 5 %), unless the measurement says
 otherwise. A threshold moved later is a reviewed change with the new measurement in the pull
 request.
+
+**The analytic sphere's instruments** (Amendment 5). The differential gate reads one pack on
+the GPU and on the oracle, and both run one formula. A wrong radius in the packer, or a wrong
+term in the quadratic, moves both images the same way, so the gate passes. Four instruments that
+do not share the pack hold the `Sphere` (record 0001, "The analytic sphere"):
+
+1. **A reference in `f64`.** `intersect.test.ts` (record 0001, step 6) holds the oracle's `t` and `q` to an independent `f64` formula. It uses the precision rule of record 0001. It also holds the silhouette. 256 by 256 rays count 18,072 hits against an area of 18,060 cells, within 0.5 %.
+2. **The agreement of the kernel and the oracle on a hit.** The row `sphere-hit` of
+   `gate:differential` holds the GPU to the oracle on one hit at a time ("The hit probe", below).
+   The number is the count of rays outside the rule: 0 of 4,096. `compareHits` in `differential.mjs` makes the count. A unit test in `gates.test.ts` holds it (see "The probes"). If the public runtime cannot dispatch the probe from the harness page, stop. Amend
+   this record and record 0001, and wait for the owner's merge. Do not drop the row.
+3. **The `spheres` scene and the `cornell` scene.** Both run through the differential gate and
+   the determinism gate. They hold the GPU to the oracle on a `Sphere`. The `spheres` scene also holds a smooth mesh ball and a flat mesh ball (record 0004, step 8). It is the GPU half of the `flatShading` flag.
+4. **The render gate's goldens and probe.** A golden shows the size of a sphere. The Cornell box's
+   goldens (`cornell-box`, `determinism` and `scene-graph`) change at record 0001, step 8. The
+   probe of the radius fails the gate when every radius grows by 1 %.
+
+**The hit probe** (Amendment 5). The probe runs `hitSphere` alone, on the GPU and on the oracle,
+over one stored list of rays. The row `sphere-hit` compares the two answers. These are its parts:
+
+- **The file.** `scripts/probes/hit-sphere.shade.ts` has one compute entry, `probe`, with
+  `@workgroup_size(64, 1, 1)`. Invocation `i` reads ray `i`, calls `hitSphere` and writes hit `i`.
+  The file lives in `scripts/`, so it may import `intersect.shade.ts` by its path.
+- **The bindings.** `rays` is a read-only storage `array<vec4<f32>>` of 12,288 elements. Each ray
+  takes 3 elements, 48 bytes: `(o.xyz, limit)`, `(d.xyz, 0)` and `(c.xyz, r)`. `hits` is a
+  storage `array<vec4<f32>>` of 4,096 elements, 16 bytes each: `(t, q.xyz)`, as `hitSphere`
+  returns them. A miss has `t` below 0, and the row does not compare its `q`.
+- **The dispatch.** The entry runs on 64 workgroups. The 4,096 invocations take one ray each. No
+  binding holds a count.
+- **The export.** `scripts/harness-entry.ts` exports the compiled entry as `hitSphereProbe`. A
+  compiled entry is a function of its bindings and its workgroups. It reads each binding it writes
+  back into the array that the caller passed, as `trace` does (`trace.shade.typeshade.ts`). The
+  row sends `rays` and a zeroed `hits` to the page as plain arrays of numbers, calls the export,
+  and gets `hits` back. `scripts/bundle.ts` bundles the page with `shadePlugin`, as it does today.
+- **The oracle's half.** The row compiles `hit-sphere.shade.ts` with `compile`. It runs `probe` on
+  the same `rays` with `compileModuleJs` at `f32` precision, as `scripts/oracle.ts` does for
+  `trace`.
+- **The rays.** `hitRays()` in `scripts/gates/differential.mjs` returns the 4,096 rays. It draws
+  from the generator `mulberry32` with seed 1, computes in `f64`, and rounds each word to `f32`.
+  Every ray has `limit` 1e30. The next list gives what each ray draws.
+- **The comparison.** `compareHits(gpu, cpu, rays)` takes three `Float32Array`s: the GPU's `hits`,
+  the oracle's `hits` and `rays`. It needs `rays` for the scale of each bound. It answers
+  `{ ok, outside, total, worst, message }`. `ok` is true when `outside` is 0. `worst` is the
+  largest `t` error in units of `ulp(S)`. `message` names the first ray outside, with both answers.
+
+What each ray draws, in this order:
+
+- The radius `r`, log-uniform from 0.01 to 100.
+- Each coordinate of the centre `c`, uniform from -1,000 to 1,000.
+- The length of `d`, log-uniform from 10^-3 to 10^3.
+- For each of 3,584 aimed rays, the origin `o`. It lies at a distance log-uniform from 1.0001 to
+  10^5 radii from `c`, in a uniform random direction.
+- Then the direction of an aimed ray. It points at a spot in the plane through `c` that is
+  perpendicular to the line from `o` to `c`. The spot lies at an impact parameter uniform from 0
+  to 0.9 radii, at a uniform random angle. These are the rays of precision rule 1.
+- For each of 512 away rays, the origin at a distance log-uniform from 1.00005 to 10^5 radii. Its
+  direction is uniform over the hemisphere with `dot(d, o - c)` above 0. These are the rays of
+  rule 3.
+
+A ray is outside the rule when any of these holds. Two misses are inside the rule.
+
+- One answer is a hit and the other is a miss. A miss has `t` below 0.
+- A `t` is `NaN`, or a hit has a value that is not finite.
+- Both are hits, and `abs(t_gpu - t_cpu) * length(d) / r` is above `16 * ulp(S)`. `S` is
+  `max(1, the largest abs(o_k - c_k) / r)`. `ulp(S)` is `2^(floor(log2(S)) - 23)`.
+- Both are hits, and `length(q_gpu - q_cpu)` is above `16 * ulp(S) + 8e-7`.
+
+**Why these bounds.** Fact: rule 1 of record 0001 bounds the `t` error against `f64` at 16 units.
+Rule 2 bounds only `abs(length(q) - 1)`. It does not bound the direction of `q`. Inference: `q`
+moves by `d * dt / r`, so its direction error is at most the `t` error in radii. The final
+`normalize` adds at most 8e-7, which is twice the 4e-7 of rule 2. Decided by default. Step 6 of
+record 0001 measures the largest `t` error and `q` difference of the GPU against the oracle. It
+amends these bounds if a measure passes them.
+
+The `cornell` scene's two spheres become `Sphere` objects at record 0001, step 8. The existing
+rule re-derives `ORACLE.mean`: ten times the measured mean, rounded up, with `abs` and `rel` at
+M1's. The pull request of that step records the old value, the measured mean, the largest
+difference and the new value. The `triangles` scene keeps its mesh sphere, so both kinds are in
+the gates. The `spheres` scene's `ORACLE_SPHERES` follows the same rule, at record 0001, step 10.
 
 **The determinism report lint** is a unit test, `packages/radiance/src/kernels/determinism.test.ts`:
 it compiles every kernel module with the compiler (scripts and tests may import it, packages
@@ -152,6 +232,19 @@ gate reports it:
 - `api`: a surface bake with one line removed is a diff.
 - `bundle`: a floor above the measured size fails, so an empty bundle cannot pass.
 - `journeys`: a tarball with `src/index.ts` removed fails the import.
+- The sphere's radius (Amendment 5), in two places. In `intersect.test.ts`, the silhouette count
+  at a radius of 0.404, 1 % above 0.4, is 18,440 in `f64`. That is 2.1 % above the area of 18,060
+  cells, so the 0.5 % tolerance rejects it. In the render gate, `scripts/gates/render.mjs` renders
+  `cornell-box` once more with the `radius` of every `Sphere` times 1.01, and asserts that
+  `comparePictures` fails against the golden. Inference: a ball of radius 0.4 covers about 11 pixels in radius at 96 by 64. So a radius 1 % larger moves about 69 edge pixels of each ball by 0.11 of a pixel's contrast. That passes 4/255 where the contrast is above 36/255, and it passes
+  the share bound of 6 pixels. Record 0001, step 8, measures it, and amends this paragraph if the
+  count is 6 or fewer. The probe needs a way to reach the `Sphere` objects of an example's scene
+  from the harness. The step chooses it, and amends this record if a gate's interface changes.
+- The sphere's hit (Amendment 5). In `gates.test.ts`, `compareHits` gets 4,096 pairs of equal
+  hits, each ray with `S` of 1.5, so `ulp(S)` is 2^-23. One `t` moved by 17 units, one over the
+  bound of 16, fails: 1 of 4,096 rays is outside the rule. The same list with the move at 15
+  units passes: 0 of 4,096. One hit paired with a miss fails: 1 of 4,096. One `q` moved by 1e-5
+  fails: 1 of 4,096.
 
 **CI.** The `check` job gains the `site`, `api` and `bundle` steps and the determinism lint
 (inside `bun run test`). The `harness` job gains the `differential` scenes, `determinism`,
@@ -203,7 +296,9 @@ M3).
 - `scripts/bench.mjs`, `docs/benchmarks.md` (new).
 - `scripts/bundle-budget.json` (new), `scripts/bake-api-surface.ts` (record 0003).
 - `packages/radiance/src/kernels/determinism.test.ts` (new).
-- `packages/addons/src/scenes/`: the differential scenes.
+- `packages/addons/src/scenes/`: the differential scenes. Amendment 5 adds `SpheresScene.ts` and
+  changes `CornellBox.ts` (record 0001, steps 8 and 10). It changes `scripts/scenes.ts` and `scripts/gates/differential.mjs` (`SCENES`, the row `sphere-hit` and `compareHits`). It changes `scripts/harness-entry.ts` and `scripts/gates/gates.test.ts`. It changes `ORACLE_SPHERES` and the comment of `ORACLE` in `scripts/gates.mjs`. It changes the radius probe in `scripts/gates/render.mjs`. It adds `scripts/probes/hit-sphere.shade.ts`. It changes the goldens and stills of `cornell-box`,
+  `determinism`, `scene-graph` and the new `spheres`.
 - `.github/workflows/ci.yml`: the steps, and the artifact step of the `harness` job, which names
   `.harness/render-*.png` (step 4). `README.md` (Checks). `docs/plan.md` §11 points here.
 - `CLAUDE.md`: "Before pushing" names `bun run check` and `bun run harness` as today. Nothing
@@ -229,6 +324,11 @@ M3).
 7. **The benchmark.** `scripts/bench.mjs`, `docs/benchmarks.md` with the procedure and the first
    rows (SwiftShader from a manual run on the build machine, and the owner's GPU).
 8. **The journeys gate**, before the first release (record 0003).
+9. **The analytic sphere's instruments** (Amendment 5), delivered with record 0001, steps 6, 8 and 10. Step 6 delivers the `f64` reference and the silhouette test with its probe. It also delivers the row `sphere-hit` with `compareHits` and its probe. Step 8 delivers the new `ORACLE.mean`, the three
+   rewritten goldens, the render probe of the radius and the recaptured stills. Step 10 delivers
+   the `spheres` scene with its derived `ORACLE_SPHERES`, and shows 0 differing floats in
+   `gate:determinism`. Done when `bun run harness` passes with the numbers recorded in each pull
+   request.
 
 ## Decisions for the owner
 
@@ -239,6 +339,11 @@ M3).
 3. Speed is a recorded row, not a gate, until a real GPU runner exists.
 4. A scene per feature in the differential, with its thresholds derived by the rule above.
 5. The stills stay the site's pictures and are not goldens.
+6. The `Sphere` is held by instruments that do not share its pack. They are an `f64` reference,
+   a probe of the hit on the GPU, the goldens and the radius probes. The differential gate alone cannot hold
+   it. The Cornell box's spheres become `Sphere` objects. A unit test holds the agreement of the kernel and the oracle on a hit. A wrong radius fails the gate. This is the owner's
+   decision of 2026-10-06 (final). A scene `spheres` joins the differential scenes. That part is decided by
+   default. Amendment 5 adds this decision.
 
 ## Record
 
@@ -404,6 +509,67 @@ delivers step 7 merges after this one.
   `verification: pending`. Proposed: decision 3 is verified by inspection. The script holds no
   bound, and no gate reads `docs/benchmarks.md`. `scripts/bench.test.ts` states this in its header.
   This amendment adds no test.
+
+**Amendment 5** (2026-10-06, UTC). The owner decided on 2026-10-06 that the engine gains an
+analytic sphere, the `Sphere` kind (record 0001, Amendment 3). The Cornell box's two spheres
+become `Sphere` objects. The owner also decided that a unit test holds the agreement of the kernel and the oracle on a hit. The owner decided too that a wrong radius fails the gate. This amendment states how. It
+changes these places:
+
+1. "The differential scenes": a `spheres` row.
+2. Two new paragraphs after the paragraph on thresholds: "The analytic sphere's instruments" and
+   "The hit probe".
+3. "The probes": the radius probe and the hit probe.
+4. "What it touches".
+5. Step 9.
+6. Decision 6.
+
+The decisions 1 to 5 keep their numbers and their text. The merge of the pull request that
+carries this amendment is the owner's acceptance. The pull requests of record 0001, steps 6, 8
+and 10, merge after it. The configuration is `main` at 13b9e88, the compiler pinned at 596c805,
+bun 1.3.14 and node v22.22.0, on 2026-10-06. The two entries on the Cornell box read `main` at 5c29193, which includes a89aaa1 (#54). The numbers come from throwaway scripts that this
+pull request does not keep. Each is an observed result:
+
+- **The shared pack.** Fact: `scripts/oracle.ts` binds the arrays of the `ScenePack` that the
+  renderer uploads, and it runs `trace.shade.ts`. So a wrong radius that the packer writes is
+  in both images. The gate compares the two images only.
+- **The silhouette.** In `f64`, 256 by 256 rays hit 18,072 times. They went over the square from -0.2 to 0.2 at unit distance, from 3.4 from a sphere of radius 0.4. The area is 18,060 cells.
+  A radius of 0.404 gave 18,440. A radius of 0.396 gave 17,708.
+- **The Cornell counts.** Today `createCornellBox()` gives 7,940 triangles, 4,298 vertices and
+  4,741 nodes. These are `ScenePack.counts` on `main` at 5c29193, which includes a89aaa1 (#54). At step 8 of record 0001 the test expects 4 triangles,
+  8 vertices, 8 instances, 2 lights and 7 nodes. Of the nodes, 5 are the TLAS, from a script on
+  the exact boxes. The other 2 are the two plane BLASes, one leaf each (an inference, until the
+  test runs).
+- **The old thresholds.** `ORACLE` is `{ abs: 1e-3, rel: 0.05, mean: 2e-5 }` on `main` at 5c29193. a89aaa1 (#54) set `mean` to 2e-5. It was 3.3e-6 at 13b9e88.
+  The pull request of step 8 replaces `mean` by the rule.
+
+The dispositions:
+
+- **The agreement test.** The owner's decision: a unit test holds that the kernel and the oracle
+  agree on a hit, to the precision rule. Decided by default: it has two halves. The oracle against
+  an `f64` formula is a unit test of `bun run test`. The GPU against the oracle is the row
+  `sphere-hit` of `gate:differential`, with a probe that dispatches `hitSphere` ("The hit
+  probe"). Fact: no gate runs a kernel function alone today. Fact (read): a compiled entry is a
+  function of its bindings and workgroups, `Resident` has `read()`, and the harness page is
+  bundled with `shadePlugin`. Open: whether the public runtime can dispatch the probe from the
+  harness page. Next action: step 6 of record 0001 runs it. If it cannot, step 6 stops, and the
+  amendment waits for the owner's merge.
+- **The scene `spheres`.** Decided by default: it holds three mirror balls in one room, a smooth
+  mesh ball, a flat mesh ball and a `Sphere`. It is also the example of record 0001, step 10. It
+  replaces the first draft's scene of a floor, an ellipsoid and a mirrored ball. The ellipsoid is
+  refused (record 0001, "A non-uniform scale is refused").
+- **The new `ORACLE.mean`.** Decided by default: the existing rule. The record gives no number,
+  because the measure needs the kernel of step 6 of record 0001.
+- **The radius probe of the render gate.** Proposed: a scale of 1.01 on the `radius` of every
+  `Sphere` of `cornell-box`. The count of pixels beyond 4/255 is an inference until step 8 of
+  record 0001 measures it. If it measures 6 or fewer, the probe fails and this record is amended
+  with a larger error.
+- **The goldens.** Proposed: `cornell-box`, `determinism` and `scene-graph` are the three that
+  change at step 8 of record 0001, because each calls `createCornellBox`. The pull request commits
+  only those that change, and shows each old and new picture, as step 4 requires. Step 10 adds
+  the golden `spheres`.
+- **Closed: the scene pull request.** a89aaa1 (#54) holds the 64 by 32 tessellation and the
+  two-sided lamp, and it regenerated the same goldens. Step 8 of record 0001 rewrites each golden
+  once more, for the `Sphere`.
 
 **Configuration and validation record.** This record does not yet apply. Implementation will
 record each gate's first measured numbers, the pin, and the CI run that first ran it.

@@ -58,6 +58,14 @@ export const EXAMPLES: readonly ExampleEntry[] = [
     load: () => import('./bunny.ts'),
   },
   {
+    id: 'sponza',
+    title: 'Sponza atrium',
+    description:
+      'A glTF atrium of 227,327 triangles in 22 meshes, lit through its open roof: a camera inside a large scene. Press W A S D to move and F to switch to orbit. Model by Frank Meinl (Crytek), CC BY 3.0.',
+    category: 'Path tracing',
+    load: () => import('./sponza.ts'),
+  },
+  {
     id: 'determinism',
     title: 'Determinism',
     description:

@@ -69,7 +69,8 @@ that changes the surface commits the re-bake, and the diff is the review.
    `color`, `emissive`, `emissiveIntensity`, `roughness`, `metalness`, `ior`, `transmission`,
    `map`, `normalMap`, `roughnessMap`, `metalnessMap`, `emissiveMap`, `specularIntensity`.
 3. A thing neither has takes the name the plan uses: `PathTracer`, `samplesPerFrame`,
-   `maxSamples`, `watchdogBudget`, `readRadiance`.
+   `maxSamples`, `watchdogBudget`, `readRadiance`. Amendment 1 adds `Sphere`, the analytic
+   sphere, because three.js has no analytic sphere object.
 
 So `QuadGeometry` becomes `PlaneGeometry` (record 0001), and nothing else is renamed at 0.1.0.
 
@@ -151,9 +152,9 @@ pre-1.0 and its minor is the breaking position).
 - core: `Object3D`, `Group` (new: an `Object3D` with nothing added, as three.js has it), `EventDispatcher`, `Clock`.
 - cameras: `Camera`, `PerspectiveCamera`.
 - geometries: `Geometry`, `BufferGeometry`, `SphereGeometry`, `PlaneGeometry`, `BoxGeometry`.
-- materials: `Material`, `MaterialParameters`, `DiffuseMaterial`, `MirrorMaterial`,
+- materials: `Material` (with `flatShading`, Amendment 1), `MaterialParameters` (with `flatShading`), `DiffuseMaterial`, `MirrorMaterial`,
   `EmissiveMaterial`, `PhysicalMaterial`, `PhysicalMaterialParameters`.
-- objects: `Mesh`, `Scene`.
+- objects: `Mesh`, `Sphere(radius, material)` (Amendment 1), `Scene`.
 - renderers: `Renderer`, `PathTracer`, `PathTracerParameters`, `TARGET_FORMAT`, `CANVAS_FORMAT`.
 
 `@typeshade/radiance-addons`: `OrbitControls`, `OrbitControlsEvents`, `GLTFLoader`,
@@ -194,6 +195,31 @@ Removed from the surface: `packScene`, `cameraUniforms`, `PackedScene`, `CameraU
 ## Record
 
 **Approval and plan record.** Accepted on 2026-10-05 (UTC). The owner approved the merge of typeshade/radiance#6 in the conversation, which merged this record as `draft` at 9e8b479. The owner then said to implement the records with Opus 5.5 and Sonnet 5.5, and that go-ahead is the acceptance. Every entry of "Decisions for the owner" stands as proposed. Entry 6 stays open: the record's proposal, sources only at 0.1.0, applies until the owner decides.
+
+**Amendment 1** (2026-10-06, UTC). Record 0001, Amendment 3, adds one object class, the analytic
+sphere `Sphere`. Record 0004, Amendment 3, adds one member of `Material`, `flatShading`. A new export
+or a new member is a change to this surface (`docs/design/README.md`, the criterion "exports"), so
+this record lists both. The merge of the pull request that carries this amendment is the owner's
+acceptance. It changes three places: the naming rule 3, the list of objects, and the list of
+materials under "The public surface at 0.1.0". The decisions keep their numbers and their text.
+
+- **The name.** The owner's decision of 2026-10-06: `Sphere`, as pbrt and Mitsuba name the shape.
+  Rule 1 does not apply to the object, because three.js has no analytic sphere object. Rule 3
+  applies. Fact: three.js has a class `Sphere` too, a bounding sphere in its math. This package
+  exports no such class, and its math list is `Vector3`, `Color`, `Euler`, `Matrix4` and `Box3`. A
+  program ported from three.js that imports `Sphere` for a bounding sphere finds a different
+  class. Inference: the name is rare in a scene. The record does not rename it.
+- **The shape.** Decided by default: `new Sphere(radius, material)` extends `Object3D`, as `Mesh`
+  does, with `radius` and `material` as plain properties and `isSphere` true. Rule "Constructor
+  shapes" says a geometry takes positional numbers and a material takes a parameters object. A
+  `Sphere` is an object and not a geometry, and it takes its two parts positionally, as `Mesh`
+  does. The class has no `version`. Record 0001, "The analytic sphere", states the rest.
+- **The flag.** Decided by default: `Material.flatShading` is a boolean accessor, default false,
+  and `MaterialParameters.flatShading` is an optional boolean. The name is three.js's. Record 0004
+  states the rest.
+- **The surface bake.** The pull request of record 0001, step 7, commits the bake with `Sphere`
+  added. The pull request of step 9 commits it with the two members of `flatShading` added.
+  `gate:api` fails on any other change.
 
 **Configuration and validation record.** This record does not yet apply. Implementation will
 record the bake's first commit, the dry run's workflow run id, and the 0.1.0 release's tag,

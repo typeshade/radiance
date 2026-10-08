@@ -170,6 +170,8 @@ export default function ExampleStage(props: { id: string; copy: StageCopy; compa
         if (!Number.isFinite(r.renderer.maxSamples))
           r.renderer.maxSamples = compact ? MAX_SAMPLES_COMPACT : MAX_SAMPLES;
         if (r.controls === undefined) canvas.setAttribute('aria-label', copy.canvasLabelFixed);
+        else if (r.controlsLabel !== undefined)
+          canvas.setAttribute('aria-label', `${entry.title}. ${r.controlsLabel}`);
         if (r.panel !== undefined && panel.current !== null) {
           panel.current.replaceChildren(r.panel);
           setHasPanel(true);

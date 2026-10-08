@@ -47,10 +47,7 @@ function to differentiate.
 | `[7]` | bits(emissiveMap)   | reserved           | reserved           | reserved             |
 
 - `emissive` is stored already multiplied by `emissiveIntensity`. The kernel reads one colour.
-- `type` is the low 8 bits of `[2].w`: 0 diffuse, 1 mirror, 2 physical. The flags above them:
-  bit 8 "emits" (any channel of `[1].xyz` above 0, computed by the host so the kernel tests one
-  bit), bit 9 "double sided" (the material emits from its back face too, as "The rules of the
-  surface and of emission" says), bit 10 "alpha cutout" (M3).
+- `type` is the low 8 bits of `[2].w`: 0 diffuse, 1 mirror, 2 physical. The flags above them are these. Bit 8 is "emits": any channel of `[1].xyz` is above 0. The host computes it, so the kernel tests one bit. Bit 9 is "double sided": the material emits from its back face too, as "The rules of the surface and of emission" says. Bit 10 is "alpha cutout" (M3). Bit 11 is "flat shading" (Amendment 3, "Flat shading").
 - A texture id is `0xffffffff` for none, else `(class << 24) | layer` (the texture plan below).
 - M2 fills `[0]` to `[3]` with the textures all none, and `[4]` to `[7]` zero with `[7].x` none.
   M3 fills the rest. The stride does not change between.
@@ -63,7 +60,8 @@ function to differentiate.
 says which scattering the kernel applies. Diffuse is 0 and mirror is 1, as `kind` had them, and
 physical is 2. Each subclass sets `type` from the constants of `materials.shade.ts`
 (`MATERIAL_DIFFUSE`, `MATERIAL_MIRROR`, `MATERIAL_PHYSICAL`), and `packMaterial` stores it in
-the low 8 bits of `[2].w`. `DiffuseMaterial` and `MirrorMaterial` stay as they are.
+the low 8 bits of `[2].w`. `Material` gains `flatShading` (Amendment 3), default false, as
+three.js's `material.flatShading`. `DiffuseMaterial` and `MirrorMaterial` stay as they are.
 `EmissiveMaterial` stays: a black diffuse that emits. `PhysicalMaterial`, new, takes
 `PhysicalMaterialParameters`: `color`, `metalness` (0), `roughness` (0.5), `ior` (1.5),
 `transmission` (0), `specularIntensity` (1), `emissive`, `emissiveIntensity`, and at M3 `map`,
@@ -132,7 +130,10 @@ the pull request that implements step 7. The rules follow:
 - **The shading normal.** `ns` is the vertices' normals, interpolated by the barycentric weights,
   moved to world space by the inverse transposed and made unit. `surfaceAt` turns it to the ray's
   side when the ray met the back face. `ns` is `ng` when the vector in world space has length 0.
-  `ns` is `ng` too when its dot product with `ng` is 0 or less after the turn.
+  `ns` is `ng` too when its dot product with `ng` is 0 or less after the turn. On a `Sphere`
+  (record 0001, "The analytic sphere") `ns` is `ng`, the same vector. No interpolated normal
+  exists there, so none of these fallbacks applies. On a material with `flatShading`, `ns` is `ng`
+  too ("Flat shading").
 - **A direction under the surface.** This rule holds for a reflection lobe, the only kind at M2. The
   reflection of `-wo` about `ns` can go under `ng`. For a mirror sample, let
   `wi = reflect(-wo, ns)`. When `dot(wi, ng)` is less than 0, `sampleBsdf` returns
@@ -156,6 +157,76 @@ the pull request that implements step 7. The rules follow:
   convex surface always reflects into the half-space of the viewer. So the band comes from the
   shading normal and not from physics. A transmission sample goes under `ng` on purpose, so this
   rule does not hold for it. Step 2 states the end rule for a transmission sample.
+- **The fold on a `Sphere`.** The fold does nothing there. On a `Sphere` `ns` is `ng`, and `ng`
+  faces the ray, so `dot(wo, ng)` is above 0. For `wi = reflect(-wo, ng)`, the value
+  `dot(wi, ng)` equals `dot(wo, ng)` in exact arithmetic. So it is above 0, and no reflection goes
+  under `ng`. The band of Amendment 2 needs an `ns` that differs from `ng`, so a sphere has no
+  band. Fact: a throwaway script took 4,000,000 points spread evenly over the disc that a sphere
+  covers from far away. Each point gave one mirror reflection in `f32`. It gave 0 reflections with
+  `dot(wi, ng)` of 0 or less. The end rule of the path loop stays as it is. Inference: it can end
+  a path only where `dot(wo, ng)` is within the rounding of 0, at the exact silhouette.
+- **The texture coordinates of a `Sphere`.** The uv is the spherical parameterisation of three.js's
+  `SphereGeometry`, in the sphere's own space. That space is the world space turned by the rows
+  `[3]` to `[5]` of its instance (record 0001, "The analytic sphere"). The texture turns and
+  mirrors with the sphere. The point `qo` is the unit vector from the centre, in the sphere's own
+  space (not the world-space `q` of `Hit`), and `rho` is `sqrt(qo.x * qo.x + qo.z * qo.z)`:
+  - `phi = atan2(qo.z, -qo.x)`, from -pi to pi. `u` is `phi / (2 * pi)`, plus 1 when that is
+    below 0. The seam is the half-axis of -x, where `u` is 0 and 1. `u` is 0 at a pole.
+  - `theta = atan2(rho, qo.y)`, from 0 to pi. `v` is `1 - theta / pi`. `v` is 1 at the north pole
+    (+y), as in three.js.
+  - `dpdu` is the radius times `2 * pi * (qo.z, 0, -qo.x)`, moved from the sphere's space to world
+    space as a direction. It is 0 at a pole, and the fallback frame about `ns` then applies. `dpdv` is not
+    stored. Step 3 states the footprint of a texture read, and it may need `dpdv`.
+
+  The kernel computes the two angles with `sphereUv` in `intersect.shade.ts`. It calls neither
+  `atan2` nor `acos` of the language, because their error on a GPU is large (record 0005 gives the
+  numbers). `sphereUv` calls `atan2p`, which uses `+`, `-`, `*`, `/`, `sqrt` and comparisons only:
+
+  ```ts
+  function atan2p(y: f32, x: f32): f32 {
+    const ay = abs(y);
+    const ax = abs(x);
+    const big = max(ay, ax);
+    if (big === 0) return 0;
+    const r = min(ay, ax) / big; // from 0 to 1
+    const r1 = r / (1 + sqrt(1 + r * r)); // the angle halved
+    const h = r1 / (1 + sqrt(1 + r1 * r1)); // halved again: at most 0.1989
+    const h2 = h * h;
+    const s = h * (1 + h2 * (-1 / 3 + h2 * (1 / 5 + h2 * (-1 / 7 + h2 * (1 / 9 + h2 * (-1 / 11 + h2 * (1 / 13 - h2 / 15)))))));
+    let a = 4 * s;
+    if (ay > ax) a = PI / 2 - a;
+    if (x < 0) a = PI - a;
+    return y < 0 ? -a : a;
+  }
+  ```
+
+  The comparisons choose between pieces of one continuous curve, as record 0005, rule 2, allows.
+  Fact: a throwaway script computed this form with every operation rounded to `f32`, at 300,000
+  points. Against `atan2` and `acos` in `f64`, the worst angle error was 3.81e-7 rad. The worst
+  error of `u` was 8.93e-8 and of `v` was 1.23e-7. Inference: `sphereUv` costs about 4 `sqrt`, 6
+  `/` and 60 other operations for each sphere hit. Step 6 of record 0001 measures the frame time
+  of `cornell`. If `sphereUv` raises it by more than 3 %, the kernel computes the uv only for a
+  material with a texture id, which M3 adds.
+
+- **Flat shading.** The owner decided on 2026-10-06 that the material record gains a flag
+  `flatShading`, default false, as three.js's `material.flatShading`. The rules follow:
+  - The flag is bit 11 of the type and flags word `[2].w` (`MATERIAL_FLAT_SHADING`, 0x800). That
+    word is bytes 44 to 47 of the record, little-endian. So the flag is bit 3 of byte 45, mask
+    0x08.
+  - The default is false. The bit is 0 in the record of a new material, and `Material.flatShading`
+    is false. A setter adds 1 to `version`, as every setter of `Material` does.
+  - The kernel branch is in `surfaceAt` (`intersect.shade.ts`). It reads the flag of the hit's
+    material through `materialFlat(m)` in `materials.shade.ts`. When the flag is set, `ns` is `ng`
+    for every triangle of the material, whatever its vertex normals are. The uv, `dpdu` and the
+    other fields do not change.
+  - The oracle branch is the same source. The oracle runs `surfaceAt` through `compileModuleJs`, so
+    it takes the branch that the kernel takes. No second copy exists.
+  - The flag changes the shading only. It changes no geometry, no BVH node and no hit.
+  - With `ns` equal to `ng`, the fold of "A direction under the surface" does nothing, as on a
+    `Sphere`.
+  - The flag belongs to the material. Two meshes that share one geometry may differ, one flat and
+    one smooth, as in three.js. A mesh keeps smooth vertex normals by default, and a glTF mesh
+    keeps the normals of its file. Both are the owner's decisions of 2026-10-06.
 
 **The path loop** (`radiance()` in `trace.shade.ts`) becomes these steps for each bounce:
 
@@ -277,6 +348,12 @@ optional and `dpdu` from the triangle is exact for a triangle). Texture atlases 
 - `src/kernels/materials.shade.ts` (new), `trace.shade.ts`, `intersect.shade.ts` (`surface`).
 - `src/renderers/scene-pack.ts` (the record's packer).
 - `packages/addons/src/loaders/GLTFLoader.ts` (`pbrMetallicRoughness` to `PhysicalMaterial`).
+- Amendment 3 adds `src/kernels/intersect.shade.ts` (`sphereSurfaceAt` and `sphereUv`, record
+  0001, step 6) and a test in `materials.test.ts`. The test takes a mirror sample at the hit of
+  100,000 primary rays across the silhouette of a `Sphere`. None has `dot(wi, ng)` of 0 or less:
+  the count is 0 of 100,000. It also adds `Material.flatShading`, `MATERIAL_FLAT_SHADING` and
+  `materialFlat` in `materials.shade.ts`, the flag bit in `packMaterial` and the branch in
+  `surfaceAt` (step 8).
 - Tests: `materials.test.ts` on the oracle (a diffuse sample's weight equals its colour, a mirror
   sample is the reflection above `ng`. `evalBsdf`'s pdf integrates to 1 over the hemisphere, within
   2 % by a 4,096-sample estimate. `emission` is zero on the back face). `scene-pack.test.ts` (the
@@ -322,26 +399,44 @@ optional and `dpdu` from the triangle is exact for a triangle). Texture atlases 
    Done when a test sends `0xffffffff` through the oracle's binding and reads it back, the
    Cornell box gate and the render gate pass with no change of a number, and the determinism
    lint passes.
-7. **The fold of a mirror sample.** `sampleBsdf` in `materials.shade.ts` folds a mirror direction
-   under `ng` back across `ng`, as "A direction under the surface" states. `radiance` in
+7. **The fold of a mirror sample.** `sampleBsdf` in `materials.shade.ts` folds a mirror direction under `ng` back across `ng`. "A direction under the surface" states the rule. `radiance` in
    `trace.shade.ts` does not change. A test in `materials.test.ts` calls `sampleBsdf` with a grazing
    `wo` and an `ns` tilted away from `ng`. It asserts that `dot(wi, ng)` is above 0. A second
    assertion covers a mirror sample whose reflection is above `ng`. That sample keeps
-   `reflect(-wo, ns)`. The test carries `Verifies: Design 0004.6`. The pull request measures the
-   fold at the edge of the band on the Cornell box sphere. It measures at 256 and 768 pixels. It
-   shows that the radiance has no step there. It measures the alternative too, which reflects about
-   `ng` in that case. If it delivers the alternative, it amends this record first. The golden of an
-   example that uses `MirrorMaterial` can change. The candidates are `cornell-box`, `determinism`,
-   `scene-graph`, `materials` and `first-scene`. The pull request runs the render gate. It lists
-   each golden that changes, with the old and the new picture.
-   `UPDATE_GOLDENS=1 bun run gate:render` rewrites every golden, so the pull request commits only
-   the goldens that change. `bun run capture:stills` recaptures the stills of every example, so the
-   pull request commits only the stills whose picture changes. The pull request commits the
-   `.sha256` file of each changed still too. The pull request measures the floor caustic again and
-   compares it with the ratio of Amendment 2. It names this record on a line of its own,
-   `Design: 0004`. Done when four things hold. The test passes. The render gate passes on the
-   goldens that the pull request commits. The differential gate passes. The stills match their
-   hashes.
+   `reflect(-wo, ns)`. The test carries `Verifies: Design 0004.6`. The pull request measures the fold at the edge of the band. The mirror ball is a `SphereGeometry` of radius 0.4 and 32 by 16 segments, in a Cornell box that the test builds. After record 0001, step 8, the shipped
+   Cornell box has `Sphere` objects and no band. The measure is at 256 and 768 pixels. It shows
+   that the radiance has no step there. It measures the alternative too, which reflects about `ng`
+   in that case. If it delivers the alternative, it amends this record first. The golden of an
+   example whose mirror is a mesh can change. After step 8 of record 0001, `cornell-box` and
+   `determinism` are not candidates, because their mirror is analytic. The pull request finds the candidates by running the render gate. It lists each golden that changes, with the old and the new picture. `UPDATE_GOLDENS=1 bun run gate:render` rewrites every golden, so the pull
+   request commits only the goldens that change. `bun run capture:stills` recaptures the stills of
+   every example, so the pull request commits only the stills whose picture changes. The pull
+   request commits the `.sha256` file of each changed still too. The pull request measures the floor caustic again on the same test scene. It compares the result with the ratio of Amendment 2. It
+   names this record on a line of its own, `Design: 0004`. Done when four things hold. The test
+   passes. The render gate passes on the goldens that the pull request commits. The differential
+   gate passes. The stills match their hashes.
+8. **Flat shading** (Amendment 3), delivered with record 0001, step 9. Add `Material.flatShading`
+   and `MaterialParameters.flatShading`. Add `MATERIAL_FLAT_SHADING` and `materialFlat` to
+   `materials.shade.ts`. Set the bit in `packMaterial`. Branch `surfaceAt`. Each test below carries
+   `Verifies: Design 0004.10`, with its number:
+   - `scene-pack.test.ts`: a new `DiffuseMaterial`, `MirrorMaterial` and `PhysicalMaterial` each
+     have `flatShading` false and bit 11 of `[2].w` clear: 3 of 3. With `flatShading` true,
+     `packMaterial` gives a record that differs from the default's in 1 byte of 128, byte 45, which
+     holds 0x08. The setter adds 1 to `version`.
+   - `intersect.test.ts`, on the oracle: 1,000 rays at a `SphereGeometry(1, 12, 8)` mesh. With the
+     flag set, `ns` equals `ng` bit for bit on 1,000 of 1,000 hits. With the flag clear, the same
+     rays give `dot(ns, ng)` below 0.99999 on at least 950 of the 1,000. The 950 is an inference,
+     and the pull request records the count.
+   - `materials.test.ts`: the flat mesh sphere gives 100,000 primary rays across its silhouette.
+     A mirror sample at each hit never has `dot(wi, ng)` of 0 or less: 0 of 100,000.
+   - `GLTFLoader.test.ts`: a material that the loader makes has `flatShading` false: 1 of 1. The
+     loader keeps the normals of the file.
+   - The GPU half is the `spheres` scene of record 0002, step 9. Its middle ball has `flatShading`,
+     and the differential gate holds the GPU to the oracle on it.
+
+   Done when these numbers hold, `bun run check` passes and `gate:api` shows the added member of
+   `Material` and of `MaterialParameters` and no other line changed. No example sets the flag yet,
+   so the render gate passes with no golden changed. The commit names `Design: 0004`.
 
 ## Decisions for the owner
 
@@ -364,6 +459,8 @@ optional and `dpdu` from the triangle is exact for a triangle). Texture atlases 
    decision 1's record. It is also an eighth storage buffer, against record 0001, rule 1. It keeps
    rule 2 of record 0001. The owner chooses: amend record 0001 rule 1 first, or keep seven buffers
    and store each word as the value of an `f32`.
+9. On a `Sphere` `ns` is `ng`, and the fold of decision 6 does nothing. The uv is three.js's spherical layout, computed by `sphereUv` from sums, products, divisions and square roots. Decided by default. Amendment 3 adds this decision.
+10. A material has a `flatShading` flag, default false, in bit 11 of `[2].w` (byte 45, mask 0x08). When it is true, the kernel and the oracle shade with `ns` equal to `ng`, as three.js's `material.flatShading` does. This is the owner's decision of 2026-10-06 (final). Amendment 3 adds this decision.
 
 ## Record
 
@@ -462,6 +559,56 @@ of the band. Step 7 measures that edge. The dispositions:
   a sample that is not specular is not measured.
 - **The caustic through a delta lobe.** Proposed: made part of the record as a statement of fact in
   "The path loop". The techniques it names are proposals. No decision adds one.
+
+**Amendment 3** (2026-10-06, UTC). The owner decided on 2026-10-06 that the engine gains an
+analytic sphere, the `Sphere` kind (record 0001, Amendment 3). The owner also decided that the
+material gains a flag `flatShading`. This amendment states what the two mean for shading. On a
+`Sphere` `ns` is `ng`, so the fold of Amendment 2 does nothing there. It states the texture
+coordinates of the sphere. It states the flag, its byte, its default, its branch and its test. It
+changes these places:
+
+1. "The record": the flags bullet and the paragraph on the classes.
+2. "The shading normal", in "The rules of the surface and of emission".
+3. Three rules after "A direction under the surface": "The fold on a `Sphere`", "The texture
+   coordinates of a `Sphere`" and "Flat shading".
+4. "What it touches".
+5. Step 7, which no longer measures on the shipped Cornell box, and a new step 8.
+6. Decisions 9 and 10.
+
+The merge of the pull request that carries it is the owner's acceptance of each rule and of
+decision 9. Decision 10 is the owner's own. The code is not changed here. Record 0001, step 6,
+delivers `sphereSurfaceAt` and `sphereUv`. Step 8 here, with record 0001, step 9, delivers the
+flag. The configuration is `main` at 13b9e88, the compiler pinned at 596c805, bun 1.3.14 and node
+v22.22.0, on 2026-10-06. The numbers come from throwaway scripts that this pull request does not
+keep. Each is an observed result:
+
+- **The fold.** A script took 4,000,000 points spread evenly over the disc that a sphere covers
+  from far away. Each gave one mirror reflection about `ng` in `f32`. It gave 0 with `dot(wi, ng)`
+  of 0 or less. Amendment 2 measured 0.416 % of the area for a mesh sphere of 32 by 16 segments.
+- **The uv.** The error of `sphereUv` against `f64` at 300,000 points was at most 3.81e-7 rad in an angle. It was at most 8.93e-8 in `u` and 1.23e-7 in `v`.
+- **The cost.** The record gives no measure of the cost of `sphereUv`. It gives an estimate and a
+  rule for the case that the estimate is wrong.
+- **The flag's bit.** Fact: bits 8, 9 and 10 of `[2].w` hold "emits", "double sided" and "alpha
+  cutout". Bit 11 was free. Bit 3 of byte 45 is bit 11 of the little-endian word at bytes 44 to 47.
+
+The dispositions:
+
+- **The shading normal.** Decided by default: `ns` is `ng` on a `Sphere`, the same vector.
+- **The fold.** Decided by default: the fold stays in `sampleBsdf` for every mesh. It does
+  nothing on a `Sphere` or on a flat-shaded mesh. The record adds no code for either.
+- **The uv.** Decided by default: three.js's layout, with `u` from `phi` and `v` from `theta`, and
+  `sphereUv` built from `+`, `-`, `*`, `/` and `sqrt`. The sphere's own space is the world space
+  turned by the rows of its instance. The footprint of a texture read, and `dpdv`, stay with step 3.
+- **Flat shading.** The owner's decision: a flag `flatShading`, default false, with `ns = ng`
+  when it is true. Decision 10 holds it. The owner's other two decisions leave this record
+  unchanged: `SphereGeometry` keeps smooth vertex normals, and a glTF mesh keeps its normals.
+- **Step 7.** Proposed: the fold is measured on a mesh sphere that the test builds. The shipped Cornell box no longer has one after record 0001, step 8. The step's goldens are the
+  examples whose mirror is a mesh.
+- **Open: the measure of the fold on a mesh.** Amendment 2's numbers hold for a mesh sphere only.
+  Next action: step 7, as before.
+- **Open: the kernel half of the flag on a GPU.** The unit tests run on the oracle. The GPU half
+  is the `spheres` scene of record 0002, step 9, which comes after the flag. Next action: record
+  0001, step 10.
 
 **Deviations of step 1** (2026-10-05, UTC). Step 1 is typeshade/radiance#18 with record 0001
 step 3, merged as 9f2cf1a. Each entry gives the difference and its disposition. Amendment 1
