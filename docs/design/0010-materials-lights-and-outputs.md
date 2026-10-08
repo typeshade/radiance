@@ -250,7 +250,7 @@ WebGPU allows 256 layers in an array by default, so a class holds 256 textures. 
 
 **Alpha cutout.** A material with bit 10 of its flags tests alpha during traversal. `nearest` and `occluded` call `alphaPasses(instance, triangle, b1, b2)` at a triangle hit. The function reads `map` at level 0 and returns false when `alpha * [6].w` is under `[7].y`. The traversal then goes on. The glTF `alphaMode` MASK maps to this. BLEND is not modelled: the loader warns and treats it as OPAQUE.
 
-**What waits.** The loader knows `KHR_texture_transform` and ignores it with a warning. The record has no room for a transform for each texture. Compressed textures (KTX2) and UDIM wait. Each needs a decoder, and the boundary allows no import past the runtime. Streaming and an anisotropic filter wait too. The light table uses the emissive factor alone, so a textured emitter is sampled by its factor and not by its map.
+**What waits.** The loader knows `KHR_texture_transform` and ignores it with a warning. The record has no room for a transform for each texture. Compressed textures (KTX2) and UDIM wait. Each needs a decoder, and the boundary allows no import past the runtime. Streaming and an anisotropic filter wait too. The light table uses the emissive factor alone, so a textured emitter is sampled by its factor and not by its map. A bindless texture path waits for WebGPU's sampling resource tables (Amendment 1).
 
 ### Part 3: Lights
 
@@ -445,7 +445,7 @@ c  = (v' * (v' + 0.0245786) - 0.000090537) / (v' * (0.983729 * v' + 0.4329510) +
 out = clamp(M_out * c, 0, 1), then the sRGB curve
 ```
 
-`M_in` has the rows `(0.59719, 0.35458, 0.04823)`, `(0.07600, 0.90834, 0.01566)` and `(0.02840, 0.13383, 0.83777)`. `M_out` has the rows `(1.60475, -0.53108, -0.07367)`, `(-0.10208, 1.10813, -0.00605)` and `(-0.00327, -0.07276, 1.07602)`. This is from memory of the published fit, and step 5.5 compares each number with the source. The sRGB curve keeps its `pow`, as record 0005 allows for a value (`tonemap` is in `VALUE_ONLY`). The curve changes the picture of every example, so the pull request of step 5.5 lists every golden.
+`M_in` has the rows `(0.59719, 0.35458, 0.04823)`, `(0.07600, 0.90834, 0.01566)` and `(0.02840, 0.13383, 0.83777)`. `M_out` has the rows `(1.60475, -0.53108, -0.07367)`, `(-0.10208, 1.10813, -0.00605)` and `(-0.00327, -0.07276, 1.07602)`. This is from memory of the published fit, and step 5.5 compares each number with the source. The sRGB curve keeps its `pow`, as record 0005 allows for a value (`tonemap` is in `VALUE_ONLY`). The curve changes the picture of every example, so the pull request of step 5.5 lists every golden. Fact: the canvas has the format `rgba8unorm` (`CANVAS_FORMAT` in `PathTracer.ts`) and the default colour space. A path to an HDR screen is deferred (Amendment 1).
 
 ### Part 6: The demo
 
@@ -1239,8 +1239,26 @@ Checks that did not run: `bun run check` as a whole, `bun run harness`, every ga
 - `KHR_texture_transform`, alpha BLEND, the texture maps of the other `KHR_materials` extensions, diffuse transmission, dispersion and iridescence.
 - Subsurface scattering (M3s) and a hair BSDF.
 - A multi-part EXR, the PIZ and DWA compressions and OCIO.
+- A bindless texture path, which waits for WebGPU's sampling resource tables (Amendment 1).
+- An HDR screen path through a linear canvas colour space (Amendment 1).
 - WebGL2 support for the AOVs and the light groups (record 0007).
 
 **Deviations.** None. No work has been delivered yet, so this text and the work cannot differ.
 
 **Status of the owner's request of 2026-10-06.** Part 1 is written and not implemented. Part 2 is written and not implemented. Part 3 is written and not implemented. Part 4 is written and not implemented. Part 5 is written and not implemented. Part 6 is written and not implemented. The record is a draft.
+
+**Amendment 1** (2026-10-09, UTC). This amendment records two WebGPU platform facts against Parts 2 and 5. The research note `.claude/research/webgpu-platform-watch.md` (2026-10-09) holds the facts and their sources. This amendment changes no code, the work of no step and no decision. The decisions keep their numbers and their text. The merge of the pull request that carries it is the owner's acceptance.
+
+- **The texture plan stays (Part 2).** The four `texture_2d_array<f32>` arrays, one for each size class, stay as "The arrays" says. Decisions 10, 11 and 15 stand.
+- **The fact for Part 2.** WebGPU's bindless proposal adds a `GPUResourceTable`. Its first tier, sampling resource tables, holds sampled texture views and samplers, and a shader reads an entry with `getResource<T>(index)`. On 2026-10-09 Chrome exposes it only as the experimental feature `chromium-experimental-sampling-resource-table`, behind the "Unsafe WebGPU Support" flag, on Windows, Linux and Android. The proposal's status is Draft. The second tier, heterogeneous resource tables, is not implemented in Chrome.
+- **The intended replacement (proposal, not a decision).** A bindless texture path is the intended replacement of the size-class arrays. It removes the limit of 256 layers in a class and the resampling to a class size. Two conditions apply. WebGPU must ship sampling resource tables without a flag. TypeShade and its runtime must expose them (record 0006). A later record owns that change, its id layout and its gates. This record decides nothing about it.
+- **The fact for Part 5.** Chrome 155-156 shipped the canvas colour spaces `srgb-linear` and `display-p3-linear`, with an extended range, for example with `rgba16float`.
+- **A candidate for Part 5 (proposal, not a decision).** Part 5 has no HDR screen path. Its output transform clamps to 0 and 1 and applies the sRGB curve. The canvas is `rgba8unorm` in the default colour space. A linear canvas colour space is a candidate for a later HDR screen path. That path would need an output transform for an HDR screen in place of the clamp. The EXR output of Part 5 does not change. A later record owns that change.
+- **The edits to the body.** This amendment changes the body in four places and nothing else.
+
+1. "What waits." of Part 2 gains one sentence on the bindless texture path.
+2. "The ACES output transform" of Part 5 gains two sentences on the screen and the HDR screen path.
+3. "Deferred, and not proposed" gains two entries.
+4. Amendment 1 is new.
+
+- **Not run.** No code ran for this amendment. No WebGPU feature was tested on a device. Each fact was read from its source on 2026-10-09.
