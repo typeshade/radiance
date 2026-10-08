@@ -49,6 +49,7 @@ import {
   MATERIAL_EMISSIVE,
   MATERIAL_EMISSIVE_MAP,
   MATERIAL_EMITS,
+  MATERIAL_FLAT_SHADING,
   MATERIAL_MAPS,
   MATERIAL_PARAMS,
   MATERIAL_TYPE_MASK,
@@ -269,7 +270,8 @@ export function packMaterial(m: Material): Float32Array {
   bits[MATERIAL_PARAMS * VEC4 + 3] =
     ((m.type & MATERIAL_TYPE_MASK) |
       (emits ? MATERIAL_EMITS : 0) |
-      (m.doubleSided ? MATERIAL_DOUBLE_SIDED : 0)) >>>
+      (m.doubleSided ? MATERIAL_DOUBLE_SIDED : 0) |
+      (m.flatShading ? MATERIAL_FLAT_SHADING : 0)) >>>
     0;
   bits.fill(TEXTURE_NONE, MATERIAL_MAPS * VEC4, MATERIAL_MAPS * VEC4 + 4);
   bits[MATERIAL_EMISSIVE_MAP * VEC4] = TEXTURE_NONE;

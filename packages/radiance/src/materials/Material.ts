@@ -2,6 +2,9 @@ import { Color } from '../math/Color.ts';
 
 let nextId = 1;
 
+/** Sets a new material's `flatShading` with no change to its `version`. Set by `Material`. */
+let initFlatShading: (m: Material, value: boolean) => void;
+
 /**
  * How a surface scatters and gives off light. Each material is one 128-byte record of the path
  * tracer's material table (design record 0004, "The record"), and the kernel's shading functions
@@ -25,6 +28,13 @@ export abstract class Material {
   #color: Color;
   #emissive: Color;
   #doubleSided = false;
+  #flatShading = false;
+
+  static {
+    initFlatShading = (m, value) => {
+      m.#flatShading = value;
+    };
+  }
 
   constructor(color: Color, emissive: Color) {
     this.#color = color;
@@ -57,6 +67,19 @@ export abstract class Material {
     this.#doubleSided = value;
     this.version++;
   }
+
+  /**
+   * Whether the kernel shades with the geometric normal in place of the interpolated vertex
+   * normals, as three.js's `material.flatShading` does. Default false. The geometry and the hits
+   * do not change (design record 0004, "Flat shading").
+   */
+  get flatShading(): boolean {
+    return this.#flatShading;
+  }
+  set flatShading(value: boolean) {
+    this.#flatShading = value;
+    this.version++;
+  }
 }
 
 export interface MaterialParameters {
@@ -66,7 +89,13 @@ export interface MaterialParameters {
   emissive?: Color | number;
   /** Multiplies `emissive`. Default 1. */
   emissiveIntensity?: number;
+  /** Shade with the geometric normal, as three.js's `flatShading`. Default false. */
+  flatShading?: boolean;
 }
+
+/** Sets `m.flatShading` from a constructor's parameters, with no change to `m.version`. */
+export const setFlatShading = (m: Material, value: boolean | undefined): void =>
+  initFlatShading(m, value ?? false);
 
 export const toColor = (c: Color | number | undefined, fallback: Color): Color =>
   c === undefined ? fallback : typeof c === 'number' ? new Color().setHex(c) : c.clone();
