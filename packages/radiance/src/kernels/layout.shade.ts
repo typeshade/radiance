@@ -13,7 +13,8 @@
 // The trace's uniform block, `TraceParams`, is declared here too: the traversal reads the TLAS's
 // first node and the counts from it, and the host builds it from the same numbers.
 //
-// Record 0005's rules this file leans on: rule 3 (`dot` in the instance transforms).
+// Record 0005's rules this file leans on: rule 3 (`dot` in the instance transforms and in the
+// sphere's rotation).
 
 /** vec4s in one BVH node of `nodes`: `[0] = (min, bits(a))`, `[1] = (max, bits(b))`. */
 export const NODE_STRIDE: u32 = 2;
@@ -43,6 +44,13 @@ export const INSTANCE_INVERSE: u32 = 3;
 export const INSTANCE_BASES: u32 = 6;
 /** The offset in an instance of `(bits(flags), bits(geometryId), 0, 0)`. */
 export const INSTANCE_FLAGS: u32 = 7;
+
+/**
+ * Bit 0 of an instance's `flags`: the instance is a `Sphere` (record 0001, "The analytic sphere").
+ * Its words differ from a mesh's: `[0]` holds the centre and the radius in world space, `[3]` to
+ * `[5]` the rows of `R^T`, its world to object rotation, and `[6].w` its material. It has no BLAS.
+ */
+export const INSTANCE_SPHERE: u32 = 1;
 
 /** The type word of a light that is an emissive triangle. M3 adds the analytic lights' types. */
 export const LIGHT_TRIANGLE: u32 = 0;
@@ -178,6 +186,39 @@ export function instanceToWorld(i: u32, v: vec4): vec3 {
 export function instanceNormalToWorld(i: u32, n: vec3): vec3 {
   const at = i * INSTANCE_STRIDE + INSTANCE_INVERSE;
   return instances[at].xyz * n.x + instances[at + 1].xyz * n.y + instances[at + 2].xyz * n.z;
+}
+
+/** Instance `i`'s `flags` word. Bit 0 (`INSTANCE_SPHERE`) marks a `Sphere`. */
+export function instanceFlags(i: u32): u32 {
+  return bitcast<u32>(instances[i * INSTANCE_STRIDE + INSTANCE_FLAGS].x);
+}
+
+/** The centre of the `Sphere` of instance `i`, in world space: `[0].xyz`. */
+export function sphereCentre(i: u32): vec3 {
+  return instances[i * INSTANCE_STRIDE + INSTANCE_MATRIX].xyz;
+}
+
+/** The radius of the `Sphere` of instance `i`, in world space: `[0].w`. */
+export function sphereRadius(i: u32): f32 {
+  return instances[i * INSTANCE_STRIDE + INSTANCE_MATRIX].w;
+}
+
+/**
+ * The vector `v` from world space into the own space of the `Sphere` of instance `i`: its dot
+ * product with each row of `R^T`, the rows `[3]` to `[5]`.
+ */
+export function sphereToObject(i: u32, v: vec3): vec3 {
+  const at = i * INSTANCE_STRIDE + INSTANCE_INVERSE;
+  return vec3(dot(instances[at].xyz, v), dot(instances[at + 1].xyz, v), dot(instances[at + 2].xyz, v));
+}
+
+/**
+ * The vector `v` from the own space of the `Sphere` of instance `i` into world space: `v.x`,
+ * `v.y` and `v.z` times the rows `[3]`, `[4]` and `[5]`, added up. Sums and products only.
+ */
+export function sphereToWorld(i: u32, v: vec3): vec3 {
+  const at = i * INSTANCE_STRIDE + INSTANCE_INVERSE;
+  return instances[at].xyz * v.x + instances[at + 1].xyz * v.y + instances[at + 2].xyz * v.z;
 }
 
 /** Light `i`'s words. */
