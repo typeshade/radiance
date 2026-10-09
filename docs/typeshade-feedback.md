@@ -16,6 +16,38 @@ editor), **docs**.
 
 ## Log
 
+### 2026-10-09 · runtime · Record 0011: compiler needs C2 to C7 filed, and C1's three missing needs
+
+Pin 596c805. Compiler `main` read at 6e8c7fd. Draft record 0011 (typeshade/radiance#67) lists
+eight compiler needs. C1 and C8 were filed as #535 and #536 (the entry below). Its decision 38
+says the rest go to typeshade/typeshade before the step that needs them. Each issue below has a
+section "WebGL2 and CPU" under the owner's requirement (#130, #138), and its lowerings are
+proposals. Each need was searched for first among open and closed issues.
+
+- C1, reverse-mode `grad`. The three needs #535 did not state (the differentiable BSDF of record
+  0010, the adjoint of a storage read, and pose gradients) are a comment on it
+  (https://github.com/typeshade/typeshade/issues/535#issuecomment-6065114178). The compiler's
+  change 0056 (reverse mode before 1.0) has been accepted on its `main` since #535 was filed. As
+  read, it covers the storage read. Whether it covers the BSDF's uniform table and the poses was
+  not checked.
+- C2, a stable sort of `u32` keys with values on every tier. Training sorts the (tile, surfel)
+  keys each step. A stable sort's output is unique, so each tier may use its own algorithm.
+  Filed as typeshade/typeshade#539 (https://github.com/typeshade/typeshade/issues/539).
+- C3, atomics on the oracle and on WebGL2, for the two-word fixed-point sum. No new issue: it
+  belongs to #138. Change 0054 (atomics on WebGL2, the oracle in the phased order) may meet it
+  on the compiler's `main`. That was read, not run. The need and its tests are a comment on #138
+  (https://github.com/typeshade/typeshade/issues/138#issuecomment-6065114790).
+- C4, indirect dispatch, so a step follows the live surfel count. Filed as
+  typeshade/typeshade#540 (https://github.com/typeshade/typeshade/issues/540).
+- C5, device limits above 128 MiB for part 6. The compiler's change 0051 (draft, #489) is this
+  need on WebGPU. The issue asks for it, and for `rt.limits` on the WebGL2 tier, which 0051
+  predates. Filed as typeshade/typeshade#541 (https://github.com/typeshade/typeshade/issues/541).
+- C6, GPU time through `timestamp-query` (record 0006, item 5, not filed until now). Filed as
+  typeshade/typeshade#542 (https://github.com/typeshade/typeshade/issues/542).
+- C7, the cost of about 400,000 dispatches a run (an estimate: ten a step, 40,000 steps). A
+  measurement first, then a sequence recorded once if it matters. Filed as
+  typeshade/typeshade#543 (https://github.com/typeshade/typeshade/issues/543).
+
 ### 2026-10-09 · language · Records 0010 and 0011: three compiler needs filed as issues
 
 Pin 596c805. Draft record 0011 (2DGS capture and training, typeshade/radiance#67) and record
