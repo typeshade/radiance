@@ -188,7 +188,7 @@ This layout is final for both forms. Amendment A writes it into record 0001 once
 
 - `flags` holds `INSTANCE_SPLATS` (2, bit 1) and the splat bits of the table below, in bits 2 to 8. Bit 0 stays the sphere's, and it is 0 for a `Splats`.
 - `objectId` is record 0010's object index, the value of an `f32`, from `Splats.name` (record 0010, line 410). It is 0 until record 0010 step 5.4 lands, as for a mesh.
-- `intensity` is `Splats.intensity`, the value of an `f32`. `[7].w` is 0 for a mesh and a sphere, as before. Record 0010's `instances` row (its line 829) reads `[7].w` as 0, so Amendment A owes that row this change.
+- `intensity` is `Splats.intensity`, the value of an `f32`. `[7].w` is 0 for a mesh and a sphere, as before. Record 0010's `instances` row (its line 829) reads `[7].w` as 0, so Amendment A2 owes that row this change, before step 1.2.
 
 Bits 2 to 8 are 0 in a mesh and in a sphere, so their words do not change. `flags` is a `u32` in the bits of an `f32` lane, as record 0001 has it. Its largest value for a `Splats`, 0x1fe, is not the bits of a NaN.
 
