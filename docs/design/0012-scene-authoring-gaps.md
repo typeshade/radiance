@@ -150,39 +150,39 @@ Inference: the owner's statement that the engine \"cannot build real scenes\" is
 
 Each amendment is text to paste into the named record. Each merges before the step that needs it.
 
-### Record 0001
+### Amendments to record 0001
 
 - Amendment A (Part 1, step 1.1). The material record grows from 8 `vec4` to 16 `vec4`, 256 bytes. The words `[0]` to `[7]` keep their table of record 0010. The words `[8]` to `[15]` are the table of Part 1 below. Rule 1 of record 0001 keeps seven storage buffers.
 - Amendment B (Part 1, step 1.2). The `materials` buffer gains a tail. The tail holds one transform for each texture id, three `vec4` each. Its offset is a field of the `params` uniform block.
 - Amendment C (Part 2, step 2.1). The light table gains types 5 (rectangle), 6 (disk) and 7 (ellipse). Each takes the four `vec4` block that record 0010 decision 16 reserves for an analytic light.
 - Amendment D (Part 5, step 5.1). The instance word `[7].x` holds the visibility bits in bits 16 to 21 of `flags`. Part 5 defines them below. The bits of `flags` below 16 keep their meaning of record 0001 and record 0011.
 
-### Record 0002
+### Amendments to record 0002
 
 - Amendment E. Six gates join `scripts/gates.mjs`: `lights` (Part 2), `camera` (Part 3), `output` (Part 4), `hdr` (Part 4), `visibility` (Part 5) and `linking` (Part 2). Each has a scene, a golden or a bound, and a probe. Record 0002 decides the gate's threshold, as it does for every gate.
 
-### Record 0003
+### Amendments to record 0003
 
 - Amendment F. The public surface gains `RectAreaLight`, `DiskLight`, `IESSpotLight`, `OrthographicCamera`, `PanoramicCamera`, and the members of `PhysicalMaterial`, `PhysicalCamera` and the view transform. Each name follows Decision 14.
 
-### Record 0004
+### Amendments to record 0004
 
 - Amendment G. The material table of record 0010 (\"The material record\") is replaced by the table of Part 1 below. Decision 5 of record 0010 (the integer words as values, seven buffers) stands.
 
-### Record 0005
+### Amendments to record 0005
 
 - Amendment H (Part 3, step 3.3). Rule 2 of record 0005 forbids a transcendental that decides. A direction from an angle uses `sin` and `cos` of an angle that `turn()` gives. The amendment states that rule 2 admits these, because the value is a direction and no index depends on it. The owner decides this (Decision 12).
 
-### Record 0006
+### Amendments to record 0006
 
 - Amendment I. A new item 7 is added: the canvas configuration takes a `toneMapping` mode (CN-1). Its text is in \"Compiler needs\" below. The item waits for the owner's decision on filing (Decision 16).
 - Amendment J. Item 1 of record 0006 (device limits) is read again for the material stride and the storage size of the transform table (Part 1).
 
-### Record 0007
+### Amendments to record 0007
 
 - Amendment K. Each new feature of this record states its WebGL2 lowering or its CPU fallback. The table \"WebGPU features and their lowerings\" in Part 4 is the text to paste.
 
-### Record 0010
+### Amendments to record 0010
 
 - Amendment L. Part 1 of record 0010 keeps its 8-`vec4` record until this record's Amendment A merges. Part 5 of record 0010 keeps `[7].z` for the Cryptomatte index. Part 5 of this record uses bits 16 to 21 of `flags` in `[7].x`.
 
