@@ -5,6 +5,8 @@
 
 export { FlyControls, type FlyControlsEvents } from './controls/FlyControls.ts';
 export { OrbitControls, type OrbitControlsEvents } from './controls/OrbitControls.ts';
+export { EXRExporter, type ExrImage, type ExrOptions } from './exporters/EXRExporter.ts';
+export { EXRLoader } from './loaders/EXRLoader.ts';
 export { GLTFLoader } from './loaders/GLTFLoader.ts';
 export { createCornellBox, type CornellBox } from './scenes/CornellBox.ts';
 export { type DemoScene } from './scenes/DemoScene.ts';
