@@ -10,6 +10,7 @@ import {
   MirrorMaterial,
   Object3D,
   PathTracer,
+  Sphere,
   SphereGeometry,
 } from '@typeshade/radiance';
 import { OrbitControls, createCornellBox } from '@typeshade/radiance-addons';
@@ -17,9 +18,14 @@ import type { ExampleRun } from './types.ts';
 
 export default async function sceneGraph(canvas: HTMLCanvasElement): Promise<ExampleRun> {
   const { scene, camera, target, bounds } = createCornellBox();
-  // Take the box's own spheres out, and put a turning group in their place.
+  // Take the box's own spheres out, and put a turning group in their place. The box's balls are
+  // `Sphere` objects. A mesh sphere is taken out too.
   for (const child of [...scene.children])
-    if (child instanceof Mesh && child.geometry instanceof SphereGeometry) scene.remove(child);
+    if (
+      child instanceof Sphere ||
+      (child instanceof Mesh && child.geometry instanceof SphereGeometry)
+    )
+      scene.remove(child);
 
   const pivot = new Object3D();
   pivot.position.set(0, 0.8, 0);

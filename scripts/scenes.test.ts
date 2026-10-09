@@ -4,11 +4,12 @@
 // so a scene that stops being triangles, instances or lights fails here, in `bun run check`.
 //
 // Verifies: Design 0002.4
-// This file holds the three scenes of M2 in the table of "The differential scenes". It does not
-// hold the scenes of M3 (`physical`, `textures` and `hdri`), which no scene function makes yet.
+// This file holds the three scenes of M2 in the table of "The differential scenes", and the
+// Cornell box on `Sphere` (record 0001, step 8). It does not hold the scenes of M3 (`physical`,
+// `textures` and `hdri`), which no scene function makes yet.
 
 import { describe, expect, test } from 'bun:test';
-import { BufferGeometry, Mesh, SphereGeometry } from '@typeshade/radiance';
+import { BufferGeometry, Mesh, Sphere, SphereGeometry } from '@typeshade/radiance';
 import { INSTANCE_STRIDE, LIGHT_STRIDE, ScenePack } from '@typeshade/radiance/internal';
 import { scenes, type SceneName } from './scenes.ts';
 
@@ -57,6 +58,36 @@ function areas(g: BufferGeometry): number[] {
   }
   return out;
 }
+
+describe('the scene cornell', () => {
+  const s = packed('cornell');
+  // Verifies: Design 0001.15
+  test('makes the two balls Sphere objects of radius 0.4 at the same centres', () => {
+    const spheres: Sphere[] = [];
+    s.scene.traverse((o) => {
+      if (o instanceof Sphere) spheres.push(o);
+    });
+    expect(spheres.map((o) => [o.radius, ...o.position.toArray()])).toEqual([
+      [0.4, -0.45, 0.4, -0.35],
+      [0.4, 0.45, 0.4, 0.3],
+    ]);
+    expect(s.meshes.filter((m) => m.geometry instanceof SphereGeometry)).toHaveLength(0);
+  });
+  test('packs 8 instances, 4 triangles, 8 vertices, 2 lights and 7 nodes', () => {
+    // Five planes of the room and the lamp share two geometries of 2 triangles each. The two
+    // spheres are TLAS leaf entries with no BLAS (record 0001, decision 11). The nodes are one leaf
+    // for each plane BLAS, and 5 for the TLAS of the 8 instances.
+    const { instances, triangles, vertices, lights, nodes, tlasBase } = s.pack.counts;
+    expect({ instances, triangles, vertices, lights, nodes }).toEqual({
+      instances: 8,
+      triangles: 4,
+      vertices: 8,
+      lights: 2,
+      nodes: 7,
+    });
+    expect(tlasBase).toBe(2);
+  });
+});
 
 describe('the scene triangles', () => {
   const s = packed('triangles');

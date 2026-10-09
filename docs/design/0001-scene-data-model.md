@@ -1061,4 +1061,22 @@ At step 3, the Cornell box gate of record 0002 runs on spheres of 960 triangles.
 at 16 by 16 pixels and 1,024 samples, the mean relative difference to the oracle is 3.27e-7.
 The largest is 2.86e-6. `ORACLE.mean` is 3.3e-6, ten times the mean, rounded up, and `abs` and
 `rel` stay 1e-3 and 5 %. Step 4 is delivered as 2f06d0e (typeshade/radiance#43) and step 5 as 4176027
-(typeshade/radiance#53), both on `main`. Steps 6 to 10 (Amendment 3) are not started.
+(typeshade/radiance#53), both on `main`.
+
+**Step 8** (Amendment 3, `Design: 0001`, typeshade/radiance#72). Steps 6, 7 and 9 of Amendment 3
+are on `main` as fd1c0ce (typeshade/radiance#66), d3a6fcc (#70) and 4c94329 (#64). Step 7 listed
+five deviations in its pull request body, and step 9 listed three. Each is kept there, with its
+disposition. Step 10 is not started.
+
+At step 8, the two balls of the Cornell box are `Sphere(0.4, material)` objects at the centres of
+the old mesh balls. `createCornellBox()` has 8 instances, 4 triangles, 8 vertices, 2 lights and 7
+nodes (2 BLAS and 5 TLAS). The record's TLAS count of 5 holds. `ORACLE.mean` is 3e-5, ten times
+the measured mean of 2.01e-6 on SwiftShader, rounded up. The largest difference is 7.71e-5, with 0
+channels out of bounds. The old value was 2e-5. The render-gate probe of record 0002 (every
+`Sphere` radius times 1.01) fails `comparePictures` with 320 of 6,144 pixels beyond 4/255, a mean
+of 0.996/255 and a worst pixel of 156/255. The inference of record 0002, "at most 6 pixels", was
+too low. The probe still fails, as the rule requires, and 6 pixels stays the bound of a render
+against its golden. The inference is not amended here, because the rule of record 0002 amends the
+paragraph only when the count is 6 or fewer. A later amendment of record 0002 should replace the
+inference with the measured count of 320. The mirror-ball crops at 768 pixels, before and after,
+are in the pull request. Their reading is in the pull request body.

@@ -8,7 +8,7 @@ import {
   PerspectiveCamera,
   PlaneGeometry,
   Scene,
-  SphereGeometry,
+  Sphere,
   Vector3,
 } from '@typeshade/radiance';
 
@@ -30,11 +30,12 @@ export interface CornellBox {
  * Its front face lights the room. Its back face lights the ceiling directly, so the ceiling is
  * not lit by bounce alone, and the mirror sphere reflects a lit ceiling.
  *
- * Every shape is triangles: the walls and the light are planes of two triangles each, and each
- * sphere is a `SphereGeometry` of 64 by 32 segments, 3,968 triangles. The segments are twice
- * three.js's default of 32 by 16. So the outline of the mirror sphere has 64 sides, and each
- * edge of its facets bends the reflection less. The scene pack holds 7,940 triangles, each shared
- * geometry once. It is the scene CI renders on the GPU and on the CPU oracle (design record 0002).
+ * The walls and the light are planes of two triangles each. The two balls are analytic
+ * spheres, `Sphere(0.4, material)`, which the path tracer meets by the quadratic with no triangle
+ * (design record 0001, "The analytic sphere"). So the outline of the mirror ball is round, and
+ * its reflection and the white ball's shadow have no facets. The scene pack holds 4 triangles
+ * and 8 instances. It is the scene CI renders on the GPU and on the CPU oracle (design record
+ * 0002).
  */
 export function createCornellBox(): CornellBox {
   const scene = new Scene();
@@ -63,9 +64,9 @@ export function createCornellBox(): CornellBox {
   lamp.position.set(0, 1.98, 0);
   lamp.rotation.x = Math.PI / 2;
 
-  const mirror = new Mesh(new SphereGeometry(0.4, 64, 32), new MirrorMaterial());
+  const mirror = new Sphere(0.4, new MirrorMaterial());
   mirror.position.set(-0.45, 0.4, -0.35);
-  const ball = new Mesh(new SphereGeometry(0.4, 64, 32), white);
+  const ball = new Sphere(0.4, white);
   ball.position.set(0.45, 0.4, 0.3);
 
   scene.add(floor, ceiling, back, left, right, lamp, mirror, ball);
