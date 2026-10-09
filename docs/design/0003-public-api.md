@@ -150,7 +150,8 @@ pre-1.0 and its minor is the breaking position).
 
 - math: `Vector3`, `Color`, `Euler`, `Matrix4`, `Box3`.
 - core: `Object3D`, `Group` (new: an `Object3D` with nothing added, as three.js has it), `EventDispatcher`, `Clock`.
-- cameras: `Camera`, `PerspectiveCamera`.
+- cameras: `Camera`, `PerspectiveCamera` (with the film members `filmGauge`, `getFilmHeight()`,
+  `getFocalLength()` and `setFocalLength()`, Amendment 2), `PhysicalCamera` (Amendment 2).
 - geometries: `Geometry`, `BufferGeometry`, `SphereGeometry`, `PlaneGeometry`, `BoxGeometry`.
 - materials: `Material` (with `flatShading`, Amendment 1), `MaterialParameters` (with `flatShading`), `DiffuseMaterial`, `MirrorMaterial`,
   `EmissiveMaterial`, `PhysicalMaterial`, `PhysicalMaterialParameters`.
@@ -224,3 +225,16 @@ materials under "The public surface at 0.1.0". The decisions keep their numbers 
 **Configuration and validation record.** This record does not yet apply. Implementation will
 record the bake's first commit, the dry run's workflow run id, and the 0.1.0 release's tag,
 tarball sizes and registry record.
+
+**Amendment 2** (2026-10-09, UTC). Record 0010, Part 4, adds one class, `PhysicalCamera`, which
+extends `PerspectiveCamera`, and four members of `PerspectiveCamera`: `filmGauge`, `getFilmHeight()`,
+`getFocalLength()` and `setFocalLength()`. A new export or a new member is a change to this surface
+(`docs/design/README.md`, the criterion "exports"), so this record lists them. The merge of the pull
+request that carries this amendment is the owner's acceptance. It changes one place: the list of
+cameras under "The public surface at 0.1.0". The decisions keep their numbers and their text.
+
+- **The names.** `PhysicalCamera` is three-gpu-pathtracer's name, as record 0010, decision 21 has it.
+  The film members are three.js's names and formulas. Rule 1 applies to them, because three.js has
+  them.
+- **The surface bake.** The pull request of record 0010, step 4.1, commits the bake with these
+  names added. `gate:api` fails on any other change.
