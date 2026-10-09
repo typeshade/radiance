@@ -75,7 +75,7 @@ This record writes the whole pipeline as six parts. Each part has its own steps 
 
 | Stage and part | Input                                 | Output                                                                                                                               | Runs on                                                                               | Compiler work it needs                        |
 | -------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- | --------------------------------------------- |
-| Part 1. Render | A `SplatGeometry` (trained or loaded) | Physical surfels that the scene's lights and meshes light and shadow. Baked splats for assets without materials                      | The path tracer's tiers (record 0007 for WebGL2)                                      | None at the pin. A probe of `unpack2x16float` |
+| Part 1. Render | A `SplatGeometry` (trained or loaded) | Physical surfels that the scene's lights and meshes light and shadow. Baked splats for assets without materials                      | The path tracer's tiers (record 0007 for WebGL2)                                      | Record 0010 steps 2.2 to 2.4 and 3.3, and so change 0050 (a draft, not at the pin). A probe of `unpack2x16float` |
 | Part 2. Ingest | A video file, or a set of photos      | 100 to 300 sharp frames, downscaled, with EXIF intrinsics where known                                                                | The browser (WebCodecs), the M7 host                                                  | None                                          |
 | Part 3. Poses  | The frames and the known intrinsics   | A `CaptureDataset`: intrinsics, a pose for each frame, sparse points                                                                 | A server or the M7 host first (P1). The browser at M5p (P2). Refined in training (P3) | None for P1. C1 for P3                        |
 | Part 4. Train  | A `CaptureDataset`                    | Surfels with geometry, baked radiance and materials, an `Environment`, refined poses                                                 | WebGPU first, WebGL2 and the CPU as fallbacks                                         | C1 to C8 (below)                              |
@@ -651,7 +651,7 @@ These follow record 0002. Amendment B owes the text. Every bound below is a prop
 
 **The acceptance of each milestone is in CI** (decision 25).
 
-- M3g is done when `differential` `splats`, `splat-hit`, `determinism`, `render`, `surfel-furnace` and `aov` `splats` pass in the `harness` job.
+- M3g is done when the pin carries change 0050 (a prerequisite, with record 0010 steps 2.2 to 2.4 and 3.3) and `differential` `splats`, `splat-hit`, `determinism`, `render`, `surfel-furnace` and `aov` `splats` pass in the `harness` job.
 - M5c is done when `gradcheck`, `bsdf-gradcheck`, `train-differential`, `train-determinism`, `train-converge-ci`, `material-ci`, `relight-ci`, `pose-refine-ci`, `fallback-ci` and `bake-ci` pass in the `check` and `train` jobs.
 - M5p is done when `posenet-reference` and `poses-browser-ci` pass in the `train` job. M5h is done when `lod-ci` and `blocks-ci` pass there.
 - `train-converge` and `bench` run by hand. They record numbers in `docs/benchmarks.md` and hold no acceptance criterion.
@@ -773,8 +773,8 @@ Each step is one pull request. Each commit names `Design: 0011` on a line of its
 
 **Part 1, milestone M3g.** It needs these steps of record 0010:
 
-- Part 1 (the BSDF, MIS and `MATERIAL_NO_MS`) and part 3 (the environment).
-- Part 2 up to step 2.4. Steps 2.3 and 2.4 make the kernel read the tints (record 0010, line 623). Step 2.4 adds `Surface.dpdv` and `Surface.bsign` (line 970). Step 1.3 needs them.
+- Part 1 (the BSDF, MIS and `MATERIAL_NO_MS`) and part 3 (the environment). Step 3.3 (the HDRI) needs the pin that carries change 0050.
+- Part 2 up to step 2.4. Its steps 2.2 to 2.7 wait for the pin that carries change 0050, a draft (record 0010, lines 67 and 945). So M3g has change 0050 as a prerequisite, through record 0010 steps 2.2 to 2.4. Steps 2.3 and 2.4 make the kernel read the tints (record 0010, line 623). Step 2.4 adds `Surface.dpdv` and `Surface.bsign` (line 970). Step 1.3 needs them.
 - Part 5, steps 5.2, 5.4 and 5.6: the `aov` entry, the object ids and `gate:aov`. Step 1.6 needs them.
 
 1. **Step 1.1.** Add `splat.shade.ts` and `splat.test.ts`. Probe `unpack2x16float` on WGSL, GLSL and the oracle over all 65,536 codes. Done when the tests pass and the lint adds no row.
