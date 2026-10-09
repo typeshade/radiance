@@ -887,7 +887,7 @@ Each step is one pull request. Each commit names `Design: 0011` on a line of its
 **Status of the requests at authorship.**
 
 - The survey: done, revised, `.claude/research/survey-gaussian-splatting.md`.
-- The plan: this record, `draft`, revision 3.
+- The plan: this record, `draft`, revision 4.
 - Training in scope, gradients from the compiler, the tiers: written into this record.
 - Relightable surfels in the path tracer, and a path to the full result for each reduced scope: written into this record (revision 2).
 - The compiler needs: all filed. C1 is #535 with a comment, and change 0056 is accepted for it. C2 to C7 are #539, #138 with a comment, #540, #541, #542 and #543. C8 is #536, and the watch item #537. `docs/typeshade-feedback.md` records #535 to #537 (265f89d). The comment on #535 states three of the needs, not N2 to N5.
