@@ -132,7 +132,7 @@ window.run = async ({ scene: name = 'cornell', size, samples, perFrame, seed }) 
 // the page sets the run up: it stops the example's motion, drops the time budget that varies the
 // samples of a frame, sets the samples of a frame and the samples to stop at, and sets the seed.
 // Then it waits for the loop to reach the samples, and reads the displayed image.
-window.runExample = async ({ id, size, samples, perFrame, seed, timeout = 600000 }) => {
+window.runExample = async ({ id, size, samples, perFrame, seed, radiusScale = 1, timeout = 600000 }) => {
   const entry = EXAMPLES.find((e) => e.id === id);
   if (entry === undefined) throw new Error('no example is named ' + id);
   const canvas = document.createElement('canvas');
@@ -141,6 +141,25 @@ window.runExample = async ({ id, size, samples, perFrame, seed, timeout = 600000
   const t0 = performance.now();
   const run = await (await entry.load()).default(canvas);
   const r = run.renderer;
+  // The radius probe (probeRadius in scripts/gates/render.mjs): before the first frame, the
+  // radius of every Sphere of the scene the example renders is multiplied by radiusScale.
+  let scaled = 0;
+  if (radiusScale !== 1) {
+    const draw = r.render.bind(r);
+    const seen = new WeakSet();
+    r.render = (scene, camera) => {
+      if (!seen.has(scene)) {
+        seen.add(scene);
+        scene.traverse((o) => {
+          if (o.isSphere === true) {
+            o.radius *= radiusScale;
+            scaled++;
+          }
+        });
+      }
+      return draw(scene, camera);
+    };
+  }
   r.paused = true;
   if (run.playing !== undefined) run.playing = false;
   r.targetFrameTime = undefined;
@@ -160,7 +179,7 @@ window.runExample = async ({ id, size, samples, perFrame, seed, timeout = 600000
   const ms = performance.now() - t0;
   run.dispose();
   canvas.remove();
-  return { ...reached, image, ms, renderMs: performance.now() - t1 };
+  return { ...reached, image, ms, renderMs: performance.now() - t1, scaled };
 };
 </script>`;
 
@@ -169,7 +188,9 @@ window.runExample = async ({ id, size, samples, perFrame, seed, timeout = 600000
  *
  * - `render(options)`: renders `{ scene, size, samples, perFrame, seed }` on the page's device.
  * - `renderExample(options)`: runs the site example `options.id` on a canvas of `options.size`
- *   until it has `options.samples` samples a pixel, and answers its displayed image.
+ *   until it has `options.samples` samples a pixel, and answers its displayed image. With
+ *   `options.radiusScale`, it first multiplies the radius of every `Sphere` of the scene by that
+ *   factor, and `scaled` in the answer counts those spheres.
  * - `browser` and `origin`: for a caller that opens more pages. The server answers `root` (the
  *   built site, `dist/site` by default) at `/` and the render page under `/__harness/`.
  * - `errors`: the page errors and console errors and warnings, so far. A caller that opens a

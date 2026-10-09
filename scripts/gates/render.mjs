@@ -28,6 +28,10 @@
 // `probe()` runs the gate once wrong on purpose and throws when the gate does not see it. It
 // plants a fault in each golden and reads the golden back through the PNG encoder and decoder.
 //
+// `probeRadius(options)` is the radius probe of record 0002 ("The probes"). It renders
+// `cornell-box` once more with the `radius` of every `Sphere` times 1.01, and throws when
+// `comparePictures` passes that picture against the golden. It needs a render page.
+//
 // Options: `session` is an open render page (`openRenderPage` in ./_browser.mjs). Without one, the
 // gate opens its own. `update` rewrites the goldens. `dir` names the goldens' directory.
 // `examples` names the examples to run.
@@ -317,6 +321,55 @@ export async function probe(options = {}) {
     },
     message: `a golden with one channel of one pixel moved by 8/255 is seen after the PNG encoder and decoder (worst ${seen.one.worst}/255, ${seen.one.outside} pixel beyond ${RENDER.channel}/255), and ${seen.count} such pixels fail the tolerance, as they must: ${names.length} golden(s)`,
   };
+}
+
+/** The radius probe (record 0002, "The probes"): the example and the factor on each radius. */
+export const RADIUS_PROBE = { example: 'cornell-box', scale: 1.01 };
+
+/**
+ * Renders `RADIUS_PROBE.example` as the gate does, with the `radius` of every `Sphere` of its
+ * scene times `RADIUS_PROBE.scale`, and holds it to the golden. Throws when the comparison passes,
+ * when no `Sphere` was scaled, or when there is no golden. Answers `{ ok: true, numbers, message }`
+ * with the numbers of the failed comparison. The render is written to
+ * `.harness/render-<example>-radius.png`, to look at.
+ */
+export async function probeRadius(options = {}) {
+  const dir = options.dir ?? GOLDENS;
+  const { example: id, scale } = RADIUS_PROBE;
+  return withRenderPage(options, async (session) => {
+    const golden = readGolden(goldenPath(id, dir));
+    if (golden === undefined || 'error' in golden)
+      throw new Error(`the golden of ${id} cannot be read, so the radius probe has no picture`);
+    const rendered = await session.renderExample({
+      id,
+      size: RENDER.size,
+      samples: RENDER.samples,
+      perFrame: RENDER.perFrame,
+      seed: RENDER.seed,
+      radiusScale: scale,
+    });
+    if (!(rendered.scaled > 0))
+      throw new Error(`${id} has no Sphere, so the radius probe changed nothing`);
+    const picture = {
+      width: rendered.size[0],
+      height: rendered.size[1],
+      data: toBytes(rendered.image),
+    };
+    writeFileSync(
+      join(outDir(), `render-${id}-radius.png`),
+      encodePngBytes(picture.width, picture.height, picture.data),
+    );
+    const compared = comparePictures(picture, golden);
+    if (compared.ok)
+      throw new Error(
+        `the render gate passes ${id} with the radius of each of its ${rendered.scaled} Sphere objects times ${scale} (${firstLine(compared)}), so it does not see the size of a sphere`,
+      );
+    return {
+      ok: true,
+      numbers: { ...compared.numbers, spheres: rendered.scaled },
+      message: `${id} with the radius of each of its ${rendered.scaled} Sphere objects times ${scale} fails the golden, as it must: ${firstLine(compared)}`,
+    };
+  });
 }
 
 if (import.meta.main) {

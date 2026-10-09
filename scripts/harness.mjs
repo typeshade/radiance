@@ -119,6 +119,13 @@ try {
     fail(`probe render: ${e instanceof Error ? e.message : String(e)}`);
   }
 
+  // The radius probe of the render gate (record 0002, "The probes").
+  try {
+    console.log(`probe render (radius): ${(await render.probeRadius({ session })).message}`);
+  } catch (e) {
+    fail(`probe render (radius): ${e instanceof Error ? e.message : String(e)}`);
+  }
+
   // The preview, to look at.
   const preview = await session.render(PREVIEW);
   writeFileSync(

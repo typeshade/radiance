@@ -29,8 +29,13 @@ export const GATE = { size: [16, 16], samples: 1024, perFrame: 64, seed: 1 };
  * estimation. On SwiftShader the mean was 1.91e-6 and the largest difference 7.31e-5, with 0
  * channels out of bounds. So `mean` is ten times the measured 1.91e-6, rounded up to 2e-5.
  * Before, it was 3.1e-6.
+ *
+ * The two balls then became analytic spheres, `Sphere(0.4, material)` (record 0001, step 8), so
+ * the scene holds 4 triangles. On SwiftShader the mean was 2.01e-6 and the largest difference
+ * 7.71e-5, with 0 channels out of bounds. So `mean` is ten times the measured 2.01e-6, rounded up
+ * to one significant figure (as 1.91e-5 became 2e-5 before): 3e-5. Before, it was 2e-5.
  */
-export const ORACLE = { abs: 1e-3, rel: 0.05, mean: 2e-5 };
+export const ORACLE = { abs: 1e-3, rel: 0.05, mean: 3e-5 };
 
 /**
  * The differential gate's scenes of M2 (docs/design/0002-verification.md, "The differential
