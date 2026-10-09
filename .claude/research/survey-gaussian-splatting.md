@@ -624,8 +624,9 @@ recommended option is the whole pipeline, with option B as its output.
     optimisation amplifies one-ulp differences, so the promise there is statistical (a PSNR band).
   - B: a training entry binds the parameters, the adjoints, the moments, the tile lists and the
     image. Packing keeps it under eight.
-  - Memory: 1,320 bytes a surfel at degree 3 with materials, two-word adjoints and Adam's moments
-    (arithmetic), so a browser cap of about 500,000 surfels at the default limits. Items 39 to 42
+  - Memory: 1,440 bytes a surfel at degree 3 with materials, two-word adjoints, Adam's moments and
+    the frame's scratch (arithmetic, record 0011 part 6's table), 1,176 bytes in the compact state,
+    so a browser cap of about 500,000 surfels at the default limits in the full state. Items 39 to 42
     and record 0011's part 6 reach 6 million.
 - Compiler changes: reverse-mode `grad` before 1.0, with the differentiable BSDF in its scope
   (filed as typeshade/typeshade#535), and subgroups, `subgroup_size_control` and immediates

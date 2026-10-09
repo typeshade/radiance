@@ -414,7 +414,7 @@ Stage B can fail: the light and the materials may not separate (decision 31). Th
 | Degenerate material | More than 50 % of the visible surfels hold a roughness or a base-colour channel within 0.01 of a bound               |
 | Implausible light   | The environment's mean luminance is outside 1/16 to 16 times the mean luminance of the frames, after the scale prior |
 
-On a failure the result keeps the material words, sets `shading = 'baked'` on the `Splats`, and reports the failed check and its numbers. The scene then renders with its baked radiance, as an imported asset does. The user can still set `shading = 'physical'` by hand. A mix of physical and baked surfels in one instance is not proposed, because it is not physically consistent.
+On a failure the result keeps the material words, sets `shading = 'baked'` on the `Splats`, and reports the failed check and its numbers. The scene then renders with its baked radiance, as an imported asset does. The user can still set `shading = 'physical'` by hand. The path from the baked fallback to the full result has three steps, none of which needs a new record: a re-capture with more views, a grey card of known reflectance in one frame (decision 36, which sets the scale of albedo and light), and the rerun of stage B with the user's scale. A failed check that the grey card fixes moves the result back to `shading = 'physical'`. The path has no milestone of its own, so the step that adds the fallback (step 4.5) names it. A mix of physical and baked surfels in one instance is not proposed, because it is not physically consistent.
 
 ### Where the gradients come from
 
@@ -794,7 +794,7 @@ Each step is one pull request. Each commit names `Design: 0011` on a line of its
 10. **Step 4.2.** Build the derivative programs with 0056's `derivatives`. Add the custom adjoint of `composite`, densification and the pose refinement. Measure both forms of the adjoint of `composite`. Hold the bindings of each plan to part 6's table. Run `train-differential`, `train-determinism` and `pose-refine-ci` in the new `train` job.
 11. **Step 4.3.** Add the synthetic capture and `train-converge-ci`.
 12. **Step 4.4.** Add stage B: the shading, the environment, the losses, the scale prior. Run `bsdf-gradcheck`, `material-ci` and `relight-ci`.
-13. **Step 4.5.** Add the checks of a failed decomposition and the fallback. Run `fallback-ci`.
+13. **Step 4.5.** Add the checks of a failed decomposition and the fallback, and the path back from it (grey card, re-capture, rerun of stage B). Run `fallback-ci`.
 14. **Step 4.6.** Add the tier choice and both CPU budgets. Measure the PSNR band of decision 11 at the gate size on each tier the pin runs.
 15. **Step 4.7.** Run `train-converge` and `bench` on a real capture. Record the numbers, the band at full size and the agreement of the two renders.
 16. **Step 5.1.** Add `SplatExporter`, with a round-trip test.
