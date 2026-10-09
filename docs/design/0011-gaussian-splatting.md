@@ -852,7 +852,7 @@ Each step is one pull request. Each commit names `Design: 0011` on a line of its
 35. Every quantisation in a kernel is integer arithmetic on the bits of an `f32`, and the oracle does the same. `unpack2x16float` is admitted under rule 6 as an exact widening (Amendment D). Proposed: yes. This asks the owner, because it amends record 0005.
 36. A prior fixes the scale between albedo and light. It holds the 99th percentile of the base colour's luminance at 0.9. A grey card that the user marks can replace it. The gates measure the base colour after a scale for each channel. Proposed: the prior by default. This is a default.
 37. Stage B shades the blended surface of each pixel (deferred shading). Forward shading of each surfel is not the default. Proposed: deferred shading. This is a default.
-38. C1 is #535, answered by change 0056. C2 is #539, C3 is #138, C4 is #540, C5 is #541, C6 is #542, C7 is #543 and C8 is #536. Bindless is a watch item, #537. Needs N1 to N5 and the note on the returned old value are posted to #535 and #138 as comments, the comments linked in "Compiler needs". Proposed: yes. This asks the owner, because the owner speaks to the compiler's issues.
+38. C1 is #535, answered by change 0056. C2 is #539, C3 is #138, C4 is #540, C5 is #541, C6 is #542, C7 is #543 and C8 is #536. Bindless is a watch item, #537. Needs N1 to N5 are posted to #535, and the returned-old-value note to #138, as comments linked in "Compiler needs." Proposed: yes. This asks the owner, because the owner speaks to the compiler's issues.
 
 ## Record
 
