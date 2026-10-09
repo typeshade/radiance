@@ -173,7 +173,7 @@ A uniform array has a 16-byte stride, so 256 `vec4` hold 1,024 floats exactly (`
 | `[7]` | emissiveMap | normalScale        | alphaCutoff       | lightGroup                 |
 
 - **The integer words become values.** The type-and-flags word, the five texture ids and `lightGroup` hold an integer below 2^24 as the `f32` of that number. The kernel reads each with `u32()`. This keeps seven storage buffers, the second alternative of record 0004, decision 8. A texture id is `0` for none, else `1 + class * 256 + layer`, with `class` from 0 to 3 and `layer` from 0 to 255.
-- **New flags.** Bit 11 is "thin walled", set when `thickness` is 0. Bit 12 is `MATERIAL_NO_MS`. Bits 8 to 10 keep their meaning. The largest flag is 0x1fff, so the word is exact.
+- **New flags.** Bit 13 (0x2000) is `MATERIAL_THIN_WALLED`, set when `thickness` is 0. Bit 12 (0x1000) is `MATERIAL_NO_MS`. Bit 11 (0x800) stays `MATERIAL_FLAT_SHADING` (Amendment 2). Bits 8 to 10 keep their meaning. The largest flag is 0x3fff, so the word is exact.
 - **The slot `[6]`.** Record 0004 reserved `[6]` for the subsurface radius and weight (M3s). This part uses `[6].xyz` for the absorption coefficient of a medium and `[6].w` for the alpha of `baseColor`. M3s reads a radius as a medium coefficient too. It amends the record when it needs a weight.
 - **`PhysicalMaterial`.** It gains the parameters `anisotropy`, `anisotropyRotation`, `clearcoat`, `clearcoatRoughness`, `sheen`, `sheenColor`, `sheenRoughness`, `thickness`, `attenuationColor`, `attenuationDistance` and `multipleScattering`. The names are three.js's `MeshPhysicalMaterial` names where it has them. `thickness` defaults to 0, as in three.js and glTF.
 
@@ -885,7 +885,7 @@ Each step is one pull request. The figures are proposals, and each step records 
 **1.1 The words of the record.**
 
 - Delivers: `packMaterial` writes the table of Part 1. `flagsOf` reads `u32(word.w)`. `PhysicalMaterial` gains its parameters and the kernel ignores them. No lobe changes.
-- Test: `scene-pack.test.ts` reads each word of a material with every parameter set. `materials.test.ts` stores every texture id from 0 to 1,024 and every flag mask below 0x2000, and reads each back.
+- Test: `scene-pack.test.ts` reads each word of a material with every parameter set. `materials.test.ts` stores every texture id from 0 to 1,024 and every flag mask below 0x4000, and reads each back.
 - Number: no golden changes. `gate:determinism` reports 0 of 1,024 floats that differ.
 - Probe: the same test stores 16,777,217 and must read 16,777,216. It shows that the exactness test can fail.
 
@@ -1262,3 +1262,10 @@ Checks that did not run: `bun run check` as a whole, `bun run harness`, every ga
 4. Amendment 1 is new.
 
 - **Not run.** No code ran for this amendment. No WebGPU feature was tested on a device. Each fact was read from its source on 2026-10-09.
+
+**Amendment 2** (2026-10-09, UTC). This amendment moves the flag "thin walled" from bit 11 to bit 13. Bit 11 is `MATERIAL_FLAT_SHADING`, delivered by record 0004, Amendment 3 (decision 10). Part 1 named bit 11 for the thin wall, so the two flags would share one bit. The owner chose this resolution by default (decision recorded on the pull request). The amendment changes no code, no step order and no decision. The decisions keep their numbers and their text.
+
+- **The flag bits (Part 1, "The material record").** Bit 13 (0x2000) is `MATERIAL_THIN_WALLED`. Bit 12 (0x1000) is `MATERIAL_NO_MS`, as before. Bit 11 (0x800) is `MATERIAL_FLAT_SHADING`. Bits 8 to 10 keep their meaning. The largest flag is 0x3fff, below 2^24, so the word stays exact as an `f32`.
+- **Step 1.1 (Part 1).** The mask test covers every flag mask below 0x4000. It replaces the bound 0x2000.
+- **The edits to the body.** This amendment changes two places: the bullet "New flags" of "The material record", and the test of step 1.1. No other place names bit 11 as thin walled. No other place names 0x1fff or 0x2000 as the flag limit.
+- **Not run.** No code ran for this amendment. The merge of the pull request that carries it is the owner's acceptance.

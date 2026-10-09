@@ -153,7 +153,7 @@ pre-1.0 and its minor is the breaking position).
 - cameras: `Camera`, `PerspectiveCamera`.
 - geometries: `Geometry`, `BufferGeometry`, `SphereGeometry`, `PlaneGeometry`, `BoxGeometry`.
 - materials: `Material` (with `flatShading`, Amendment 1), `MaterialParameters` (with `flatShading`), `DiffuseMaterial`, `MirrorMaterial`,
-  `EmissiveMaterial`, `PhysicalMaterial`, `PhysicalMaterialParameters`.
+  `EmissiveMaterial`, `PhysicalMaterial`, `PhysicalMaterialParameters` (with the members of Amendment 2).
 - objects: `Mesh`, `Sphere(radius, material)` (Amendment 1), `Scene`.
 - renderers: `Renderer`, `PathTracer`, `PathTracerParameters`, `TARGET_FORMAT`, `CANVAS_FORMAT`.
 
@@ -220,6 +220,12 @@ materials under "The public surface at 0.1.0". The decisions keep their numbers 
 - **The surface bake.** The pull request of record 0001, step 7, commits the bake with `Sphere`
   added. The pull request of step 9 commits it with the two members of `flatShading` added.
   `gate:api` fails on any other change.
+
+**Amendment 2** (2026-10-09, UTC). Record 0010, Part 1, adds eleven members to `PhysicalMaterial`. A new member is a change to this surface (`docs/design/README.md`, the criterion "exports"), so this record lists them. The merge of the pull request that carries this amendment is the owner's acceptance. It changes one place: the list of materials under "The public surface at 0.1.0". The decisions keep their numbers and their text.
+
+- **The members.** `PhysicalMaterialParameters` and `PhysicalMaterial` gain `anisotropy`, `anisotropyRotation`, `clearcoat`, `clearcoatRoughness`, `sheen`, `sheenColor`, `sheenRoughness`, `thickness`, `attenuationColor`, `attenuationDistance` and `multipleScattering`. The names are three.js's `MeshPhysicalMaterial` names where it has them. Record 0010, Part 1, states their defaults and their meaning.
+- **The rule.** Rule 1 applies, because the names are three.js's. A setter of each member adds 1 to `version`, as the setters of the existing members do.
+- **The gate.** The pull request of record 0010, step 1.1, commits the bake of `gate:api` with these members added. `gate:api` fails on any other change.
 
 **Configuration and validation record.** This record does not yet apply. Implementation will
 record the bake's first commit, the dry run's workflow run id, and the 0.1.0 release's tag,
