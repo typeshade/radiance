@@ -18,6 +18,7 @@ import { Color } from '../math/Color.ts';
 import { Mesh } from '../objects/Mesh.ts';
 import { SCENE_BUFFERS, ScenePack, packMaterial } from '../renderers/scene-pack.ts';
 import { Scene } from '../scenes/Scene.ts';
+import { MATERIAL_MAPS, MATERIAL_PARAMS } from './materials.shade.ts';
 import {
   INSTANCE_BASES,
   INSTANCE_FLAGS,
@@ -183,6 +184,51 @@ describe('evalBsdf', () => {
       const integral = (4 * Math.PI * sum) / (n * n);
       expect(Math.abs(integral - 1)).toBeLessThan(0.02);
     }
+  });
+});
+
+// Verifies: Design 0010.5
+describe('the integer words of the material record (record 0010, Part 1)', () => {
+  /** Bind one material whose words are `words`, as the oracle's `materials` array, then run `use`. */
+  const withWords = (words: Float32Array, use: () => void): void => {
+    cpu.setBinding('materials', vec4s(words) as unknown as CpuValue);
+    try {
+      use();
+    } finally {
+      bindMaterials(cpu, MATERIALS);
+    }
+  };
+
+  it('reads every texture id from 0 to 1,024 in each of the four slots', () => {
+    for (let slot = 0; slot < 4; slot++) {
+      for (let id = 0; id <= 1024; id++) {
+        const words = new Float32Array(8 * 4);
+        words[MATERIAL_MAPS * 4 + slot] = id;
+        withWords(words, () => {
+          expect(fn('materialMap')(0, slot)).toBe(id);
+        });
+      }
+    }
+  });
+
+  it('reads every flag mask below 0x4000 back, from the type and flags word', () => {
+    for (let mask = 0; mask < 0x4000; mask++) {
+      const words = new Float32Array(8 * 4);
+      words[MATERIAL_PARAMS * 4 + 3] = mask;
+      withWords(words, () => {
+        expect(fn('materialFlags')(0)).toBe(mask);
+      });
+    }
+  });
+
+  it('can fail: 16,777,217 does not survive f32 and reads back as 16,777,216', () => {
+    const words = new Float32Array(8 * 4);
+    words[MATERIAL_PARAMS * 4 + 3] = 16777217;
+    withWords(words, () => {
+      // The exactness rule of record 0010 holds below 2^24. This value is above it, so the rule
+      // must read it as the nearest f32, and the test shows that an exact read is not owed.
+      expect(fn('materialFlags')(0)).toBe(16777216);
+    });
   });
 });
 

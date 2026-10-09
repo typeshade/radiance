@@ -24,7 +24,7 @@ export const TRIANGLE_STRIDE: u32 = 1;
 export const VERTEX_STRIDE: u32 = 2;
 /** vec4s in one instance of `instances`: two matrices as rows, the bases, the flags. */
 export const INSTANCE_STRIDE: u32 = 8;
-/** vec4s in one material of `materials` (record 0004). M2 fills the first four. */
+/** vec4s in one material of `materials` (record 0004, record 0010 Part 1). Each word is a value. */
 export const MATERIAL_STRIDE: u32 = 8;
 /** vec4s in one light of `lights`: `(bits(type), bits(instance), bits(triangle), cdf)`. */
 export const LIGHT_STRIDE: u32 = 1;
