@@ -8,3 +8,6 @@ test-results/
 # The site: the API reference starlight-typedoc generates, and Astro's cache.
 site/src/content/docs/api/
 site/.astro/
+
+# The demo assets of record 0010, Part 6: fetched at build by scripts/fetch-demo-assets.mjs.
+site/public/demo/
