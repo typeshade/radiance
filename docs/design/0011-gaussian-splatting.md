@@ -264,7 +264,7 @@ Here `og = M (o - c)` and `dg = M d`, in the object's space. The direction is no
 - `material` is `[6].w` of the instance, the `Splats.material`.
 - `baseTint` is `(base, 1)`. `mrTint` is `(1, rough, metal, 1)`, green for roughness and blue for metalness as record 0010 part 2 reads them. `emissiveTint` is `emit`. `normalTint` stays 1.
 
-**What it needs from record 0010.** Record 0010 step 1.2 adds the tint fields, fixed at 1. The kernel reads them only from part 2. Steps 2.3 and 2.4 make `materials.shade.ts` multiply the factors by the tints (record 0010, line 623). Step 2.4 adds `dpdv` and `bsign` (line 970). So `splatSurface` needs record 0010 part 2 up to step 2.4. With it, `sampleBsdf`, `evalBsdf` and `emission` read a surfel's words as they read a texture's. So `materials.shade.ts` does not change (Amendment I). Without it, the surfel words would reach no lobe.
+**What it needs from record 0010.** Record 0010 step 1.2 adds the tint fields, fixed at 1. The kernel reads them only from part 2. Steps 2.3 and 2.4 make `materials.shade.ts` multiply the factors by the tints (record 0010, line 623). Step 2.4 adds `dpdv` and `bsign` (line 970). So `splatSurface` needs record 0010 part 2 up to step 2.4. With it, `sampleBsdf`, `evalBsdf` and `emission` read a surfel's words as they read a texture's. So this record changes no line of `materials.shade.ts`. Record 0010 steps 2.3 and 2.4 change it, and this record needs them there (Amendment I, record 0004). Without it, the surfel words would reach no lobe.
 
 **The AOVs.** Record 0010 step 5.2 adds the `aov` entry, and step 5.4 the object ids (record 0010, lines 395 to 410). At a physical surfel hit, the albedo AOV reads `baseColor` times `baseTint`, so the surfel's base colour. The normal AOV reads `ns`. The id is the object index of `[7].z`. At a baked hit, the albedo is the linear baked colour (decision 24). Step 1.6 delivers these after record 0010 step 5.4 lands.
 
@@ -375,7 +375,7 @@ Stage A is 2DGS (survey items 2 and 26) with joint pose refinement. Its loss is 
 
 **The pose refinement** (decision 32). The pose corrections start at zero and have their own learning rate. They stay frozen for the first 1,000 steps, so the surfels settle first. The first frame's correction stays zero. It fixes the gauge, so the scene cannot drift as a whole. A frame whose correction passes 5 degrees or 5 % of the scene's box diagonal is reported.
 
-The defaults are 30,000 steps, with a preview at 7,000. The SH degree rises by one each 1,000 steps, up to 3. The render of step 5 meets each surfel with the formula of part 1. The order differs: training sorts by the depth of the centre, and the path tracer takes the nearest accepted `t`.
+The defaults are 30,000 steps of stage A, with a preview at 7,000, and 10,000 steps of stage B (decision 15). The SH degree rises by one each 1,000 steps, up to 3. The render of step 5 meets each surfel with the formula of part 1. The order differs: training sorts by the depth of the centre, and the path tracer takes the nearest accepted `t`.
 
 ### Stage B: materials and light by inverse rendering
 
@@ -852,7 +852,7 @@ Each step is one pull request. Each commit names `Design: 0011` on a line of its
 35. Every quantisation in a kernel is integer arithmetic on the bits of an `f32`, and the oracle does the same. `unpack2x16float` is admitted under rule 6 as an exact widening (Amendment D). Proposed: yes. This asks the owner, because it amends record 0005.
 36. A prior fixes the scale between albedo and light. It holds the 99th percentile of the base colour's luminance at 0.9. A grey card that the user marks can replace it. The gates measure the base colour after a scale for each channel. Proposed: the prior by default. This is a default.
 37. Stage B shades the blended surface of each pixel (deferred shading). Forward shading of each surfel is not the default. Proposed: deferred shading. This is a default.
-38. C1 is #535, answered by change 0056. C2 is #539, C3 is #138, C4 is #540, C5 is #541, C6 is #542, C7 is #543 and C8 is #536. Bindless is a watch item, #537. Needs N1 to N5 and the note on the returned old value go to #535 and #138 as comments. The owner posts them, or tells an agent to. Proposed: yes. This asks the owner, because the owner speaks to the compiler's issues.
+38. C1 is #535, answered by change 0056. C2 is #539, C3 is #138, C4 is #540, C5 is #541, C6 is #542, C7 is #543 and C8 is #536. Bindless is a watch item, #537. Needs N1 to N5 and the note on the returned old value are posted to #535 and #138 as comments, the comments linked in "Compiler needs". Proposed: yes. This asks the owner, because the owner speaks to the compiler's issues.
 
 ## Record
 
