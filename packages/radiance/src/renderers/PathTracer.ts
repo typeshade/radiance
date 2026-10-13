@@ -17,6 +17,7 @@
 import { createRuntime, resident, type Resident, type Runtime } from 'typeshade/runtime';
 import trace from '../kernels/trace.shade.ts';
 import type { Camera } from '../cameras/Camera.ts';
+import { PhysicalCamera } from '../cameras/PhysicalCamera.ts';
 import type { Scene } from '../scenes/Scene.ts';
 import { checkStorageBinding } from './limits.ts';
 import { Renderer } from './Renderer.ts';
@@ -100,6 +101,8 @@ export class PathTracer extends Renderer {
   #device: object | undefined;
   #seed: number;
   #exposure: number;
+  /** The exposure, in stops, of the camera that was rendered last (0 for a `PerspectiveCamera`). */
+  #cameraStops = 0;
   #width = 1;
   #height = 1;
   #p: Pipelines | undefined;
@@ -222,6 +225,13 @@ export class PathTracer extends Renderer {
     scene.updateMatrixWorld();
     camera.updateMatrixWorld();
     if (pack.update(scene).size > 0) this.#dirty = true;
+    // The camera's exposure is added on the host (design record 0010, decision 21): the kernel and
+    // the accumulation are unchanged, and only the display draws again.
+    const cameraStops = camera instanceof PhysicalCamera ? camera.exposureStops : 0;
+    if (cameraStops !== this.#cameraStops) {
+      this.#cameraStops = cameraStops;
+      this.#drawn = false;
+    }
     const view = cameraFrame(camera);
     if (this.#camera === undefined || !sameCameraFrame(view, this.#camera)) {
       this.#camera = view;
@@ -335,7 +345,7 @@ export class PathTracer extends Renderer {
   }
 
   #present(): { view: number[] } {
-    return { view: [this.#exposure, this.#traced()[0], this.#scale, 0] };
+    return { view: [this.#exposure + this.#cameraStops, this.#traced()[0], this.#scale, 0] };
   }
 
   #allocate(): void {

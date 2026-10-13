@@ -17,6 +17,7 @@ export { Object3D } from './core/Object3D.ts';
 
 export { Camera } from './cameras/Camera.ts';
 export { PerspectiveCamera } from './cameras/PerspectiveCamera.ts';
+export { PhysicalCamera, type PhysicalCameraParameters } from './cameras/PhysicalCamera.ts';
 
 export { BoxGeometry } from './geometries/BoxGeometry.ts';
 export { BufferGeometry } from './geometries/BufferGeometry.ts';
