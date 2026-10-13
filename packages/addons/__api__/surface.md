@@ -8,11 +8,15 @@ Each line is one name that `src/index.ts` exports: the name, its kind and its ty
 A class line also lists its constructor and its static members. A private member is not listed.
 The script sorts the lines by name.
 
-## 11 exports
+## 15 exports
 
 ```
 CornellBox  interface  { readonly bounds: Box3; readonly camera: PerspectiveCamera; readonly scene: Scene; readonly target: Vector3 }
 DemoScene  interface  { readonly bounds: Box3; readonly camera: PerspectiveCamera; readonly scene: Scene; readonly target: Vector3 }
+EXRExporter  class  new (): EXRExporter; { parse: (image: ExrImage, options?: ExrOptions) => Promise<Uint8Array> }
+EXRLoader  class  new (): EXRLoader; { parse: (bytes: Uint8Array) => Promise<ExrImage> }
+ExrImage  interface  { attributes?: Record<string, string | number | number[]> | undefined; channels: { name: string; data: Float32Array; }[]; height: number; width: number }
+ExrOptions  interface  { compression?: "none" | "zip"; type?: "float" | "half" }
 FlyControls  class  extends EventDispatcher<FlyControlsEvents>; new (camera: Camera, domElement: HTMLElement): FlyControls; { addEventListener: <K extends keyof FlyControlsEvents>(type: K, listener: (event: FlyControlsEvents[K]) => void) => void; dispatchEvent: <K extends keyof FlyControlsEvents>(type: K, event: FlyControlsEvents[K]) => void; dispose: () => void; enabled: boolean; movementSpeed: number; readonly moving: boolean; removeEventListener: <K extends keyof FlyControlsEvents>(type: K, listener: (event: FlyControlsEvents[K]) => void) => void; reset: () => void; rotationSpeed: number; saveState: () => void; update: (dt?: number) => boolean }
 FlyControlsEvents  type  { change: undefined; end: undefined; start: undefined }
 GLTFLoader  class  new (): GLTFLoader; { load: (url: string, onLoad: (gltf: GLTF) => void, onProgress?: ((event: GLTFProgress) => void) | undefined, onError?: ((error: unknown) => void) | undefined) => void; loadAsync: (url: string, onProgress?: ((event: GLTFProgress) => void) | undefined) => Promise<GLTF>; parse: (data: string | ArrayBuffer | ArrayBufferView, path: string, onLoad: (gltf: GLTF) => void, onError?: ((error: unknown) => void) | undefined) => void; parseAsync: (data: string | ArrayBuffer | ArrayBufferView, path?: string) => Promise<GLTF> }
