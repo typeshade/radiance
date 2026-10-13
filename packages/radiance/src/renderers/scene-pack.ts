@@ -55,16 +55,21 @@ import {
   MATERIAL_BASE,
   MATERIAL_DOUBLE_SIDED,
   MATERIAL_EMISSIVE,
-  MATERIAL_EMISSIVE_MAP,
+  MATERIAL_ABSORPTION,
+  MATERIAL_COAT,
   MATERIAL_EMITS,
+  MATERIAL_EXTRA,
   MATERIAL_FLAT_SHADING,
   MATERIAL_MAPS,
+  MATERIAL_NO_MS,
   MATERIAL_PARAMS,
+  MATERIAL_SHEEN,
+  MATERIAL_THIN_WALLED,
   MATERIAL_TYPE_MASK,
-  TEXTURE_NONE,
 } from '../kernels/materials.shade.ts';
 import type { Material } from '../materials/Material.ts';
 import { PhysicalMaterial } from '../materials/PhysicalMaterial.ts';
+import { Color } from '../math/Color.ts';
 import { Vector3 } from '../math/Vector3.ts';
 import { Mesh } from '../objects/Mesh.ts';
 import { Sphere } from '../objects/Sphere.ts';
@@ -302,31 +307,55 @@ export function sameCameraFrame(a: CameraFrame, b: CameraFrame): boolean {
 }
 
 /**
- * Material `m`'s record (design record 0004, "The record"): 8 vec4. M2 fills [0] to [3], with
- * every texture id none, and leaves [4] to [7] zero with [7].x none. A material that is not a
- * `PhysicalMaterial` stores 0 for the physical parameters, which its type does not read.
+ * Material `m`'s record (design record 0004, "The record", as amended by record 0010, Part 1):
+ * 8 vec4. The integer words (the type and flags, and the texture ids) are values of f32, each an
+ * integer below 2^24, read by the kernel with `u32()`. A texture id is 0 for none, else
+ * 1 + class * 256 + layer. A material that is not a `PhysicalMaterial` stores 0 for the physical
+ * parameters, which its type does not read. Every texture id is none until record 0010, Part 2.
  */
 export function packMaterial(m: Material): Float32Array {
   const words = new Float32Array(MATERIAL_STRIDE * VEC4);
-  const bits = new Uint32Array(words.buffer);
   const physical = m instanceof PhysicalMaterial ? m : undefined;
   const intensity = physical?.emissiveIntensity ?? 1;
   const emissive = [m.emissive.r * intensity, m.emissive.g * intensity, m.emissive.b * intensity];
   const emits = emissive.some((c) => c > 0);
+  const sheen = physical?.sheenColor ?? new Color(0, 0, 0);
+  // sigma = -ln(attenuationColor) / attenuationDistance, per channel; 0 when the distance is
+  // infinite, so the medium absorbs nothing (record 0010, Part 1, "Absorption").
+  const absorb = (c: number): number => {
+    const d = physical?.attenuationDistance ?? Infinity;
+    return Number.isFinite(d) ? -Math.log(c) / d : 0;
+  };
+  const att = physical?.attenuationColor ?? new Color(1, 1, 1);
   words.set([m.color.r, m.color.g, m.color.b, physical?.metalness ?? 0], MATERIAL_BASE * VEC4);
   words.set([...emissive, physical?.roughness ?? 0], MATERIAL_EMISSIVE * VEC4);
+  const thin = physical !== undefined && physical.thickness === 0;
+  const noMs = physical !== undefined && !physical.multipleScattering;
+  const flags =
+    (m.type & MATERIAL_TYPE_MASK) |
+    (emits ? MATERIAL_EMITS : 0) |
+    (m.doubleSided ? MATERIAL_DOUBLE_SIDED : 0) |
+    (m.flatShading ? MATERIAL_FLAT_SHADING : 0) |
+    (noMs ? MATERIAL_NO_MS : 0) |
+    (thin ? MATERIAL_THIN_WALLED : 0);
   words.set(
-    [physical?.ior ?? 0, physical?.transmission ?? 0, physical?.specularIntensity ?? 0],
+    [physical?.ior ?? 0, physical?.transmission ?? 0, physical?.specularIntensity ?? 0, flags],
     MATERIAL_PARAMS * VEC4,
   );
-  bits[MATERIAL_PARAMS * VEC4 + 3] =
-    ((m.type & MATERIAL_TYPE_MASK) |
-      (emits ? MATERIAL_EMITS : 0) |
-      (m.doubleSided ? MATERIAL_DOUBLE_SIDED : 0) |
-      (m.flatShading ? MATERIAL_FLAT_SHADING : 0)) >>>
-    0;
-  bits.fill(TEXTURE_NONE, MATERIAL_MAPS * VEC4, MATERIAL_MAPS * VEC4 + 4);
-  bits[MATERIAL_EMISSIVE_MAP * VEC4] = TEXTURE_NONE;
+  words.set([0, 0, 0, 0], MATERIAL_MAPS * VEC4); // every texture id is none
+  words.set(
+    [
+      physical?.anisotropy ?? 0,
+      physical?.anisotropyRotation ?? 0,
+      physical?.clearcoat ?? 0,
+      physical?.clearcoatRoughness ?? 0,
+    ],
+    MATERIAL_COAT * VEC4,
+  );
+  words.set([sheen.r, sheen.g, sheen.b, physical?.sheenRoughness ?? 0], MATERIAL_SHEEN * VEC4);
+  words.set([absorb(att.r), absorb(att.g), absorb(att.b), 1], MATERIAL_ABSORPTION * VEC4);
+  // emissiveMap none, normalScale 1, alphaCutoff 0.5, lightGroup 0.
+  words.set([0, 1, 0.5, 0], MATERIAL_EXTRA * VEC4);
   return words;
 }
 
@@ -494,7 +523,7 @@ export class ScenePack {
         if (!(o.radius > 0 && Number.isFinite(o.radius)))
           throw new RangeError(`a Sphere's radius must be above 0 and finite: ${o.radius}`);
         // The light table lists triangles, so next-event estimation could not sample the sphere.
-        if ((new Uint32Array(words.buffer)[MATERIAL_PARAMS * VEC4 + 3]! & MATERIAL_EMITS) !== 0)
+        if ((words[MATERIAL_PARAMS * VEC4 + 3]! & MATERIAL_EMITS) !== 0)
           throw new TypeError('a Sphere does not emit: the light table lists triangles only');
       }
       const known = this.#materials.get(m);

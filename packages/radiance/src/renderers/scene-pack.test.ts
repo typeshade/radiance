@@ -190,66 +190,114 @@ describe('ScenePack: the words of each buffer (record 0001, "The GPU layout")', 
   });
 
   // Verifies: Design 0004.1
-  it("writes record 0004's 128-byte material record: [0] to [3] filled, [4] to [7] zero", () => {
+  it("writes record 0010's 128-byte material record: the words of Part 1, integers as values", () => {
     const words = pack.arrays.materials.subarray(MATERIAL_STRIDE * 4, MATERIAL_STRIDE * 8);
-    const bits = bitsOf(words);
     expect(MATERIAL_STRIDE * 16).toBe(128);
     expect(Array.from(words.subarray(0, 4))).toEqual(f32([0.9, 0.8, 0.7, 0.3]));
     // The emissive colour times emissiveIntensity, and the roughness.
     expect(Array.from(words.subarray(4, 8))).toEqual(f32([2, 4, 6, 0.7]));
     expect(Array.from(words.subarray(8, 11))).toEqual(f32([1.4, 0.2, 0.9]));
-    // Type 2 (physical), bit 8 (emits) and bit 9 (double sided).
-    expect(bits[11]).toBe(2 | 0x100 | 0x200);
-    expect(Array.from(bits.subarray(12, 16))).toEqual([
-      0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff,
-    ]);
-    expect(Array.from(words.subarray(16, 28))).toEqual(new Array(12).fill(0));
-    expect(Array.from(bits.subarray(28, 32))).toEqual([0xffffffff, 0, 0, 0]);
+    // Type 2 (physical), bit 8 (emits), bit 9 (double sided) and bit 13 (thin walled: thickness 0).
+    expect(words[11]).toBe(2 | 0x100 | 0x200 | 0x2000);
+    // Four texture ids, each none (0).
+    expect(Array.from(words.subarray(12, 16))).toEqual([0, 0, 0, 0]);
+    // [4] to [7]: the physical parameters of record 0010, Part 1. This material sets none of them,
+    // so each takes its default. Thin walled (0x2000) is set because thickness is 0.
+    expect(Array.from(words.subarray(16, 20))).toEqual([0, 0, 0, 0]); // anisotropy, rotation, coat
+    expect(Array.from(words.subarray(20, 24))).toEqual([0, 0, 0, 1]); // sheen 0; sheen roughness 1
+    expect(Array.from(words.subarray(24, 28))).toEqual([0, 0, 0, 1]); // absorption 0; alpha 1
+    expect(Array.from(words.subarray(28, 32))).toEqual([0, 1, 0.5, 0]); // emissiveMap none, normalScale 1, alphaCutoff 0.5, lightGroup 0
     // The diffuse one: its colour, no emission, type 0 and no flag.
     const diffuse = pack.arrays.materials.subarray(0, MATERIAL_STRIDE * 4);
     expect(Array.from(diffuse.subarray(0, 3))).toEqual(f32([0.5, 0.25, 0.125]));
     expect(Array.from(diffuse.subarray(4, 7))).toEqual([0, 0, 0]);
-    expect(bitsOf(diffuse)[11]).toBe(0);
+    expect(diffuse[11]).toBe(0);
+  });
+
+  // Verifies: Design 0010.5
+  it('reads each word of a material with every parameter set, as record 0010, Part 1 gives it', () => {
+    const m = new PhysicalMaterial({
+      color: new Color(0.1, 0.2, 0.3),
+      metalness: 0.4,
+      roughness: 0.5,
+      ior: 1.33,
+      transmission: 0.6,
+      specularIntensity: 0.7,
+      emissive: new Color(0.25, 0.5, 0.75),
+      emissiveIntensity: 2,
+      anisotropy: 0.8,
+      anisotropyRotation: 0.9,
+      clearcoat: 0.11,
+      clearcoatRoughness: 0.12,
+      sheen: 0.13,
+      sheenColor: new Color(0.14, 0.15, 0.16),
+      sheenRoughness: 0.17,
+      thickness: 2,
+      attenuationColor: new Color(0.5, 0.5, 0.5),
+      attenuationDistance: 4,
+      multipleScattering: false,
+    });
+    m.flatShading = true;
+    const w = packMaterial(m);
+    expect(Array.from(w.subarray(0, 4))).toEqual(f32([0.1, 0.2, 0.3, 0.4]));
+    expect(Array.from(w.subarray(4, 8))).toEqual(f32([0.5, 1, 1.5, 0.5]));
+    // Type 2 | emits (the emissive colour is above 0) | flat shading | no multiple scattering.
+    // Thickness is not 0, so the material is not thin walled.
+    expect(Array.from(w.subarray(8, 12))).toEqual(
+      f32([1.33, 0.6, 0.7, 2 | 0x100 | 0x800 | 0x1000]),
+    );
+    expect(Array.from(w.subarray(12, 16))).toEqual([0, 0, 0, 0]);
+    expect(Array.from(w.subarray(16, 20))).toEqual(f32([0.8, 0.9, 0.11, 0.12]));
+    expect(Array.from(w.subarray(20, 24))).toEqual(f32([0.14, 0.15, 0.16, 0.17]));
+    // sigma = -ln(0.5) / 4 per channel, and the alpha of the base colour (1).
+    const sigma = -Math.log(0.5) / 4;
+    expect(Array.from(w.subarray(24, 28))).toEqual(f32([sigma, sigma, sigma, 1]));
+    expect(Array.from(w.subarray(28, 32))).toEqual(f32([0, 1, 0.5, 0]));
+  });
+
+  // Verifies: Design 0010.5
+  it('sets thin walled (bit 13) when thickness is 0, and not otherwise', () => {
+    const thin = packMaterial(new PhysicalMaterial({ thickness: 0 }));
+    const thick = packMaterial(new PhysicalMaterial({ thickness: 0.5 }));
+    expect(thin[11]! & 0x2000).toBe(0x2000);
+    expect(thick[11]! & 0x2000).toBe(0);
   });
 
   it('writes the type of each material class', () => {
     const type = (m: DiffuseMaterial | MirrorMaterial | EmissiveMaterial | PhysicalMaterial) =>
-      bitsOf(packMaterial(m))[11]! & 0xff;
+      packMaterial(m)[11]! & 0xff;
     expect(type(new DiffuseMaterial())).toBe(0);
     expect(type(new MirrorMaterial())).toBe(1);
     expect(type(new PhysicalMaterial())).toBe(2);
     expect(type(new EmissiveMaterial())).toBe(0);
-    expect(bitsOf(packMaterial(new EmissiveMaterial()))[11]).toBe(0x100);
+    expect(packMaterial(new EmissiveMaterial())[11]).toBe(0x100);
   });
 
   // Verifies: Design 0004.10
   it('clears the flatShading flag by default: 3 of 3 material classes', () => {
     const fresh = [new DiffuseMaterial(), new MirrorMaterial(), new PhysicalMaterial()];
-    const clear = fresh.filter(
-      (m) => !m.flatShading && (bitsOf(packMaterial(m))[11]! & 0x800) === 0,
-    );
+    const clear = fresh.filter((m) => !m.flatShading && (packMaterial(m)[11]! & 0x800) === 0);
     expect(clear.length).toBe(3);
   });
 
   // Verifies: Design 0004.10
-  it('sets the flatShading flag in byte 45 alone, as 0x08, and the setter adds 1 to version', () => {
+  it('sets the flatShading flag in the type and flags word alone, as 0x800, and the setter adds 1 to version', () => {
     for (const make of [
       () => new DiffuseMaterial({ color: 0x336699 }),
       () => new MirrorMaterial(),
       () => new PhysicalMaterial({ roughness: 0.3 }),
     ]) {
-      const smooth = new Uint8Array(packMaterial(make()).buffer);
+      const smooth = packMaterial(make());
       const m = make();
       const version = m.version;
       m.flatShading = true;
       expect(m.flatShading).toBe(true);
       expect(m.version).toBe(version + 1);
-      const flat = new Uint8Array(packMaterial(m).buffer);
-      expect(flat.length).toBe(128);
+      const flat = packMaterial(m);
+      expect(flat.length).toBe(32);
       const differ = [...flat.keys()].filter((i) => flat[i] !== smooth[i]);
-      expect(differ).toEqual([45]);
-      expect(flat[45]! ^ smooth[45]!).toBe(0x08);
-      expect(flat[45]! & 0x08).toBe(0x08);
+      expect(differ).toEqual([11]);
+      expect(flat[11]).toBe(smooth[11]! | 0x800);
     }
   });
 
@@ -261,7 +309,7 @@ describe('ScenePack: the words of each buffer (record 0001, "The GPU layout")', 
     ]) {
       expect(m.flatShading).toBe(true);
       expect(m.version).toBe(0);
-      expect(bitsOf(packMaterial(m))[11]! & 0x800).toBe(0x800);
+      expect(packMaterial(m)[11]! & 0x800).toBe(0x800);
     }
   });
 

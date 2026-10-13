@@ -8,12 +8,15 @@ import { MATERIAL_STRIDE } from './layout.shade.ts';
 //
 // A material is 8 vec4 of `materials`, 128 bytes (record 0004, "The record"):
 //   [0] baseColor.rgb, metalness        [1] emissive.rgb (times emissiveIntensity), roughness
-//   [2] ior, transmission, specularIntensity, bits(type and flags)
-//   [3] bits(map), bits(normalMap), bits(roughnessMap), bits(metalnessMap)
-//   [4] to [6] M3's parameters, 0 at M2  [7] bits(emissiveMap), then reserved
+//   [2] ior, transmission, specularIntensity, the type and flags (a value below 2^24)
+//   [3] the texture ids map, normalMap, roughnessMap, metalnessMap (0 is none)
+//   [4] anisotropy, anisotropyRotation, clearcoat, clearcoatRoughness
+//   [5] sheen.rgb, sheenRoughness  [6] absorption sigma.rgb, baseColor alpha
+//   [7] emissiveMap, normalScale, alphaCutoff, lightGroup (record 0010, Part 1)
 // The type is the low 8 bits of [2].w: 0 diffuse, 1 mirror, 2 physical. Bit 8 says the material
 // emits, bit 9 that it is double sided, bit 10 that it has an alpha cutout (M3), bit 11 that it is
-// flat shaded: `surfaceAt` takes its shading normal as the geometric normal.
+// flat shaded: `surfaceAt` takes its shading normal as the geometric normal. Bit 12 says the
+// material has no multiple-scattering compensation, bit 13 that it is thin walled (record 0010).
 //
 // At M2 there are two lobes: the diffuse (Lambert, sampled by the cosine) and the mirror (a delta
 // lobe). The physical type renders as a diffuse of its base colour until record 0004, step 2,
@@ -21,8 +24,8 @@ import { MATERIAL_STRIDE } from './layout.shade.ts';
 //
 // The three exported functions are the `grad` boundary (record 0004, "The grad boundary"): they
 // use f32 and float-vector arithmetic, the component-wise builtins, `if` and calls to other
-// functions of this module. They have no `while` and no texture sample. Their one `bitcast`
-// reads the type and flags word, which no derivative flows through.
+// functions of this module. They have no `while` and no texture sample. Their one integer read,
+// `u32()` of the type and flags word, is a conversion that no derivative flows through.
 //
 // Determinism (design record 0005, "The six rules"). This file leans on these rules:
 //   Rule 1: no `random`. The caller gives every random number, from the sampler.
@@ -48,19 +51,33 @@ export const MATERIAL_DOUBLE_SIDED: u32 = 0x200;
 export const MATERIAL_ALPHA_CUTOUT: u32 = 0x400;
 /** The flag of a flat-shaded material: `ns` is `ng` (record 0004, "Flat shading"). */
 export const MATERIAL_FLAT_SHADING: u32 = 0x800;
-/** The texture id that names no texture. */
-export const TEXTURE_NONE: u32 = 0xffffffff;
+/** The flag of a material without multiple-scattering compensation (record 0010, Part 1). */
+export const MATERIAL_NO_MS: u32 = 0x1000;
+/** The flag of a thin-walled material, set when its thickness is 0 (record 0010, Amendment 2). */
+export const MATERIAL_THIN_WALLED: u32 = 0x2000;
+
+/** The texture id that names no texture. A texture id is 1 + class * 256 + layer (record 0010). */
+export const TEXTURE_NONE: u32 = 0;
 
 /** The offset in a material of `(baseColor, metalness)`. */
 export const MATERIAL_BASE: u32 = 0;
 /** The offset in a material of `(emissive, roughness)`. */
 export const MATERIAL_EMISSIVE: u32 = 1;
-/** The offset in a material of `(ior, transmission, specularIntensity, bits(type and flags))`. */
+/** The offset in a material of `(ior, transmission, specularIntensity, type and flags)`. */
 export const MATERIAL_PARAMS: u32 = 2;
 /** The offset in a material of its four texture ids: map, normalMap, roughnessMap, metalnessMap. */
 export const MATERIAL_MAPS: u32 = 3;
-/** The offset in a material of `(bits(emissiveMap), reserved, reserved, reserved)`. */
+/** The offset in a material of `(anisotropy, anisotropyRotation, clearcoat, clearcoatRoughness)`. */
+export const MATERIAL_COAT: u32 = 4;
+/** The offset in a material of `(sheen.rgb, sheenRoughness)`. */
+export const MATERIAL_SHEEN: u32 = 5;
+/** The offset in a material of `(absorption sigma.rgb, baseColor alpha)`. */
+export const MATERIAL_ABSORPTION: u32 = 6;
+/** The offset in a material of `(emissiveMap, normalScale, alphaCutoff, lightGroup)`. */
+export const MATERIAL_EXTRA: u32 = 7;
+/** The offset in a material of its emissive texture id, the first word of `MATERIAL_EXTRA`. */
 export const MATERIAL_EMISSIVE_MAP: u32 = 7;
+
 
 /** The materials, MATERIAL_STRIDE vec4s each. */
 declare const materials: storage<array<vec4>>;
@@ -101,9 +118,32 @@ function word(m: u32, k: u32): vec4 {
   return materials[m * MATERIAL_STRIDE + k];
 }
 
-/** The type and flags word of material `m`. */
+/** The type and flags word of material `m`: an integer below 2^24 stored as the value of an f32. */
 function flagsOf(m: u32): u32 {
-  return bitcast<u32>(word(m, MATERIAL_PARAMS).w);
+  return u32(word(m, MATERIAL_PARAMS).w);
+}
+
+/** The type and flags word of material `m`, as an integer. Read back by the tests of record 0010. */
+export function materialFlags(m: u32): u32 {
+  return flagsOf(m);
+}
+
+/**
+ * The texture id of material `m` in slot 0 (map), 1 (normalMap), 2 (roughnessMap) or 3
+ * (metalnessMap), as an integer. Read back by the tests of record 0010, step 1.1.
+ */
+export function materialMap(m: u32, slot: u32): u32 {
+  const w = word(m, MATERIAL_MAPS);
+  if (slot === 0) {
+    return u32(w.x);
+  }
+  if (slot === 1) {
+    return u32(w.y);
+  }
+  if (slot === 2) {
+    return u32(w.z);
+  }
+  return u32(w.w);
 }
 
 /** Whether material `m` is flat shaded: `surfaceAt` gives it `ns` equal to `ng`. */

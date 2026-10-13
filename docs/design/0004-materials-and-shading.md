@@ -35,25 +35,22 @@ function to differentiate.
 
 **The record.** `materials` (record 0001) holds 8 `vec4` per material, 128 bytes:
 
-| Word  | x                   | y                  | z                  | w                    |
-| ----- | ------------------- | ------------------ | ------------------ | -------------------- |
-| `[0]` | baseColor.r         | baseColor.g        | baseColor.b        | metalness            |
-| `[1]` | emissive.r          | emissive.g         | emissive.b         | roughness            |
-| `[2]` | ior                 | transmission       | specularIntensity  | bits(type and flags) |
-| `[3]` | bits(map)           | bits(normalMap)    | bits(roughnessMap) | bits(metalnessMap)   |
-| `[4]` | anisotropy          | anisotropyRotation | clearcoat          | clearcoatRoughness   |
-| `[5]` | sheen.r             | sheen.g            | sheen.b            | sheenRoughness       |
-| `[6]` | subsurface radius.r | radius.g           | radius.b           | subsurface weight    |
-| `[7]` | bits(emissiveMap)   | reserved           | reserved           | reserved             |
+| Word  | x           | y                  | z                 | w                          |
+| ----- | ----------- | ------------------ | ----------------- | -------------------------- |
+| `[0]` | baseColor.r | baseColor.g        | baseColor.b       | metalness                  |
+| `[1]` | emissive.r  | emissive.g         | emissive.b        | roughness                  |
+| `[2]` | ior         | transmission       | specularIntensity | type and flags (a value)   |
+| `[3]` | map         | normalMap          | roughnessMap      | metalnessMap (texture ids) |
+| `[4]` | anisotropy  | anisotropyRotation | clearcoat         | clearcoatRoughness         |
+| `[5]` | sheen.r     | sheen.g            | sheen.b           | sheenRoughness             |
+| `[6]` | sigma.r     | sigma.g            | sigma.b           | baseColor alpha            |
+| `[7]` | emissiveMap | normalScale        | alphaCutoff       | lightGroup                 |
 
 - `emissive` is stored already multiplied by `emissiveIntensity`. The kernel reads one colour.
-- `type` is the low 8 bits of `[2].w`: 0 diffuse, 1 mirror, 2 physical. The flags above them are these. Bit 8 is "emits": any channel of `[1].xyz` is above 0. The host computes it, so the kernel tests one bit. Bit 9 is "double sided": the material emits from its back face too, as "The rules of the surface and of emission" says. Bit 10 is "alpha cutout" (M3). Bit 11 is "flat shading" (Amendment 3, "Flat shading").
-- A texture id is `0xffffffff` for none, else `(class << 24) | layer` (the texture plan below).
-- M2 fills `[0]` to `[3]` with the textures all none, and `[4]` to `[7]` zero with `[7].x` none.
-  M3 fills the rest. The stride does not change between.
-- Six words of the record are integers: `[2].w`, and the five texture ids `[3].x` to `[3].w` and
-  `[7].x`. At M2 each one is the bits of an `f32`. "The integer words" below proposes that step 6
-  moves them to `materialBits`, a binding of `u32` words.
+- `type` is the low 8 bits of `[2].w`: 0 diffuse, 1 mirror, 2 physical. The flags above them are these. Bit 8 is "emits": any channel of `[1].xyz` is above 0. The host computes it, so the kernel tests one bit. Bit 9 is "double sided": the material emits from its back face too, as "The rules of the surface and of emission" says. Bit 10 is "alpha cutout" (M3). Bit 11 is "flat shading" (Amendment 3, "Flat shading"). Bit 12 is `MATERIAL_NO_MS` and bit 13 is `MATERIAL_THIN_WALLED` (record 0010, Part 1 and Amendment 2).
+- **The integer words become values.** The type-and-flags word, the five texture ids and `lightGroup` hold an integer below 2^24 as the `f32` of that number. The kernel reads each with `u32()`. This keeps seven storage buffers, the second alternative of record 0004, decision 8. A texture id is `0` for none, else `1 + class * 256 + layer`, with `class` from 0 to 3 and `layer` from 0 to 255.
+- **New flags.** Bit 13 (0x2000) is `MATERIAL_THIN_WALLED`, set when `thickness` is 0. Bit 12 (0x1000) is `MATERIAL_NO_MS`. Bit 11 (0x800) stays `MATERIAL_FLAT_SHADING` (Amendment 2). Bits 8 to 10 keep their meaning. The largest flag is 0x3fff, so the word is exact.
+- **The slot `[6]`.** Record 0004 reserved `[6]` for the subsurface radius and weight (M3s). This part uses `[6].xyz` for the absorption coefficient of a medium and `[6].w` for the alpha of `baseColor`. M3s reads a radius as a medium coefficient too. It amends the record when it needs a weight.
 
 **The classes.** `Material` keeps `color` and `emissive` and gains `version`, `type`,
 `doubleSided` and `name`. `type` replaces M1's `kind` and `kind` is removed, so one number
@@ -642,6 +639,15 @@ adds the fifth and the seventh entries and proposes a disposition for each entry
   not list it. This record's path loop put next-event estimation before `sampleBsdf`. The code
   draws the BSDF sample first, so that a specular sample skips next-event estimation.
   Disposition: made part of the record by Amendment 1.
+
+**Amendment 4** (2026-10-09, UTC). Record 0010, Part 1, step 1.1, needs the words of the material record that record 0010 gives. This amendment states them in this record, and the owner's choice of record 0010, decision 5, puts the integer words in the values of `f32`. It changes these places:
+
+1. "The record": the table, and the bullets under it. The bullets "M2 fills `[0]` to `[3]`" and "Six words of the record are integers" are replaced. Three bullets of record 0010, Part 1, "The material record", take their place. They are "The integer words become values", "New flags" and "The slot `[6]`".
+2. The flags bullet: bit 12 is `MATERIAL_NO_MS` and bit 13 is `MATERIAL_THIN_WALLED`, as record 0010, Amendment 2 states.
+
+The record stays 128 bytes. Record 0010, decision 5 answers decision 8 of this record with the second alternative. That alternative keeps seven storage buffers and stores each integer word as the value of an `f32` below 2^24. Decision 8's text is not changed here. Record 0001, rule 1 is not amended. The merge of the pull request that carries this amendment is the owner's acceptance.
+
+- **Not run.** No code ran for this amendment.
 
 **Configuration and validation record.** Step 1 is delivered with record 0001 step 3 as
 typeshade/radiance#18, merged as 9f2cf1a. The verification of #18 ran at the compiler pin
