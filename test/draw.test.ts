@@ -1,13 +1,15 @@
 // Verifies: Design 0111.3
 // Verifies: Design 0111.4
 // Verifies: Design 0111.5
+// Verifies: Design 0111.6
 //
 // The view and the frame of a game with layers (design record 0111), with no GPU. The harness of
 // the reference game reads the same view from a screenshot, and the layers on a device.
 
 import { createDevice, type Device } from 'typeshade/runtime';
 import { expect, test } from 'vitest';
-import { fitRectangle, placeInWorld, viewMatrix, type Drawing } from '../src/draw.ts';
+import { blendState, fitRectangle, placeInWorld, viewMatrix, type Drawing } from '../src/draw.ts';
+import { setLoopBlend } from '../src/engine.ts';
 import { Engine } from '../src/index.ts';
 import { run } from '../src/page.ts';
 import { Row, bump } from './fixtures/sim.shade.ts';
@@ -209,4 +211,50 @@ test('a game with layers makes its own device, so run refuses a device that it i
     'run(): the game draws in layers (cells), and run makes the device for them. Do not give a device.',
   );
   await device.dispose();
+});
+
+// Verifies: Design 0111.6
+test('a frame draws with the blend that it is given, or with the loop value, and it refuses a blend outside 0 to 1', async () => {
+  const device = await createDevice({ prefer: ['cpu'] });
+  const blends: number[] = [];
+  const drawing: Drawing = {
+    frame: async (blend) => void blends.push(blend),
+    toWorld: (at) => at,
+    dispose: () => {},
+  };
+  const game = Engine.start(new Layered(), device, {
+    seed: 1,
+    rows: { rows: [new Row()] },
+    drawing,
+  });
+  // The loop has given no value: 0.
+  await game.drawLayers();
+  await game.drawLayers({ blend: 0.5 });
+  await game.drawLayers({ blend: 1 });
+  setLoopBlend(game, 0.25);
+  await game.drawLayers();
+  // A given blend does not change the loop's value.
+  await game.drawLayers({ blend: 0 });
+  await game.drawLayers();
+  expect(blends).toEqual([0, 0.5, 1, 0.25, 0, 0.25]);
+  expect(game.blend).toBe(0.25);
+  for (const bad of [-0.1, 1.5, Number.NaN]) {
+    await expect(game.drawLayers({ blend: bad })).rejects.toThrow(
+      `Layered.drawLayers(): blend is ${String(bad)}. Give a number from 0 to 1, for example drawLayers({ blend: 0.5 }).`,
+    );
+  }
+  await game.dispose();
+});
+
+// Verifies: Design 0111.6
+test('a layer with no blend covers what is under it, and the two blends have their own state', () => {
+  expect(blendState(undefined)).toBeUndefined();
+  expect(blendState('alpha')).toEqual({
+    color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+    alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+  });
+  expect(blendState('add')).toEqual({
+    color: { srcFactor: 'src-alpha', dstFactor: 'one', operation: 'add' },
+    alpha: { srcFactor: 'zero', dstFactor: 'one', operation: 'add' },
+  });
 });

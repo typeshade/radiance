@@ -4,6 +4,7 @@
 // module of the project layer, and it names no interface of the page.
 
 import type { Device, Pack, Runtime, Texture } from 'typeshade/runtime';
+import type { Blend } from './config.ts';
 import { show } from './show.shade.ts';
 
 /** A layer of a game: the class written into `.radiance/game.ts` gives one for each file of `draw/`. */
@@ -18,8 +19,13 @@ export interface Layer {
   readonly fragment: string;
   /** The table the layer draws. The layer draws one instance for each of its rows. */
   readonly rows: { readonly size: number };
-  /** The value of each `declare const` of the layer, by name, for a frame with this `view`. */
-  bind(view: readonly number[]): { readonly [name: string]: unknown };
+  /** How the colour of the layer meets the colour under it. Not given: the layer covers it. */
+  readonly blend?: Blend;
+  /**
+   * The value of each `declare const` of the layer, by name, for a frame with this `view` and
+   * this `blend` (design record 0111, section 6).
+   */
+  bind(view: readonly number[], blend: number): { readonly [name: string]: unknown };
 }
 
 /** The view of a game (design record 0111, section 3). */
@@ -38,8 +44,11 @@ export interface Place {
 
 /** What the engine holds for a game with layers, from the start of the run to its end. */
 export interface Drawing {
-  /** Draws each layer in order into the texture, and shows the texture on the surface. */
-  frame(): Promise<void>;
+  /**
+   * Draws each layer in order into the texture, and shows the texture on the surface. `blend` is
+   * how far the frame is from the last tick to the tick after it, from 0 to 1.
+   */
+  frame(blend: number): Promise<void>;
   /** The place in the world of a place of the surface, `x` and `y` from 0 to 1. */
   toWorld(at: Place): Place;
   /** Frees the texture and the runtime. */
@@ -107,6 +116,12 @@ export function placeInWorld(
   return { x: (at.x * size[0] - x) / scale, y: (at.y * size[1] - y) / scale };
 }
 
+/** The `blend` member of a target, or nothing for a layer that covers what is under it. */
+const blendOf = (layer: Layer) => {
+  const blend = blendState(layer.blend);
+  return blend === undefined ? {} : { blend };
+};
+
 /** What `createDrawing` needs. */
 export interface DrawingOptions {
   /** The program runtime. The device of the game was made from it. */
@@ -120,6 +135,27 @@ export interface DrawingOptions {
 }
 
 const FORMAT = 'rgba8unorm';
+
+/**
+ * The blend state of a pipeline (design record 0111, section 6). `alpha` puts the colour of the
+ * layer over the colour under it by its alpha. `add` adds the colour of the layer, by its alpha,
+ * to the colour under it. Both keep the alpha of the texture, so the picture stays opaque.
+ */
+export function blendState(blend: Blend | undefined): object | undefined {
+  if (blend === 'alpha') {
+    return {
+      color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+      alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+    };
+  }
+  if (blend === 'add') {
+    return {
+      color: { srcFactor: 'src-alpha', dstFactor: 'one', operation: 'add' },
+      alpha: { srcFactor: 'zero', dstFactor: 'one', operation: 'add' },
+    };
+  }
+  return undefined;
+}
 /** A layer draws two triangles for each row: six vertices. */
 const VERTICES = 6;
 
@@ -141,14 +177,14 @@ export function createDrawing(options: DrawingOptions): Drawing {
         runtime.load(layer.program as Pack<never>).render({
           vertex: layer.vertex,
           fragment: layer.fragment,
-          targets: [{ format: FORMAT }],
+          targets: [{ format: FORMAT, ...blendOf(layer) }],
           primitive: { topology: 'triangle-list' },
         } as never),
       ),
     );
 
   return {
-    async frame() {
+    async frame(blend) {
       if (disposed) return;
       const size = sizeOf(surface);
       if (!(size[0] >= 1 && size[1] >= 1)) return;
@@ -164,7 +200,7 @@ export function createDrawing(options: DrawingOptions): Drawing {
       layers.forEach((layer, index) => {
         const color = index === 0 ? { target, clear } : { target, load: 'load' as const };
         frame.pass({ color: [color] } as never, (pass) => {
-          pass.draw(pipes[index] as never, layer.bind(matrix) as never, {
+          pass.draw(pipes[index] as never, layer.bind(matrix, blend) as never, {
             count: VERTICES,
             instances: layer.rows.size,
           });

@@ -21,7 +21,7 @@ export const MACHINE_STOCK: u32 = 4;
 export const MACHINE_PERIOD: u32 = 10;
 
 /** The colour of an item on a belt or in a source. */
-const ITEM: vec3 = vec3(0.95, 0.75, 0.2);
+export const ITEM: vec3 = vec3(0.95, 0.75, 0.2);
 
 /**
  * The colour of a cell that sends its item in `dir`: a light mark on that side, and a dot for
@@ -61,8 +61,9 @@ export class Belt {
       this.wait = this.wait - 1;
     }
   }
+  /** The colour of the belt. The layer `items` draws the item of a belt, so the belt has no dot. */
   color(local: vec2): vec3 {
-    return sender(vec3(0.26, 0.28, 0.32), this.dir, this.item, local);
+    return sender(vec3(0.26, 0.28, 0.32), this.dir, 0, local);
   }
 }
 

@@ -1,5 +1,6 @@
 // Verifies: Design 0108.7
 // Verifies: Design 0108.9
+// Verifies: Design 0111.6
 //
 // The loop of a page (design record 0108, section 7), with a clock, a canvas and a device that
 // the test gives. The device is the CPU tier, so no browser runs.
@@ -210,5 +211,57 @@ test('a frame that fails stops the loop and gives the error to onError', async (
     'nothing can draw into this canvas',
   ]);
   expect(page.waiting()).toBe(false);
+  await game.dispose();
+});
+
+// Verifies: Design 0111.6
+test('blend is the part of a tick that the loop still owes, and it is 0 before the loop gives one', async () => {
+  const page = fakePage();
+  const { canvas } = fakeCanvas();
+  const device = await createDevice({ prefer: ['cpu'] });
+  const game = await run(Clocked, { ...first(), canvas, device, maxTicks: 3, ...page });
+  expect(game.blend).toBe(0);
+  await page.frame(250); // 2.5 ticks at 10 hz: 2 ticks run, half a tick is owed
+  expect([game.tick, game.blend]).toEqual([2, 0.5]);
+  await page.frame(30); // 0.3 tick more: 0.8 is owed
+  expect(game.tick).toBe(2);
+  expect(game.blend).toBeCloseTo(0.8, 10);
+  await page.frame(20); // 0.2 tick more: the tick runs, and nothing is owed
+  expect([game.tick, game.blend]).toEqual([3, 0]);
+  await page.frame(1000); // 10 ticks are due and 3 run: the loop owes no part of a tick
+  expect([game.tick, game.blend]).toEqual([6, 0]);
+  page.hide(true);
+  await page.frame(50);
+  page.hide(false);
+  await page.frame(30);
+  expect([game.tick, game.blend]).toEqual([6, 0.3]);
+  await game.dispose();
+});
+
+// Verifies: Design 0111.6
+test('blend of a game with turns goes from 0 to 1 in the time of a tick, and then it stays at 1', async () => {
+  const page = fakePage();
+  const { canvas, send } = fakeCanvas();
+  const device = await createDevice({ prefer: ['cpu'] });
+  const game = await run(Turns, { ...first(), canvas, device, ...page });
+  expect(game.blend).toBe(0);
+  await page.frame(1000); // no tick has run: the game is at rest
+  expect([game.tick, game.blend]).toEqual([0, 1]);
+  send('pointerdown', { clientX: 110, clientY: 45, buttons: 1 });
+  await page.frame(16); // the tick runs in this frame
+  expect([game.tick, game.blend]).toEqual([1, 0]);
+  await page.frame(40); // 40 ms of the 100 ms of a tick at 10 hz
+  expect(game.blend).toBeCloseTo(0.4, 10);
+  await page.frame(30);
+  expect(game.blend).toBeCloseTo(0.7, 10);
+  await page.frame(500);
+  expect([game.tick, game.blend]).toEqual([1, 1]);
+  await page.frame(500);
+  expect(game.blend).toBe(1);
+  // A new tick starts it again from 0.
+  send('keydown', { key: 'ArrowUp' });
+  game.tables.rows.input(0, { n: 1 });
+  await page.frame(16);
+  expect([game.tick, game.blend]).toEqual([2, 0]);
   await game.dispose();
 });
