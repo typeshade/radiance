@@ -111,14 +111,8 @@ test('the player builds a belt with an input, and the run replays', async () => 
   expect((await counts(f)).goods).toBeGreaterThan(0);
 
   // The record of the run is data, and it replays to the same factory.
-  const level = parseLevel(GAP);
   const again = await replaySim(
-    { cells: level.cells },
-    {
-      device,
-      buffered: ['cells'],
-      tick: (t) => tick(t.cells.write, t.cells.read, level.width, level.height),
-    },
+    (run) => createFactory(GAP, { seed: run.seed, device }).sim,
     f.sim.record(),
   );
   expect(await again.dump()).toBe(await f.sim.dump());

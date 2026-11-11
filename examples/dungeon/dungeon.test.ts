@@ -3,6 +3,7 @@
 
 import { createDevice, type Device } from 'typeshade/runtime';
 import { afterAll, beforeAll, expect, test } from 'vitest';
+import { replaySim } from '../../src/test.ts';
 import { FLOOR, NONE, ORC, RAT, SPAWN, WALL } from './actors.shade.ts';
 import { createDungeon, EAST, move, parseLevel, render, type Dungeon } from './level.ts';
 
@@ -110,17 +111,11 @@ test('a long run keeps one actor to a cell, and a record replays to the same dum
       }
     }
   }
-  // The replay, written by hand: `replaySim` needs the tables and the options, and
-  // `createDungeon` holds them.
-  const again = make(CAVE, 12, 7);
-  const record = d.sim.record();
-  for (let t = 0; t < record.ticks; t++) {
-    for (const input of record.inputs.filter((i) => i.tick === t)) {
-      again.sim.input('actors', input.index, input.fields);
-    }
-    await again.sim.step(1);
-  }
-  expect(await again.sim.dump()).toBe(await d.sim.dump());
+  const again = await replaySim(
+    (run) => createDungeon(CAVE, { seed: run.seed, device, slots: 12 }).sim,
+    d.sim.record(),
+  );
+  expect(await again.dump()).toBe(await d.sim.dump());
 });
 
 test('another seed gives another run', async () => {
@@ -132,7 +127,7 @@ test('another seed gives another run', async () => {
 });
 
 test('a wrong level is refused with the fact and the remedy', () => {
-  const parse = (text: string, slots = 4) => parseLevel(text, { seed: 1, slots });
+  const parse = (text: string, slots = 4) => parseLevel(text, { slots });
   expect(() => parse('@.\n.')).toThrow(
     'parseLevel(): row 1 has 1 cells, and row 0 has 2. Give each row the same length.',
   );

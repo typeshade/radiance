@@ -7,6 +7,7 @@ import type { Device, Resident } from 'typeshade/runtime';
 
 import { formatValue, type SnapshotValue } from './dump.ts';
 import { applyFields, checkFields, type InputObject } from './input.ts';
+import { nodeSeed } from './seed.ts';
 
 /** The first rows of each table, by name. A row is an instance of a class. */
 export type SimTables = Record<string, object[]>;
@@ -173,7 +174,15 @@ export class Sim<T extends SimTables, B extends keyof T = never> {
         className: (first as { constructor?: { name?: string } }).constructor?.name || 'the row',
       });
       // The device keeps a copy, so a later change to the caller's rows does not reach it.
-      this.#read.set(name, device.array(rows.map(copyRow)) as Resident<object[]>);
+      const copies = rows.map((row, index) => {
+        const copy = copyRow(row) as { seed?: unknown };
+        // Design: 0106, section 1. A row with `seed` 0 gets a seed from the run's seed and its path.
+        if (Object.hasOwn(copy, 'seed') && copy.seed === 0) {
+          copy.seed = nodeSeed(seed, `${name}[${index}]`);
+        }
+        return copy;
+      });
+      this.#read.set(name, device.array(copies) as Resident<object[]>);
     }
     for (const name of options.buffered ?? []) {
       if (!this.#read.has(name as string)) {

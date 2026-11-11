@@ -19,7 +19,6 @@ import {
   pickup,
   turn,
 } from './actors.shade.ts';
-import { nodeSeed } from '../../src/seed.ts';
 
 /** The player's hit points at the start. */
 export const PLAYER_HP = 5;
@@ -53,7 +52,7 @@ export interface Dungeon {
  * potion, `S` the spawn tile, `@` the player, `r` a rat, `o` an orc. `slots` is the number of
  * rows of the actor table. A level has one player.
  */
-export function parseLevel(text: string, options: { seed: number; slots: number }): Level {
+export function parseLevel(text: string, options: { slots: number }): Level {
   const rows = text
     .split('\n')
     .map((row) => row.trim())
@@ -105,8 +104,6 @@ export function parseLevel(text: string, options: { seed: number; slots: number 
     );
   }
   while (actors.length < options.slots) actors.push(new Actor());
-  // Each actor's random numbers start from the run's seed and its row.
-  actors.forEach((actor, i) => (actor.seed = nodeSeed(options.seed, `actors[${i}]`)));
   return { width, height, tiles, actors, spawn: spawn ?? { x: width, y: 0 } };
 }
 
@@ -132,7 +129,7 @@ export function createDungeon(
   text: string,
   options: { readonly seed: number; readonly device: Device; readonly slots?: number },
 ): Dungeon {
-  const level = parseLevel(text, { seed: options.seed, slots: options.slots ?? 16 });
+  const level = parseLevel(text, { slots: options.slots ?? 16 });
   const { width, height, spawn } = level;
   const sim = createSim(
     { actors: level.actors, tiles: level.tiles },

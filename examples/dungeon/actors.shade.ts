@@ -39,8 +39,8 @@ export class Actor {
   hp: u32 = 0;
   /** The player's next move, from an input: `STAY` or a way. The turn sets it back to `STAY`. */
   move: u32 = 0;
-  /** The state of the actor's random numbers. */
-  seed: u32 = 1;
+  /** The state of the actor's random numbers. The simulation gives each first row its seed. */
+  seed: u32 = 0;
   /** The monsters the player removed. */
   kills: u32 = 0;
 }

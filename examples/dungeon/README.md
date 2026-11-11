@@ -97,6 +97,40 @@ What each one cost:
 - **R9.** `ahead` of this game is `neighbor` of the first game with one more case. The two
   games do not share it.
 
+## Row seeds and a replay from a builder (design record 0106)
+
+The simulation now gives each first row its seed, and `replaySim` takes the function that
+builds the game.
+
+Before, in `level.ts` and in the test:
+
+```ts
+import { nodeSeed } from '../../src/seed.ts';
+actors.forEach((actor, i) => (actor.seed = nodeSeed(options.seed, `actors[${i}]`)));
+
+const again = make(CAVE, 12, 7);
+for (let t = 0; t < record.ticks; t++) {
+  for (const input of record.inputs.filter((i) => i.tick === t)) {
+    again.sim.input('actors', input.index, input.fields);
+  }
+  await again.sim.step(1);
+}
+```
+
+After, the class says `seed: u32 = 0`, and the test says:
+
+```ts
+const again = await replaySim(
+  (run) => createDungeon(CAVE, { seed: run.seed, device, slots: 12 }).sim,
+  d.sim.record(),
+);
+```
+
+| Id  | State after design record 0106                                                              |
+| --- | ------------------------------------------------------------------------------------------- |
+| R5  | The first seeds are closed. The seed of a monster that comes in is still a formula by hand. |
+| R8  | Closed: 4 lines, and 7 before. The first game's test went from 9 lines to 4.                |
+
 ## What this game does not test
 
 - **A page.** Nothing draws the dungeon, and no GPU tier ran it.
