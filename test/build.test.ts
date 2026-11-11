@@ -29,7 +29,8 @@ test('the build writes the entry of the page, with the level and the seed of the
       '  canvas.height = Math.round(canvas.clientHeight * ratio);',
       '};',
       'fit();',
-      "addEventListener('resize', fit);",
+      '// The place of the canvas changes with a turn of the phone and with the bar of its browser.',
+      'new ResizeObserver(fit).observe(canvas);',
       '',
       'const seed = 1;',
       'void run(Game, {',
@@ -57,6 +58,8 @@ test('the page is one canvas, with the name of the config or of the directory as
   const html = pageFiles('/games/factory', CONFIG).html;
   expect(html).toContain('<title>Factory</title>');
   expect(html).toContain('<canvas></canvas>');
+  // Verifies: Design 0110.3. The canvas ends where the bar of a phone's browser starts.
+  expect(html).toContain('height: 100vh; height: 100dvh;');
   expect(html).toContain('<script type="module" src="./main.ts"></script>');
   const unnamed = pageFiles('/games/dungeon', { tick: ['plan'], start: { level: 'cave' } }).html;
   expect(unnamed).toContain('<title>dungeon</title>');

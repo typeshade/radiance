@@ -130,7 +130,8 @@ export function pageFiles(
     '  canvas.height = Math.round(canvas.clientHeight * ratio);',
     '};',
     'fit();',
-    "addEventListener('resize', fit);",
+    '// The place of the canvas changes with a turn of the phone and with the bar of its browser.',
+    'new ResizeObserver(fit).observe(canvas);',
     '',
     seed,
     ...(readout
@@ -175,7 +176,9 @@ export function pageFiles(
     `    <title>${title}</title>`,
     '    <style>',
     '      html, body { margin: 0; height: 100%; background: #111317; }',
-    '      canvas { display: block; width: 100vw; height: 100vh; touch-action: none; }',
+    // `dvh` is the part of the screen that a phone's browser leaves to the page. `vh` reaches
+    // under the browser's bar, and it stays for a browser with no `dvh`.
+    '      canvas { display: block; width: 100vw; height: 100vh; height: 100dvh; touch-action: none; }',
     ...(readout
       ? [
           '      #readout {',
