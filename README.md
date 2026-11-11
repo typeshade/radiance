@@ -96,6 +96,8 @@ frames(sim, () => draw(canvas, { cells: sim.table('cells'), view }));
 
 [`examples/factory`](examples/factory) is a small automation game written this way. Its
 `README.md` lists what is still hard to write, with counts.
+[`examples/dungeon`](examples/dungeon) is a small roguelike written the same way, with rows
+that come and go and with random numbers.
 
 The same game runs in a browser, on the same simulation. Its tick runs on a WebGPU device, one
 fragment entry draws its cells, and the pointer puts belts:
@@ -138,6 +140,7 @@ its commits, and those commits stay reachable.
 | `docs/design/0104-*.md` | Design record 0104: the simulation on a device                   |
 | `docs/design/0105-*.md` | Design record 0105: kinds as classes                             |
 | `examples/factory/`     | The reference game, and what was hard to write in it             |
+| `examples/dungeon/`     | The second reference game, a roguelike, and what was hard in it  |
 | `src/`                  | The engine: `node`, `scene`, the world, the simulation, `frames` |
 | `scripts/`              | The prose checks and the commit gate                             |
 | `test/`                 | The tests, and the `.shade.ts` fixtures they import              |
