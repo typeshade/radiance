@@ -6,7 +6,7 @@
 
 import { createDevice } from 'typeshade/runtime';
 import { expect, test } from 'vitest';
-import { Engine, input, system, type KeyInput, type PointerInput } from '../src/index.ts';
+import { Engine, type KeyInput, type PointerInput } from '../src/index.ts';
 import { run } from '../src/page.ts';
 import { Row, bump } from './fixtures/sim.shade.ts';
 
@@ -57,20 +57,20 @@ function fakePage() {
 }
 
 class Clocked extends Engine {
-  readonly rows = this.table(Row);
+  readonly tables = { rows: this.table(Row) };
+  readonly systems = { bump: () => bump(this.tables.rows.rows, this.dt) };
   draws = 0;
   last: PointerInput | KeyInput | undefined;
 
-  @system() bump() {
-    return bump(this.rows.rows, this.dt);
-  }
-  @input('pointerdown') press(at: PointerInput) {
-    this.last = at;
-    this.rows.input(0, { n: 100 });
-  }
-  @input('keydown') key(key: KeyInput) {
-    this.last = key;
-  }
+  override readonly inputs = {
+    pointerdown: (at: PointerInput) => {
+      this.last = at;
+      this.tables.rows.input(0, { n: 100 });
+    },
+    keydown: (key: KeyInput) => {
+      this.last = key;
+    },
+  };
   draw() {
     this.draws++;
   }
@@ -123,7 +123,7 @@ test('a game with turns runs one tick for each frame that has an input', async (
   await page.frame(16);
   expect(game.tick).toBe(1);
   // The input set n to 100 before the tick, and the tick added 1.
-  expect((await game.rows.read())[0].n).toBe(101);
+  expect((await game.tables.rows.read())[0].n).toBe(101);
   expect(game.record().inputs).toEqual([{ tick: 0, table: 'rows', index: 0, fields: { n: 100 } }]);
   send('keydown', { key: 'ArrowUp' });
   expect(game.last).toEqual({ key: 'ArrowUp' });

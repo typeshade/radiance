@@ -46,7 +46,7 @@ test('README: a simulation of tables and a tick runs and prints its dump', async
   const { createDevice } = await import('typeshade/runtime');
   const { createSim } = await import('../src/index.ts');
   const { Cell } = await import('../examples/factory/state/cells.shade.ts');
-  const { flow: tick } = await import('../examples/factory/systems/flow.shade.ts');
+  const { tick } = await import('../examples/factory/systems/tick.shade.ts');
   const width = 3;
   const height = 1;
   const cells = Array.from({ length: width * height }, () => new Cell());

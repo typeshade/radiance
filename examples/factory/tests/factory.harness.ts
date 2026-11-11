@@ -71,7 +71,7 @@ test('the cells the GPU computes equal the cells of the CPU tier, with an input 
   putCell(cpu, 3, 3, BELT, 0);
   await cpu.step(150);
 
-  expect(JSON.parse(gpu)).toEqual(JSON.parse(JSON.stringify(await cpu.cells.read())));
+  expect(JSON.parse(gpu)).toEqual(JSON.parse(JSON.stringify(await cpu.tables.cells.read())));
   await cpu.dispose();
 });
 

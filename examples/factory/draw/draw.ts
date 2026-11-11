@@ -8,7 +8,7 @@ export function draw(game: Game) {
   const canvas = game.surface as HTMLCanvasElement;
   const { width, height } = game.values;
   return picture(canvas, {
-    cells: game.cells.rows,
+    cells: game.tables.cells.rows,
     view: { width, height, size: [canvas.width, canvas.height] },
   });
 }

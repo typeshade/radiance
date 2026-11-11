@@ -3,6 +3,6 @@ import { defineGame } from 'radiance';
 
 export default defineGame({
   // One system makes a tick: every cell takes and gives in the same step.
-  tick: ['flow'],
+  tick: ['tick'],
   values: ['width', 'height'],
 });

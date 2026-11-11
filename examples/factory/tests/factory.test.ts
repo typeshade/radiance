@@ -10,9 +10,10 @@ import { BELT } from '../kinds.shade.ts';
 const PROJECT = 'examples/factory';
 const make = (text: string) => load<Game>(PROJECT, { seed: 1, level: parseLevel(text) });
 
-const picture = async (f: Game) => render(f.values.width, f.values.height, await f.cells.read());
+const picture = async (f: Game) =>
+  render(f.values.width, f.values.height, await f.tables.cells.read());
 /** The counts, read from the device. */
-const counts = async (f: Game) => totals(await f.cells.read());
+const counts = async (f: Game) => totals(await f.tables.cells.read());
 
 const LINE = `
   E>>>M

@@ -3,7 +3,7 @@
 // clock.
 
 import { createDevice, type Device } from 'typeshade/runtime';
-import { Engine, inputsOf, type StartOptions } from './engine.ts';
+import { Engine, type InputEvent, type StartOptions } from './engine.ts';
 
 /** What `frames` needs of a simulation. */
 export interface Steps {
@@ -84,7 +84,7 @@ interface CanvasLike {
 
 /**
  * Runs a game in a page (design record 0108, sections 5 and 7). It opens the device, starts
- * the game, gives each event of the canvas to the method the game marked with `@input`, and
+ * the game, gives each event of the canvas to the function of the game's `inputs`, and
  * runs the loop: the ticks that are due, then `game.draw()`. A game with `stepOn: 'input'`
  * runs one tick for each frame that has an input. The loop stops while the page is hidden, and
  * `game.dispose()` ends it.
@@ -105,16 +105,20 @@ export async function run<G extends Engine>(Game: new () => G, options: RunOptio
 
   // Each event becomes data, and the game's method makes it an input of the run.
   const listeners: [CanvasLike, string, (event: never) => void][] = [];
-  for (const [event, method] of inputsOf(game)) {
+  const inputs = (game.inputs ?? {}) as {
+    [event: string]: ((data: unknown) => unknown) | undefined;
+  };
+  for (const event of Object.keys(inputs) as InputEvent[]) {
+    const take = inputs[event];
+    if (typeof take !== 'function') continue;
     const target = event.startsWith('key') ? (canvas.ownerDocument ?? canvas) : canvas;
     const listener = (raw: { clientX: number; clientY: number; buttons: number; key: string }) => {
-      const call = (game as unknown as Record<string, (data: unknown) => unknown>)[method];
       if (event.startsWith('key')) {
-        call.call(game, { key: raw.key });
+        take.call(inputs, { key: raw.key });
         return;
       }
       const box = canvas.getBoundingClientRect();
-      call.call(game, {
+      take.call(inputs, {
         x: (raw.clientX - box.left) / box.width,
         y: (raw.clientY - box.top) / box.height,
         down: raw.buttons !== 0,

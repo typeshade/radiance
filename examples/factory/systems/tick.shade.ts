@@ -27,7 +27,7 @@ function neighbor(x: u32, y: u32, dir: u32, width: u32, height: u32): i32 {
  * the order north, east, south, west. A cell gives its item when its target takes it from
  * this cell and not from another.
  */
-export function flow(cellsNext: array<Cell>, cells: array<Cell>, width: u32, height: u32) {
+export function tick(cellsNext: array<Cell>, cells: array<Cell>, width: u32, height: u32) {
   for (let i: u32 = 0; i < cellsNext.length; i++) {
     const x: u32 = i % width;
     const y: u32 = i / width;

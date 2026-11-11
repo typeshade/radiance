@@ -1,5 +1,5 @@
 // Design: 0108, sections 5, 6 and 9. The engine is a class and the runtime. A game is a class
-// that extends it: a field declares memory, and a method with `@system()` is a step of a tick.
+// that extends it: `tables` declares its memory, and `systems` the steps of a tick.
 // The engine opens no device itself: `start` of `radiance/test` and `run` of `radiance/page`
 // give it one, and from then on the engine owns every array of the game.
 
@@ -35,8 +35,8 @@ export interface PoolOptions<R> {
   readonly free?: (row: R) => boolean;
 }
 
-/** The options of a table that is no state: the rows of another table, or a number. */
-export type ScratchOptions = { readonly like: Rows<unknown> } | { readonly size: number };
+/** The options of a table that is no state: the name of the state table it follows, or a number. */
+export type ScratchOptions = { readonly like: string } | { readonly size: number };
 
 const BIND = Symbol('radiance.bind');
 
@@ -113,25 +113,6 @@ export class Rows<R> {
   }
 }
 
-const SYSTEMS = Symbol('radiance.systems');
-
-/**
- * Marks a method of a game's class as a step of a tick. The systems run in the order the class
- * declares them. A system can return a promise, and the engine waits for it.
- */
-export function system() {
-  return function <This extends Engine>(
-    _method: (this: This) => unknown,
-    context: ClassMethodDecoratorContext<This>,
-  ): void {
-    context.addInitializer(function (this: This) {
-      (this as unknown as { [SYSTEMS]: string[] })[SYSTEMS].push(String(context.name));
-    });
-  };
-}
-
-const INPUTS = Symbol('radiance.inputs');
-
 /** The events of a page that a game can take as inputs. */
 export type InputEvent = 'pointerdown' | 'pointermove' | 'pointerup' | 'keydown' | 'keyup';
 
@@ -149,27 +130,16 @@ export interface KeyInput {
 }
 
 /**
- * Marks a method of a game's class as the receiver of an event of the page. The loop of
- * `radiance/page` calls it with the event's data. The method gives the game an input with
- * `table.input`, so the event is in the record of the run.
+ * The inputs of a game: for each event of the page, the function that takes its data. The loop
+ * of `radiance/page` calls it. The function gives the game an input with `table.input`, so the
+ * event is in the record of the run.
  */
-export function input(event: InputEvent) {
-  return function <This extends Engine>(
-    _method: (this: This, data: never) => unknown,
-    context: ClassMethodDecoratorContext<This>,
-  ): void {
-    context.addInitializer(function (this: This) {
-      (this as unknown as { [INPUTS]: [InputEvent, string][] })[INPUTS].push([
-        event,
-        String(context.name),
-      ]);
-    });
-  };
-}
-
-/** @internal The methods of a game that take an event, for the loop of a page. */
-export function inputsOf(game: Engine): readonly (readonly [InputEvent, string])[] {
-  return (game as unknown as { [INPUTS]: [InputEvent, string][] })[INPUTS];
+export interface Inputs {
+  pointerdown?(data: PointerInput): unknown;
+  pointermove?(data: PointerInput): unknown;
+  pointerup?(data: PointerInput): unknown;
+  keydown?(data: KeyInput): unknown;
+  keyup?(data: KeyInput): unknown;
 }
 
 /** What `start` gives a game: the run's seed, its tick rate, its first rows and its values. */
@@ -194,15 +164,24 @@ export function simOf(game: Engine): Sim<Record<string, object[]>, string> {
 }
 
 /**
- * The engine. A game is a class that extends it. `startGame` gives the game its device and
+ * The engine. A game is a class that extends it. The game's own names live in `tables`,
+ * `systems` and `inputs`, so that no name of a game meets a member of the engine. `startGame` gives the game its device and
  * its first rows. From then on the engine owns every array of the game, runs its ticks, and
  * frees everything in `dispose()`.
  */
 export abstract class Engine {
-  /** @internal The names of the systems, in the order of the class. */
-  readonly [SYSTEMS]: string[] = [];
-  /** @internal The methods that take an event of the page. */
-  readonly [INPUTS]: [InputEvent, string][] = [];
+  /**
+   * The tables of the game, by name: each is `this.table`, `this.pool` or `this.scratch`. The
+   * names are the game's own, apart from the engine's members.
+   */
+  abstract readonly tables: { readonly [name: string]: Rows<any> };
+  /**
+   * The systems of the game, by name: the steps of a tick, in the order they run. A system can
+   * return a promise, and the engine waits for it.
+   */
+  abstract readonly systems: { readonly [name: string]: () => unknown };
+  /** The functions that take an event of the page, when the game takes inputs. */
+  readonly inputs?: Inputs;
   /** `'input'` for a game with turns: the loop of a page runs one tick for each frame with an input. */
   readonly stepOn?: 'input';
   #surface: unknown;
@@ -341,16 +320,19 @@ export abstract class Engine {
     if (this.#sim !== undefined || this.#disposed) {
       throw new Error(`${game}: the game started before. Make a new game for a new run.`);
     }
-    const systems = this[SYSTEMS];
+    const systems = Object.entries(this.systems ?? {});
     if (systems.length === 0) {
       throw new TypeError(
-        `${game}: the class has no system. Mark each step of a tick with @system(), for example "@system() move() { return move(this.cells.rows); }".`,
+        `${game}: the game has no system. Give each step of a tick a name in "systems", for example "readonly systems = { move: () => move(this.tables.cells.rows) };".`,
       );
     }
-    const fields = this as unknown as Record<string, unknown>;
-    for (const name of Object.keys(fields)) {
-      const handle = fields[name];
-      if (handle instanceof Rows) this.#tables.push({ name, handle: handle as Rows<unknown> });
+    for (const [name, handle] of Object.entries(this.tables ?? {})) {
+      if (!(handle instanceof Rows)) {
+        throw new TypeError(
+          `${game}.tables.${name}: the value is no table. Declare it with this.table, this.pool or this.scratch.`,
+        );
+      }
+      this.#tables.push({ name, handle: handle as Rows<unknown> });
     }
     const given = options.rows ?? {};
     for (const name of Object.keys(given)) {
@@ -372,7 +354,7 @@ export abstract class Engine {
         const pool = handle.options as PoolOptions<object>;
         if (rows.length > pool.size) {
           throw new RangeError(
-            `${game}.${name}: the first rows are ${rows.length}, and the pool has ${pool.size} slots. Give more slots or fewer rows.`,
+            `${game}.tables.${name}: the first rows are ${rows.length}, and the pool has ${pool.size} slots. Give more slots or fewer rows.`,
           );
         }
         // A pool with no first row starts from one free row, and the simulation adds the rest.
@@ -385,7 +367,7 @@ export abstract class Engine {
       } else {
         if (rows.length === 0) {
           throw new RangeError(
-            `${game}.${name}: the table has no first row. Give its rows at the start, for example { rows: { ${name}: [...] } }.`,
+            `${game}.tables.${name}: the table has no first row. Give its rows at the start, for example { rows: { ${name}: [...] } }.`,
           );
         }
         if ((handle.options as TableOptions).buffered === true) buffered.push(name);
@@ -406,8 +388,8 @@ export abstract class Engine {
         this.#frame = frame as Record<string, unknown>;
         this.#inTick = true;
         try {
-          for (const name of systems) {
-            await (fields[name] as () => unknown).call(this);
+          for (const [, run] of systems) {
+            await run.call(this);
           }
         } finally {
           this.#inTick = false;
@@ -417,10 +399,10 @@ export abstract class Engine {
     this.#sim = sim;
 
     // The number of rows of each state table, known before any handle is bound.
-    const sizes = new Map<Rows<unknown>, number>();
+    const sizes = new Map<string, number>();
     for (const { name, handle } of this.#tables) {
-      if (handle.kind === 'pool') sizes.set(handle, slots[name].size);
-      else if (handle.kind === 'table') sizes.set(handle, tables[name].length);
+      if (handle.kind === 'pool') sizes.set(name, slots[name].size);
+      else if (handle.kind === 'table') sizes.set(name, tables[name].length);
     }
     for (const { name, handle } of this.#tables) {
       if (handle.kind === 'scratch') {
@@ -428,7 +410,7 @@ export abstract class Engine {
         const size = 'like' in options ? sizes.get(options.like) : options.size;
         if (size === undefined || !Number.isInteger(size) || size < 1) {
           throw new TypeError(
-            `${game}.${name}: a scratch table takes { like: a table of the game's state } or { size: an integer from 1 }.`,
+            `${game}.tables.${name}: a scratch table takes { like: the name of a table of the game's state } or { size: an integer from 1 }.`,
           );
         }
         const array = device.array(
@@ -440,13 +422,13 @@ export abstract class Engine {
           rows: () => array,
           next: () => {
             throw new Error(
-              `${game}.${name}.next: a scratch table has one array. Read and write it through "rows".`,
+              `${game}.tables.${name}.next: a scratch table has one array. Read and write it through "rows".`,
             );
           },
           read: () => array.read(),
           input: () => {
             throw new Error(
-              `${game}.${name}.input(): a scratch table is no state, so it takes no input. Give the input to a table of the game's state.`,
+              `${game}.tables.${name}.input(): a scratch table is no state, so it takes no input. Give the input to a table of the game's state.`,
             );
           },
           size: () => size,
@@ -454,31 +436,31 @@ export abstract class Engine {
         continue;
       }
       const isBuffered = buffered.includes(name);
-      const size = sizes.get(handle)!;
+      const size = sizes.get(name)!;
       handle[BIND] = {
         name,
         rows: () => {
-          this.#live(`${name}.rows`);
+          this.#live(`tables.${name}.rows`);
           if (!this.#inTick) return sim.table(name) as Resident<object[]>;
           const entry = this.#frame[name];
           return (isBuffered ? (entry as { read: unknown }).read : entry) as Resident<object[]>;
         },
         next: () => {
-          this.#live(`${name}.next`);
+          this.#live(`tables.${name}.next`);
           if (!isBuffered) {
             throw new Error(
-              `${game}.${name}.next: the table is not buffered, so it has one array. Declare it with { buffered: true }, or write it through "rows".`,
+              `${game}.tables.${name}.next: the table is not buffered, so it has one array. Declare it with { buffered: true }, or write it through "rows".`,
             );
           }
           if (!this.#inTick) {
             throw new Error(
-              `${game}.${name}.next: "next" is the array a tick writes. Read it in a system.`,
+              `${game}.tables.${name}.next: "next" is the array a tick writes. Read it in a system.`,
             );
           }
           return (this.#frame[name] as { write: Resident<object[]> }).write;
         },
-        read: () => this.#live(`${name}.read()`).read(name),
-        input: (index, fields) => this.#live(`${name}.input()`).input(name, index, fields),
+        read: () => this.#live(`tables.${name}.read()`).read(name),
+        input: (index, fields) => this.#live(`tables.${name}.input()`).input(name, index, fields),
         size: () => size,
       };
     }

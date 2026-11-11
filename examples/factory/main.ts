@@ -37,7 +37,7 @@ export async function start(canvas: HTMLCanvasElement, auto: boolean): Promise<H
       await game.wait();
     },
     put: (x, y, kind, dir) => putCell(game, x, y, kind, dir),
-    read: () => game.cells.read(),
+    read: () => game.tables.cells.read(),
   };
 }
 

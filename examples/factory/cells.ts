@@ -84,10 +84,12 @@ export function putCell(game: Game, x: number, y: number, kind: number, dir: num
   if (x < 0 || y < 0 || x >= width || y >= height) return;
   const index = y * width + x;
   // The input writes the tag and the fields of the new kind. The other kinds keep theirs.
-  if (kind === BELT) game.cells.input(index, { kind, belt: { dir, item: 0, wait: 0 } });
-  else if (kind === SOURCE) game.cells.input(index, { kind, source: { dir, item: 0, wait: 0 } });
-  else if (kind === MACHINE) game.cells.input(index, { kind, machine: { stock: 0, wait: 0 } });
-  else game.cells.input(index, { kind });
+  if (kind === BELT) game.tables.cells.input(index, { kind, belt: { dir, item: 0, wait: 0 } });
+  else if (kind === SOURCE)
+    game.tables.cells.input(index, { kind, source: { dir, item: 0, wait: 0 } });
+  else if (kind === MACHINE)
+    game.tables.cells.input(index, { kind, machine: { stock: 0, wait: 0 } });
+  else game.tables.cells.input(index, { kind });
 }
 
 /** The counts a test and a score read. */
