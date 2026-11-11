@@ -1,7 +1,7 @@
 # Radiance: the design of the game engine
 
 > **Status:** design, written 2026-11-11. Nothing in this document is implemented. The owner
-> decided D1 to D15 and accepted U1 to U9 on 2026-11-11. Every claim about the compiler names
+> decided D1 to D16 and accepted U1 to U9 on 2026-11-11. Every claim about the compiler names
 > a section of its surface document (`docs/use-typeshade-surface.md`, "§"), a rule of its design
 > rules (`docs/language-design.md`, "Rule"), or a change proposal (`changes/`, "change NNNN").
 > The compiler was read at `typeshade/typeshade` `main` `da311c32`. The names in the sketches are
@@ -60,6 +60,7 @@ this design.
 | D13 | Radiance is the framework a game is implemented on. It owns memory, the runtime and the device.      |
 | D14 | The engine is a class that a game extends. The framework manages the project and its files.          |
 | D15 | The store is the main distribution, and the web is secondary. A later game also ships on Steam.      |
+| D16 | The first game is for a phone. The page in a browser is how the owner tries a build on a phone.      |
 
 **D9, in the owner's words (2026-11-11):** "This codebase is yours: what it's for and how it's
 built are your call, and you'll keep building on it."
@@ -195,6 +196,21 @@ What D15 means for the work:
 - **A desktop store comes later.** A later game ships on a store such as Steam. No work for it
   is in scope now. A design record must not make it impossible: the build names its target.
 - D5 and D6 keep their text. D15 says which one leads.
+
+**D16, in the owner's words (2026-11-11):** "근데 처음은 모바일용으로 시작하고싶어요. 웹은 아무래도 제가
+밖에 나가서 핸드폰으로 직접 열어서 바로 해볼 수 있으니까 좋은 것 같고요".
+
+What D16 means for the work:
+
+- **The phone is the first target.** The first game is made for a phone: touch input, a small
+  screen in either orientation, and the memory and heat of a phone.
+- **The page has a job.** The owner opens the page of a build in a phone's browser and plays it
+  at once. So a build of `main` must be reachable at an address, with no store and no cable.
+- **The page is the first measurement.** What the owner sees on a phone is a result on a
+  device. The page shows its device tier and its frame time, so that a report has numbers.
+- **A phone with no WebGPU matters now.** D12 gives such a phone WebGL2. The compiler refuses
+  that path for a table of classes today (`typeshade/typeshade` issue #1249).
+- D16 does not change D15. The store package is still the main product.
 
 The names in this sketch are not decided. A design record decides them.
 
@@ -567,7 +583,7 @@ are the first model. The owner's words of 2026-11-11: "Radiance는 초기모델�
 - Draft written 2026-11-11 in a Claude Code session with the owner, in Korean.
 - Baselines read: `typeshade/radiance` `main` `3e4efb3f`. `typeshade/typeshade` `main`
   `da311c32`. TypeAudio's `docs/vision.md` is the model for this document's shape.
-- Decisions D1 to D15 are the owner's. D13 changed D10, D14 changed U1 and D15 changed U5 on
+- Decisions D1 to D16 are the owner's. D13 changed D10, D14 changed U1 and D15 changed U5 on
   2026-11-11. The owner accepted U1 to U9 on 2026-11-11. D12 changed
   U2 on the same day.
 - Design records 0100 and 0101 are implemented. Their world runs on the CPU tier. Since D12 it
