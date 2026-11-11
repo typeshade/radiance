@@ -3,13 +3,14 @@
 
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { chromium, type Browser, type Page } from 'playwright';
-import { createDevice } from 'typeshade/runtime';
 import { build, preview, type PreviewServer } from 'vite';
 import { afterAll, beforeAll, expect, test } from 'vitest';
-import { BELT } from './cells.shade.ts';
-import { createFactory, DEMO, putCell } from './level.ts';
+import { load } from '../../../src/test.ts';
+import type { Game } from '../.radiance/game.ts';
+import { putCell } from '../cells.ts';
+import { BELT } from '../kinds.shade.ts';
 
-const here = new URL('.', import.meta.url).pathname;
+const here = new URL('..', import.meta.url).pathname;
 const config = `${here}vite.config.ts`;
 
 let server: PreviewServer;
@@ -64,15 +65,14 @@ test('the cells the GPU computes equal the cells of the CPU tier, with an input 
     return JSON.stringify(await game.read());
   }, BELT);
 
-  // On the CPU tier: the same `createFactory`, the same `putCell` at the same tick.
-  const device = await createDevice({ prefer: ['cpu'] });
-  const cpu = createFactory(DEMO, { seed: 1, device });
-  await cpu.sim.step(50);
+  // On the CPU tier: the same project, the same level, the same `putCell` at the same tick.
+  const cpu = await load<Game>('examples/factory', { seed: 1, level: 'demo' });
+  await cpu.step(50);
   putCell(cpu, 3, 3, BELT, 0);
-  await cpu.sim.step(150);
+  await cpu.step(150);
 
-  expect(JSON.parse(gpu)).toEqual(JSON.parse(JSON.stringify(await cpu.sim.read('cells'))));
-  await device.dispose();
+  expect(JSON.parse(gpu)).toEqual(JSON.parse(JSON.stringify(await cpu.cells.read())));
+  await cpu.dispose();
 });
 
 test('the picture shows the cells', async () => {

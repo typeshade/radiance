@@ -5,7 +5,8 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import type { GameConfig } from './config.ts';
-import { readSystem, readTable } from './facts.ts';
+import { Engine } from './engine.ts';
+import { readFunctions, readSystem, readTable } from './facts.ts';
 
 /** A table of a project. */
 export interface ProjectTable {
@@ -30,16 +31,41 @@ export interface ProjectSystem {
   readonly args: readonly string[];
 }
 
+/** A host function of `input/` that takes an event of the page. */
+export interface ProjectInput {
+  /** The event, which is also the function's name. */
+  readonly event: string;
+  readonly file: string;
+}
+
 /** A project, read. */
 export interface Project {
   readonly dir: string;
   readonly config: GameConfig;
   readonly tables: readonly ProjectTable[];
   readonly systems: readonly ProjectSystem[];
+  /** True when the project has `draw/draw.ts`, the host function that draws a frame. */
+  readonly draws: boolean;
+  readonly inputs: readonly ProjectInput[];
 }
 
 const SUFFIX = '.shade.ts';
+/** The names of the engine's own members. A table and a system of a game take another name. */
+const RESERVED = new Set<string>([
+  ...Object.getOwnPropertyNames(Engine.prototype).filter((name) => name !== 'constructor'),
+  'stepOn',
+  'draw',
+]);
+
+function free(file: string, what: string, name: string): void {
+  if (!RESERVED.has(name)) return;
+  throw new TypeError(
+    `${file}: the ${what} is named "${name}", which is a name of the engine's own (${[...RESERVED].sort().join(', ')}). Give the ${what} another name.`,
+  );
+}
 const ENGINE_VALUES = ['tick', 'seed', 'dt'];
+const EVENTS = ['pointerdown', 'pointermove', 'pointerup', 'keydown', 'keyup'];
+const DRAW_FILE = join('draw', 'draw.ts');
 
 function shadeFiles(dir: string, sub: string): string[] {
   const path = join(dir, sub);
@@ -67,6 +93,7 @@ export function readProject(dir: string, config: GameConfig): Project {
   const tables: { -readonly [K in keyof ProjectTable]: ProjectTable[K] }[] = [];
   for (const name of shadeFiles(dir, 'state')) {
     const file = join('state', name + SUFFIX);
+    free(file, 'table', name);
     const facts = readTable(file, read(file));
     tables.push({
       name,
@@ -81,6 +108,7 @@ export function readProject(dir: string, config: GameConfig): Project {
   const state = tables.map((table) => table.name);
   for (const name of shadeFiles(dir, 'scratch')) {
     const file = join('scratch', name + SUFFIX);
+    free(file, 'table', name);
     const like = config.scratch?.[name];
     if (like === undefined || !state.includes(like)) {
       throw new TypeError(
@@ -115,6 +143,7 @@ export function readProject(dir: string, config: GameConfig): Project {
       );
     }
     const file = join('systems', name + SUFFIX);
+    free(file, 'system', name);
     const args = readSystem(file, read(file), name).params.map((param) => {
       const table = tables.find((t) => t.name === param);
       if (table !== undefined) return `this.${param}.rows`;
@@ -143,7 +172,47 @@ export function readProject(dir: string, config: GameConfig): Project {
       `systems/${unused[0]}${SUFFIX}: the config's "tick" does not name this system. Add "${unused[0]}" to "tick", or remove the file.`,
     );
   }
-  return { dir, config, tables, systems };
+
+  // The drawing: one host function `draw(game)` in draw/draw.ts, when the game draws.
+  const draws = existsSync(join(dir, DRAW_FILE));
+  if (draws && !readFunctions(DRAW_FILE, read(DRAW_FILE)).includes('draw')) {
+    throw new TypeError(
+      `${DRAW_FILE}: the file exports no function "draw". Export the function that draws one frame: "export function draw(game: Game) { ... }".`,
+    );
+  }
+  // The inputs: each host file of input/ exports functions named as the events they take.
+  const inputs: ProjectInput[] = [];
+  const inputDir = join(dir, 'input');
+  for (const name of existsSync(inputDir) ? readdirSync(inputDir).sort() : []) {
+    if (!name.endsWith('.ts')) continue;
+    const file = join('input', name);
+    for (const event of readFunctions(file, read(file))) {
+      if (!EVENTS.includes(event)) {
+        throw new TypeError(
+          `${file}: the function "${event}" is named after no event. A function of input/ has the name of the event it takes: ${EVENTS.join(', ')}.`,
+        );
+      }
+      const before = inputs.find((input) => input.event === event);
+      if (before !== undefined) {
+        throw new TypeError(
+          `${file}: "${event}" is also in ${before.file}. One function takes each event.`,
+        );
+      }
+      inputs.push({ event, file });
+    }
+  }
+  return { dir, config, tables, systems, draws, inputs };
+}
+
+/** The types of the data that the project's inputs take, as an import list. */
+function inputTypes(project: Project): string {
+  const types = new Set(
+    project.inputs.map((item) => (item.event.startsWith('key') ? 'KeyInput' : 'PointerInput')),
+  );
+  return [...types]
+    .sort()
+    .map((name) => `type ${name}`)
+    .join(', ');
 }
 
 /** The text of `.radiance/game.ts`: the class of the game, as a person could write it. */
@@ -153,13 +222,20 @@ export function writeGame(project: Project): string {
     '// Written by "radiance sync" from the project. Do not change this file: change the',
     '// project, and run "radiance sync" again.',
     '',
-    "import { Engine, system } from 'radiance';",
+    project.inputs.length > 0
+      ? `import { Engine, input, system, ${inputTypes(project)} } from 'radiance';`
+      : "import { Engine, system } from 'radiance';",
   ];
   for (const table of project.tables) {
     lines.push(`import { ${table.className} } from '${up(table.file)}';`);
   }
   for (const sys of project.systems) {
     lines.push(`import { ${sys.name} } from '${up(sys.file)}';`);
+  }
+  if (project.draws) lines.push(`import { draw } from '${up(DRAW_FILE)}';`);
+  for (const file of new Set(project.inputs.map((item) => item.file))) {
+    const events = project.inputs.filter((item) => item.file === file).map((item) => item.event);
+    lines.push(`import { ${events.join(', ')} } from '${up(file)}';`);
   }
   lines.push('', 'export class Game extends Engine {');
   if (project.config.stepOn !== undefined) {
@@ -183,6 +259,21 @@ export function writeGame(project: Project): string {
   for (const sys of project.systems) {
     lines.push('', `  // ${sys.file.split('\\').join('/')}`, `  @system() ${sys.name}() {`);
     lines.push(`    return ${sys.name}(${sys.args.join(', ')});`, '  }');
+  }
+  for (const item of project.inputs) {
+    const data = item.event.startsWith('key') ? 'KeyInput' : 'PointerInput';
+    lines.push('', `  // ${item.file.split('\\').join('/')}`);
+    lines.push(`  @input('${item.event}') ${item.event}(data: ${data}) {`);
+    lines.push(`    return ${item.event}(this, data);`, '  }');
+  }
+  if (project.draws) {
+    lines.push(
+      '',
+      `  // ${DRAW_FILE.split('\\').join('/')}`,
+      '  draw() {',
+      '    return draw(this);',
+      '  }',
+    );
   }
   lines.push('}', '');
   return lines.join('\n');
