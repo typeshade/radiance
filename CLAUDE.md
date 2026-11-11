@@ -1,7 +1,8 @@
 # Working in this repository with Claude Code
 
-Read `README.md` for the layout and the checks, and `docs/plan.md` for the plan: the product, the
-layers, the milestones and their acceptance criteria. This file adds the rules for a session.
+Read `README.md` for the layout and the checks. Read `docs/vision.md` for the design: the claim,
+the owner's decisions, the scene model, the tick and what is not promised. This file adds the
+rules for a session.
 
 ## The language of the conversation
 
@@ -22,9 +23,8 @@ modes:
 
 - Strict mode for `CLAUDE.md`, a procedure, a numbered step, a check's message and the rules of a
   design record. A wrong reading there has a cost.
-- STE-flavored mode for `README.md`, `docs/plan.md`, `docs/typeshade-feedback.md`, the site's
-  guide pages and the descriptive text of a design record. The structural rules apply in full.
-  The lexical rules are a direction.
+- STE-flavored mode for `README.md`, `docs/vision.md` and the descriptive text of a design
+  record. The structural rules apply in full. The lexical rules are a direction.
 
 The structural rules, in short:
 
@@ -48,10 +48,11 @@ the same principles in Korean. ASD-STE100's dictionary is English and governs on
 **Configuration management.**
 
 - Identification. Name each configuration item by its identifier: a repository, a branch, a
-  commit, a pull request, a design record, a decision (`Design 0001.3`), the submodule pin or a
-  required check. "The latest" is no identifier. A commit hash is one.
-- Baselines. `main` at a commit is this repository's baseline. The pin `vendor/typeshade` is its
-  baseline of the compiler. An accepted design record is the approved design of its part.
+  commit, a pull request, a design record, a decision (`D3`, `U1`, `Design 0100.3`), the compiler
+  pin or a required check. "The latest" is no identifier. A commit hash is one.
+- Baselines. `main` at a commit is this repository's baseline. `docs/vision.md` at a commit is
+  the design baseline. An accepted design record is the approved design of its part. The
+  compiler pin, when the first code sets one, is this repository's baseline of the compiler.
 - Change control. Change a baseline only through a pull request. A change to a contract needs an
   accepted design record first (below). The approval is a review or the owner's go-ahead in the
   conversation (Merging). A pull request does only what its description says. One pull request
@@ -60,13 +61,9 @@ the same principles in Korean. ASD-STE100's dictionary is English and governs on
   or done, and for a record its lifecycle state. A status report names each one with its
   identifiers. List each open item with its reason and its next action.
 - Verification and audit. Support a claim of completion with the checks that actually ran: the
-  command or check, the date, the configuration (commit, pin, tool versions) and the result.
-  Functional verification (`bun run check`, `bun run harness`) and the document audit (the
-  documents and `reqs/` match the delivered configuration) are separate. One does not replace
-  the other. Report a check that did not run as not run.
-- Traceability. `reqs/` is the Doorstop tree of the design records and their decisions
-  (`reqs/README.md`). `bun run reqs:sync` derives it. A record changed without a review of its
-  decisions fails CI's `traceability (Doorstop)` job.
+  command or check, the date, the configuration (commit, pin, tool versions, device) and the
+  result. Functional verification and the document audit are separate. One does not replace the
+  other. Report a check that did not run as not run.
 - Deviations. Record each difference between the record and the delivered work on the pull
   request and in the record's "Record" section, with its disposition: closed, made part of the
   record by an amendment, or open.
@@ -100,80 +97,64 @@ The owner's rules, given on 2026-10-13, for every session:
   request at once. Push each later commit to the same branch, so that no work stays only in the
   container.
 
-## Every package is written on the public runtime alone
+## The design is `docs/vision.md`
 
-`vendor/typeshade` is the compiler, pinned as a git submodule. The compiler decided (#335) that
-an engine lives in its own repository and is built only on the public program runtime, and this
-repository is that engine:
+`docs/vision.md` holds the owner's decisions (D1 to D8) and the items the owner accepted (U1 to
+U9). Each is a constraint, not one option among others.
 
-- A package under `packages/` imports `typeshade/runtime`, a sibling package and its own files,
-  and nothing else. It calls nothing on a WebGPU object: the runtime makes and records every
-  buffer, texture, pipeline and bind group. `scripts/boundary.mjs` holds this before every commit
-  and in CI.
-- GPU code is TypeShade: `*.shade.ts` files, compiled by the compiler and run through the
-  runtime. Write WGSL by hand only for what TypeShade cannot express yet, and then open an issue
-  on typeshade/typeshade naming the gap.
-- What the runtime cannot do yet becomes a proposal in the compiler's `changes/`, not a reach
-  past the boundary. `docs/plan.md` ("What goes back to the compiler") lists the ones expected.
+- Never propose a design that reverses a decision, unless the owner asks for that in the
+  conversation.
+- Before you recommend anything, check it against the decisions, and cite the ones it rests on.
+- A measurement or a review finding that a decision makes costly is a cost of the decision. Show
+  the cost to the owner. Only the owner changes a decision.
+- When the owner states a new decision about the engine, record it in `docs/vision.md`, in the
+  owner's words with the date, in a pull request of its own.
+- Before the owner decides on a design or a merge, show what changes: one example before and
+  after, and the options with their costs.
 
-## The packages and the docs follow the pinned compiler
+## The engine is written on the compiler's public runtime
 
-Moving the pin is a step with checks, not a memory:
+The compiler decided (`typeshade/typeshade` issue #335) that an engine lives in its own
+repository and is built only on the public program runtime. This repository is that engine.
 
-- When a change moves the pin, run
-  `bun vendor/typeshade/scripts/downstream-impact.ts --repo radiance --submodule vendor/typeshade`
-  and fix every line it lists. It also lists every compiler change proposal the new pin
-  implements that names this repository and that `compiler-changes.md` does not record yet: do
-  the work the proposal lists, then add its id to that file.
-- When you edit inside a `LINT.IfChange` block, edit its `LINT.ThenChange` targets in the same
-  commit. `TYPESHADE_DOCS_ROOT=$PWD bun vendor/typeshade/scripts/ifchange.ts` checks this.
-- `.claude/settings.json` runs both checks before every `git commit` and blocks the commit while
-  one fails. A line of its own in the message, `NO_IFTTT=<reason>`, waives an unmet
-  `LINT.ThenChange` and nothing else. Write it only after reading the target.
-- Moving the pin is its own pull request, with `bun run check` and `bun run harness` green on
-  the new pin.
+- GPU code is TypeShade: `*.shade.ts` files, compiled by the compiler and run through
+  `typeshade/runtime`. Engine code calls nothing on a WebGPU or WebGL object.
+- A need this engine has of the compiler is an issue on `typeshade/typeshade` that asks for
+  compiler work. Write the workaround here first, and measure it on devices. The compiler side
+  decides how to meet the need. A language change is the last resort.
+- Nothing engine-shaped is asked of the language. A scene, a node, a tick and a body are library
+  names (compiler `docs/dx.md`, principle 7).
+- A TypeShade bug, a missing feature or a confusing diagnostic becomes an issue on
+  `typeshade/typeshade`, without asking first. Search the open and closed issues first. Tell the
+  owner what was filed.
+
+The engine has no compiler pin yet. The first design record decides how the engine pins the
+compiler, and this file then gains the procedure to move the pin.
 
 ## A contract changes in a design record first
 
-`docs/design/` holds the agreed shape of each part the engine is built on: the kernel's buffers
-and their layouts (0001), the gates (0002), the public API (0003), the material record and the
-shading contract (0004), the determinism rules (0005) and the proposals the engine owes the
-compiler (0006). `docs/design/README.md` says which changes need a record and the lifecycle.
+`docs/design/README.md` says which changes need a record, the lifecycle and the shape of a
+record.
 
-- Before implementing a change to one of those, find its accepted record. If there is none, or
-  the change reaches past what the record declares, write or amend the record first, as its own
-  pull request, and do not implement until it is merged as accepted.
-- Each implementing commit names its record on a line of its own: `Design: 0001`. A test that
-  verifies a decision carries `Verifies: Design 0001.3` in a comment.
-- A record is written for an agent that has not read the conversation: files, names, layouts in
-  bytes, tests and the numbers that prove each step.
-- After you edit a record, run `bun run reqs:sync`, then `doorstop -e -F`, and work through what
-  it flags as `reqs/README.md` says. Install Doorstop once with `pip install doorstop==3.2`.
+- Before implementing a change to a contract, find its accepted record. If there is none, or the
+  change reaches past what the record declares, write or amend the record first, as its own pull
+  request. Do not implement until it is merged as accepted.
+- Each implementing commit names its record on a line of its own: `Design: 0100`. A test that
+  verifies a decision carries `Verifies: Design 0100.3` in a comment.
+- A record is written for an agent that did not read the conversation: files, names, layouts,
+  tests and the numbers that prove each step.
 
-## Report what using TypeShade is like
+## A claim about a device is a measurement
 
-- `docs/typeshade-feedback.md` is the log of what working in TypeShade is like here: friction,
-  surprises, diagnostics that did not help, gaps in the docs, things that were hard, and things
-  that went well. Add an entry when it happens, not at the end of a session.
-- A TypeShade bug, a missing feature or a confusing diagnostic becomes an issue on
-  typeshade/typeshade, without asking first: search the open and closed issues, write it as the
-  owner's issues are written (what happens, what was expected, the tests owed, the pinned
-  commit), and link it from the log entry. Tell the owner what was filed.
-
-## A milestone is done by its image and its number
-
-`docs/plan.md` gives every milestone an acceptance criterion: a named demo and a CI gate, an
-image held to a golden and a number recorded. A milestone whose criterion is not in CI is not
-done. The gates follow the compiler's: `gate:render` (a pixel golden), `gate:differential` (the
-GPU held to the CPU oracle), and "prove the instrument" (a gate shows it can fail before it is
-trusted to pass).
+`docs/vision.md` (section 12) lists what must be measured before it is promised. A statement
+about a phone, a WebView or a store is a fact only with a record: the device, the system
+version, the commit, the date and the number. Without a record, label it an inference.
 
 ## Before pushing
 
-Run `bun run check` and `bun run harness`, then `doorstop -e -F`: together they are CI's jobs, so
-a push that passes them locally passes there. `.claude/settings.json` runs the fast half
-(prettier, the prose check, the STE check, the boundary and `reqs:check`) before every
-`git commit` and blocks the commit while one fails.
+Run `bun run check`. It is CI's working job: the format check and the two prose checks.
+`.claude/settings.json` runs the same checks before every `git commit` and blocks the commit
+while one fails. The first code adds its type check and its tests to `bun run check`.
 
 ## Merging
 
@@ -194,18 +175,26 @@ pull request, a Code Owner review and the required checks (the `name:` of each j
   - a bug fix that needs no design record
 - Everything else waits for the owner to say "merge" in the conversation:
   - a new or amended design record
-  - a change to the plan (`docs/plan.md`)
+  - a change to the design (`docs/vision.md`)
   - a change to a public export
   - a layout or a contract that no accepted design record covers
-  - a move of the pin `vendor/typeshade`
+  - a move of the compiler pin
   - a change to `CLAUDE.md` itself
 - After a merge, report it to the owner.
-- Never push to `main` directly after the initial commit, and never force-push it.
+- Never push to `main` directly, and never force-push it.
 - The ruleset, the secrets and every other repository setting are the owner's to change. When one
   must change, write the owner a script for the GitHub CLI (`gh auth login`, then `gh api`), in
   PowerShell, since the owner works on Windows. Never ask for a token in the conversation.
 - Renaming or removing a CI job leaves every pull request waiting on a check that never reports,
-  so the ruleset changes in the same step.
+  so the ruleset changes in the same step. Three jobs of `ci.yml` keep the first model's names
+  for this reason, and they run nothing yet.
+
+## Waiting on a pull request
+
+- Mark a draft pull request ready for review as soon as its checks are green, not at merge time.
+- Waiting on a check is not work. End the turn, and let the pull request's events wake the
+  session.
+- A pull request that is green and waits only on the owner needs no check-in.
 
 ## Tracking requests
 

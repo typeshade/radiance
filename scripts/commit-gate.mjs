@@ -3,15 +3,15 @@
 // `.claude/settings.json` registers this as a Claude Code PreToolUse hook on Bash. It reads the
 // tool call on stdin and does nothing unless the call is a `git commit`. Then it runs the checks
 // below, a few seconds together, and blocks the commit (exit 2, the report goes to the agent)
-// while one fails. `reqs:check` is the half of the traceability job that needs no Python. The
-// slow half (the type check, the tests, the harness) stays in
-// `bun run check` and `bun run harness`, which are run before pushing.
+// while one fails. The engine has no code yet, so these checks are all of `bun run check`. The
+// slow checks of the first code (a type check, the tests) join `bun run check` and stay out
+// of this gate.
 
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
 /** Scripts from CI's check job that finish in seconds and need no device. */
-const CHECKS = ['format:check', 'check:prose', 'check:ste', 'check:boundary', 'reqs:check'];
+const CHECKS = ['format:check', 'check:prose', 'check:ste'];
 
 let command = '';
 try {
