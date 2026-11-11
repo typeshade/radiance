@@ -25,6 +25,12 @@ compiler: []
 | Pull request   | The pull request that adds this file.                                                               |
 | What is a fact | The two steps are implemented. The Record section holds the delivered configuration.                |
 
+> **Changed by design record 0104.** The tables of a simulation now live on a device of the
+> compiler's runtime. `device` is a required option, the tick gets the compiler's `Resident`s,
+> `sim.rows(name)` is `sim.read(name)` and returns a promise, and `dump` and `snapshot` return
+> promises. Design record 0104 (section 5) lists each change. The text below is the design as
+> this record delivered it.
+
 ## What changes
 
 Decision D11 makes a game's tick a function of a `"use typeshade"` file. The reference game is
