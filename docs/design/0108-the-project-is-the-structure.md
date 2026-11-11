@@ -6,6 +6,7 @@ vision: [D4, D11, D12, D13, D14]
 touches:
   - src/engine.ts
   - src/project.ts
+  - src/facts.ts
   - src/cli.ts
   - src/index.ts
   - src/page.ts
@@ -28,7 +29,7 @@ compiler: []
 | Baseline       | `typeshade/radiance` `main` `d583f83`.                                                           |
 | Compiler pin   | `6d6a979`.                                                                                       |
 | Pull request   | The pull request that adds this file.                                                            |
-| What is a fact | The probes of section 10. No step is implemented.                                                |
+| What is a fact | The probes of section 11. No step is implemented.                                                |
 
 ## What changes
 
@@ -109,7 +110,7 @@ export const slots = 16;
    its `Next` name (section 3).
 
 A `"use typeshade"` file can import a `"use typeshade"` module of Radiance and extend a class
-of it (probe 3 of section 10). The first such module is not in this record.
+of it (probe 3 of section 11). The first such module is not in this record.
 
 ### 3. A system
 
@@ -222,15 +223,15 @@ tick rate on the CPU tier, gives it each input at its tick and returns the game.
 
 ### 8. What moves
 
-| Before                                | After                                                     |
-| ------------------------------------- | --------------------------------------------------------- |
-| `createDevice` in a game              | Inside `load` and `run`                                   |
-| `createSim` and its options           | The inside of `Engine`. The export stays for this record. |
-| `frames` of `radiance/page`           | The inside of `run`. The export stays for this record.    |
-| `device.array` for the table of wants | `this.scratch`                                            |
-| `replaySim(build, record)`            | `replay(Game, options, record)`                           |
+| Before                                | After                                              |
+| ------------------------------------- | -------------------------------------------------- |
+| `createDevice` in a game              | Inside `load` and `run`                            |
+| `createSim` and its options           | The inside of `Engine`. The export ends at step 2. |
+| `frames` of `radiance/page`           | The inside of `run`. The export ends at step 2.    |
+| `device.array` for the table of wants | `this.scratch`                                     |
+| `replaySim(build, record)`            | `replay(Game, options, record)`                    |
 
-The world of nodes (design records 0100 and 0101) does not change.
+The world of nodes (design records 0100 and 0101) does not change in this record (section 10, rule 4).
 
 ### 9. The errors
 
@@ -243,7 +244,36 @@ Each error names the class and the field, the fact and a remedy. The tests hold 
 - A call on a game after `dispose`.
 - `run` in a place with no canvas.
 
-### 10. The probes
+### 10. What keeps this clean over time
+
+The owner's condition for this record, given on 2026-11-11: the code is clean, and it gives no
+problem over a long time. These rules answer it.
+
+1. **One reader of the language.** The compiler reads a `"use typeshade"` file. The engine does
+   not read the language a second time. The engine needs two facts of a system: the names of
+   its parameters, and which arrays it writes. Compiler issue typeshade/typeshade#1253 asks
+   for both as a report.
+2. **The workaround has one place and an end.** Until the pin has that report, one module,
+   `src/facts.ts`, gets the two facts. It reads the parameter names from the function's
+   signature, and it takes `Next` in a name as "the tick writes this array". No other module
+   reads source. When the pin has the report, `src/facts.ts` reads the report, the `Next` rule
+   ends, and nothing else changes.
+3. **One way to write a game.** When the two reference games are projects (step 2),
+   `createSim`, `replaySim` and `frames` leave the public exports in the same pull request.
+   They stay as the inside of `Engine`.
+4. **No second model.** The world of nodes (design records 0100 and 0101) is no longer the way
+   to write a game (D14). A record of its own decides, before any new work on it, if it stays
+   as the way to write a hierarchy or is removed.
+5. **What the engine writes is never committed.** `.radiance/` is in `.gitignore`.
+   `radiance sync` writes it, as `tshc sync` writes a host view, and `radiance sync --check`
+   fails when it is stale.
+6. **One name for one thing.** A table's name is its file's name, in the config, in a system's
+   parameter, in the dump and in a test. The engine makes no second name.
+7. **A layer has one module.** `src/engine.ts` is the runtime, `src/project.ts` the project,
+   `src/facts.ts` the facts of a system, `src/page.ts` the page. A module of a layer imports no
+   module of a layer above it.
+
+### 11. The probes
 
 | Item     | Value                                                                                                                                                   |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -282,7 +312,7 @@ the decorators and the pin moves, an amendment of this record gives the decorate
 - The decorated form in a `"use typeshade"` file. It waits on the compiler (OD-8).
 - The recovery of a lost device.
 - Drawing, assets, sound, a save.
-- The removal of `createSim` and `frames` as exports.
+- The future of the world of nodes. A record of its own decides it.
 
 ## What it touches
 
@@ -290,6 +320,7 @@ the decorators and the pin moves, an amendment of this record gives the decorate
 | --------------------------------------------- | ------------------------------------------------------------------ |
 | `src/engine.ts`                               | New: `Engine`, `system`, `input`, the table handles                |
 | `src/project.ts`                              | New: the reader of a project and the writer of `.radiance/game.ts` |
+| `src/facts.ts`                                | New: the facts of a system. The one module that reads source.      |
 | `src/cli.ts`                                  | New: `radiance sync` and `radiance check`                          |
 | `src/test.ts`                                 | `load(project, options)`, `replay`                                 |
 | `src/page.ts`                                 | `run(Game, options)`, the loop with `stepOn` and the pause         |
@@ -300,19 +331,20 @@ the decorators and the pin moves, an amendment of this record gives the decorate
 
 Tests owed:
 
-| Test                                                                                                             | Verifies      |
-| ---------------------------------------------------------------------------------------------------------------- | ------------- |
-| A project of each valid form gives the class of section 4, as text                                               | Design 0108.4 |
-| Each error of a project: a file in a wrong place, an unknown parameter, a missing class                          | Design 0108.1 |
-| A table of `scratch/` is in no dump, and a table with `slots` has free rows                                      | Design 0108.2 |
-| A parameter gets its value by its name, and a `Next` name gives a table two arrays                               | Design 0108.3 |
-| The systems run in the order of the config                                                                       | Design 0108.1 |
-| `load`, the first rows of a level, `dispose`, and a call after it                                                | Design 0108.5 |
-| `memory()` has each table, and a record replays to the same dump                                                 | Design 0108.6 |
-| The loop with a clock the test gives: the ticks that are due, `stepOn`, the pause                                | Design 0108.7 |
-| Each error of section 9, with its text                                                                           | Design 0108.9 |
-| The two games' tests pass with no change to a picture or a count                                                 | Design 0108.8 |
-| The harness: the factory's page runs on `run`, and the cells of the GPU device equal the cells of the CPU device | Design 0108.7 |
+| Test                                                                                                             | Verifies       |
+| ---------------------------------------------------------------------------------------------------------------- | -------------- |
+| A project of each valid form gives the class of section 4, as text                                               | Design 0108.4  |
+| Each error of a project: a file in a wrong place, an unknown parameter, a missing class                          | Design 0108.1  |
+| A table of `scratch/` is in no dump, and a table with `slots` has free rows                                      | Design 0108.2  |
+| A parameter gets its value by its name, and a `Next` name gives a table two arrays                               | Design 0108.3  |
+| The systems run in the order of the config                                                                       | Design 0108.1  |
+| `load`, the first rows of a level, `dispose`, and a call after it                                                | Design 0108.5  |
+| `memory()` has each table, and a record replays to the same dump                                                 | Design 0108.6  |
+| The loop with a clock the test gives: the ticks that are due, `stepOn`, the pause                                | Design 0108.7  |
+| Each error of section 9, with its text                                                                           | Design 0108.9  |
+| No module but `src/facts.ts` reads the source of a `.shade.ts` file, and no layer imports a layer above it       | Design 0108.10 |
+| The two games' tests pass with no change to a picture or a count                                                 | Design 0108.8  |
+| The harness: the factory's page runs on `run`, and the cells of the GPU device equal the cells of the CPU device | Design 0108.7  |
 
 ## Implementation, in steps
 
@@ -321,7 +353,8 @@ Each step is one pull request. Each commit carries `Design: 0108`.
 1. **The runtime.** `Engine` on the CPU tier: sections 5, 6 and 9, with a class written by hand
    in the engine's tests.
 2. **The project.** Sections 1 to 4: the reader, the writer, `radiance sync`, `radiance check`
-   and `load`. The two games become projects, and their tests use `load`.
+   and `load`. The two games become projects, and their tests use `load`. `createSim`,
+   `replaySim` and `frames` leave the public exports (section 10, rule 3).
 3. **The page.** Section 7 and `run`. The factory's page uses it. The harness runs it, and the
    game's `README.md` records the lines and the bytes. Set this record to `implemented`.
 
@@ -337,14 +370,17 @@ The agent made these decisions under D9. The owner can change each one.
    the tick writes.
 4. The engine writes one class that extends `Engine`, and `Engine` is the runtime.
 5. `stepOn: 'input'` makes a game with turns.
-6. `createSim` and `frames` stay as exports until a later record.
+6. `createSim`, `replaySim` and `frames` leave the public exports when the games are projects.
+7. The engine reads source in one module only, and that module moves to the compiler's report
+   when the pin has it.
 
 ## Record
 
 - **Approval.** The owner decided D13 and D14 on 2026-11-11. The agent first wrote this record
   around a class that the game extends by hand. The owner then said: "nextjs, nestjs, 같이
   프로젝트 자체가 구조가 되는 방식은? 게임 엔진이 이걸 가지고 빌드해주는 느낌이 더 적절할 것 같기도
-  해서". The record was written again around the project. The agent shows the owner this shape
-  before the merge, and this entry then records the owner's answer.
+  해서". The record was written again around the project. The agent showed the owner this shape.
+  The owner answered on 2026-11-11: "보기에 코드가 깔끔하고, 장기간 처리시에도 문제가 없으면
+  허가함". Section 10 holds what the agent changed in the record to meet that condition.
 - **Validation.** Does not yet apply: no step is implemented.
 - **Deviations.** None.
