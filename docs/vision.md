@@ -1,7 +1,7 @@
 # Radiance: the design of the game engine
 
 > **Status:** design, written 2026-11-11. Nothing in this document is implemented. The owner
-> decided D1 to D9 and accepted U1 to U9 on 2026-11-11. Every claim about the compiler names
+> decided D1 to D12 and accepted U1 to U9 on 2026-11-11. Every claim about the compiler names
 > a section of its surface document (`docs/use-typeshade-surface.md`, "§"), a rule of its design
 > rules (`docs/language-design.md`, "Rule"), or a change proposal (`changes/`, "change NNNN").
 > The compiler was read at `typeshade/typeshade` `main` `da311c32`. The names in the sketches are
@@ -32,25 +32,30 @@ What that gives, in one line each:
   same method across every instance (Rule 8.29, changes 0109 and 0110).
 - **A game is a function of a seed and its inputs.** The simulation runs on a fixed tick. A
   save, a replay and a bug report are the same data.
-- **The limits are stated.** Game logic runs on the CPU tier. The GPU draws the frame and
-  computes what game logic does not read in the same tick.
+- **The engine is a tool.** A shipped game holds the game's own code and the compiler's
+  runtime. The engine checks, tests, explains and builds, and it does not ship (D10).
+- **The limits are stated.** A shipped game runs on WebGPU, or on WebGL2 where there is no
+  WebGPU. The CPU tier runs the tests, and its result is the reference (D12).
 
 ## 2. What the owner decided
 
 The owner gave these answers in the conversation of 2026-11-11. They are the constraints of
 this design.
 
-| Id  | Decision                                                                                             |
-| --- | ---------------------------------------------------------------------------------------------------- |
-| D1  | The engine is designed from nothing. It keeps the name Radiance and nothing else of the first model. |
-| D2  | The engine supports 2D and 3D games.                                                                 |
-| D3  | The first games are offline games of the roguelike kind and the automation kind.                     |
-| D4  | Development is fully agent-driven. The bar for developer experience is that of a frontier engine.    |
-| D5  | The platform is the web.                                                                             |
-| D6  | A game ships as a built application through an application store. An update is a new package.        |
-| D7  | A game needs no server.                                                                              |
-| D8  | Rigid-body dynamics is not in the first scope. The owner named no game that needs it yet.            |
-| D9  | The agent that builds the engine decides what the engine is for and how the engine is built.         |
+| Id  | Decision                                                                                              |
+| --- | ----------------------------------------------------------------------------------------------------- |
+| D1  | The engine is designed from nothing. It keeps the name Radiance and nothing else of the first model.  |
+| D2  | The engine supports 2D and 3D games.                                                                  |
+| D3  | The first games are offline games of the roguelike kind and the automation kind.                      |
+| D4  | Development is fully agent-driven. The bar for developer experience is that of a frontier engine.     |
+| D5  | The platform is the web.                                                                              |
+| D6  | A game ships as a built application through an application store. An update is a new package.         |
+| D7  | A game needs no server.                                                                               |
+| D8  | Rigid-body dynamics is not in the first scope. The owner named no game that needs it yet.             |
+| D9  | The agent that builds the engine decides what the engine is for and how the engine is built.          |
+| D10 | A shipped game uses nothing at run time past the level of TypeShade's `Device`. The engine is a tool. |
+| D11 | A game's tick is a function of a `"use typeshade"` file. The compiler joins it at build time.         |
+| D12 | A shipped game runs on WebGPU first, and on WebGL2 where there is no WebGPU.                          |
 
 **D9, in the owner's words (2026-11-11):** "This codebase is yours: what it's for and how it's
 built are your call, and you'll keep building on it."
@@ -64,6 +69,48 @@ What D9 means for the work:
 - D9 does not change the session rules. `CLAUDE.md` (Merging) says which pull request waits for
   the owner, and only the owner changes that.
 
+**D10, in the owner's words (2026-11-11):** "엔진은 개발 도구일 뿐 빌드시 엔진의 엄청난 분량의
+코드가 포함되지 않잖아요. 그것부터 정해야하지 않나 싶어서요", and "런타임은, typeshade의 device
+수준이어도 괜찮지 않나 싶어서요".
+
+What D10 means for the work:
+
+- What runs on the player's device is the compiler's runtime: a `Device`, its resources and
+  the compiled programs. The engine adds no runtime of its own to a shipped game.
+- The engine is what a developer runs: the check of a scene, the tests, the dump, the replay,
+  `explain` and the build.
+- A thin loop stays in a shipped game: the tick clock, the inputs and the save. The build
+  writes it for each game.
+- The size of a shipped game is a number in CI. A build that holds an engine tool fails.
+
+**D11, in the owner's words (2026-11-11):** "fuse도 빌드시에 합칠 수 있지 않나요. constexpr
+느낌인데", and "fuse 내부 함수를 shade.ts 로 작성하면 되는거 아닌가 싶은데".
+
+What D11 means for the work:
+
+- The author writes the tick as an exported function of a `"use typeshade"` file. Its loops
+  call the methods of the classes, in the order the author writes them.
+- The compiler joins the tick when it compiles the file. Nothing plans at run time.
+- What the build can know, the build computes: the tables of a scene, the index of a node's
+  parent, the seed of a node, the shaders.
+- A compiler fact, observed at pin `6d6a979`: a tick with two loops over two tables compiles and
+  runs. A tick that calls another function with a loop is refused (`TS8099`, Rule 8.6).
+  Compiler proposal 0138 (R12) describes that second form.
+
+**D12, in the owner's words (2026-11-11):** "기기 티어는 WebGPU, WebGL2 둘 중 하나이고, 가능하면
+WebGPU 우선, WebGL2로 폴백하는걸로 하도록 하나, 실제 앱스토어에서 설치되는 경우는 대부분 WebGPU를
+지원하므로, 걱정은 없어보임."
+
+What D12 means for the work:
+
+- A shipped game opens a WebGPU device, and a WebGL2 device where that fails. It does not run
+  its tick on the CPU tier.
+- The CPU tier is the tier of the tests and of the engine's tools. Its result is the reference
+  that a GPU tier is held to.
+- D12 changes U2. U2 said that game logic runs on the CPU tier. The row below keeps U2's text
+  and names the change.
+- The owner's statement on the stores is a planning assumption. No device was measured (M1).
+
 ## 3. What the owner accepted
 
 Each row was a working assumption of the first draft. The owner accepted all nine on 2026-11-11.
@@ -73,7 +120,7 @@ decisions. U9 fixes the kind of shell. The choice of the tool waits on M1 and M4
 | Id  | Question                 | Decision                                                                      | Section |
 | --- | ------------------------ | ----------------------------------------------------------------------------- | ------- |
 | U1  | The scene model          | The author writes a tree of nodes. The engine stores and runs tables.         | 6       |
-| U2  | Where game logic runs    | The CPU tier is the reference. The GPU draws and computes wide effects.       | 7       |
+| U2  | Where game logic runs    | Changed by D12: on the GPU tier. The CPU tier is the reference of the tests.  | 7       |
 | U3  | The simulation clock     | A fixed tick, and a deterministic result for one seed and one input record.   | 7       |
 | U4  | Physics                  | Phase 1 is collision and queries, written in TypeShade. Phase 2 waits on D8.  | 8       |
 | U5  | Assets                   | Procedural first: shapes as distance fields, sound as TypeAudio patches.      | 9       |
@@ -252,14 +299,19 @@ that is not data-parallel, such as a menu or a quest script, is ordinary TypeScr
 input, game logic, physics, events. Rendering interpolates between two ticks. A game with no
 physics has an empty physics phase.
 
-**The reference is the CPU tier.** Game logic reads its results in the same tick. A browser
-returns a GPU result asynchronously, so a GPU result arrives in a later frame. A game for a
-phone also runs on a device with WebGL2 only (D5, D6). So game logic and physics run on the CPU
-tier, and their result is the reference.
+**The tick is one function (D11).** The author writes the tick in a `"use typeshade"` file.
+Its loops run the tables in the order the author writes them, and a loop reads another table
+by an index. The compiler joins the loops at build time.
 
-**What the GPU does.** The GPU draws the frame. The GPU also runs a class that game logic does
-not read: particles, fluids, lighting, crowds of visual instances. `explain` names each such
-class. The same class gives the same bits on both tiers, with the rows of §38 excepted.
+**Where the tick runs (D12).** A shipped game runs the tick on WebGPU, or on WebGL2 where there
+is no WebGPU. A test runs the same tick on the CPU tier, with no device. The CPU tier's result
+is the reference. The same tick gives the same bits on each tier, with the rows of §38
+excepted.
+
+**What the host reads.** A browser returns a GPU result asynchronously. So the host does not
+read a table in the tick that wrote it. Game logic that decides on a table's values is part
+of the tick function. The host writes inputs, and it reads a table for the screen and for a
+save, one frame or more after the write.
 
 **One writer.** Each column has one writer in each tick. A body's position belongs to physics.
 Game logic writes a velocity, a force or an impulse. A dynamic body below a moving parent keeps
@@ -269,8 +321,8 @@ world coordinates.
 The same word is the same number on every tier. A map generator and a loot roll use nothing
 else.
 
-**Wide data that the CPU reads.** A read of GPU-resident data arrives one frame late. The type
-of the read says so. The design of that type is open.
+**A read by the host arrives late.** The type of the read says so. The design of that type is
+open.
 
 ## 8. Physics
 
@@ -332,7 +384,8 @@ The costs:
 ## 11. What is not promised
 
 - A graphical editor. The first tool for a person is an inspector that shows a running game.
-- Game logic on the GPU. A class that game logic reads in the same tick runs on the CPU tier.
+- A read of a table by host code in the tick that wrote it (D12).
+- A shipped game that runs with neither WebGPU nor WebGL2.
 - Rigid-body dynamics in the first scope (D8).
 - A multiplayer mode, a server and a download of assets (D7).
 - A native build with no WebView.
@@ -345,15 +398,19 @@ The costs:
 
 | Id  | Question                                                                             | Why it matters                                 |
 | --- | ------------------------------------------------------------------------------------ | ---------------------------------------------- |
-| M1  | Does WebGPU run in Android System WebView and in `WKWebView` on the target phones?   | It decides how much rests on the WebGL2 tier   |
-| M2  | How many instances does a tick hold on the CPU tier of a mid-range phone?            | It sizes an automation game                    |
+| M1  | Does WebGPU run in Android System WebView and in `WKWebView` on the target phones?   | D12 assumes that it does on most installs      |
+| M2  | How many instances does a tick hold on each GPU tier of a mid-range phone?           | It sizes an automation game                    |
 | M3  | Is a WebView's storage kept across updates and under low disk space?                 | A lost save is the worst failure of D3's games |
 | M4  | Does `SharedArrayBuffer` work at a WebView's local address?                          | TypeAudio's real-time path uses it             |
 | M5  | How long is the first frame after a cold start, with shaders compiled at build time? | A phone game is judged in its first seconds    |
 | M6  | How much heat and battery does a steady 60 Hz frame cost?                            | A long session is the normal session for D3    |
+| M7  | How many bytes is a shipped game, and how long does it take to start?                | D10 makes the size a number in CI              |
 
-A compiler fact that bears on M2: change 0042 (a WebAssembly tier between WebGL2 and the
-JavaScript CPU tier) is accepted and is not yet implemented.
+Two builds were measured on 2026-11-11 at compiler pin `6d6a979`, with Vite 7.3.7. Each is a
+scene of two nodes. A build on the engine's world of design record 0100 is 145.5 kB, and 89% of
+it is the compiler's CPU runtime. A build that runs one kernel function through a `Device` is
+661.3 kB in three files, and the largest file is the planner of `fuse`. Neither build is the
+build of D10 and D11, which holds no CPU runtime and no planner. That build is not measured.
 
 ## 13. The compiler loop
 
@@ -409,5 +466,8 @@ are the first model. The owner's words of 2026-11-11: "Radiance는 초기모델�
 - Draft written 2026-11-11 in a Claude Code session with the owner, in Korean.
 - Baselines read: `typeshade/radiance` `main` `3e4efb3f`. `typeshade/typeshade` `main`
   `da311c32`. TypeAudio's `docs/vision.md` is the model for this document's shape.
-- Decisions D1 to D9 are the owner's. The owner accepted U1 to U9 on 2026-11-11.
+- Decisions D1 to D12 are the owner's. The owner accepted U1 to U9 on 2026-11-11. D12 changed
+  U2 on the same day.
+- Design records 0100 and 0101 are implemented. Their world runs on the CPU tier. Since D10 it
+  is the reference and the tool of the tests, and it is not what a shipped game runs.
 - Nothing in this document is implemented. No measurement of section 12 has run.
