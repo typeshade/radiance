@@ -6,3 +6,4 @@ export type { Row, Table, WorldOptions } from './world.ts';
 export { formatNumber, formatValue } from './dump.ts';
 export type { Snapshot, SnapshotValue } from './dump.ts';
 export type { AppliedInput, InputValue, RunRecord } from './input.ts';
+export { fnv1a, nodeSeed } from './seed.ts';

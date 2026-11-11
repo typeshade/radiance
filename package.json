@@ -15,16 +15,18 @@
     "test": "vitest run",
     "check": "bun run format:check && bun run check:prose && bun run check:ste && bun run typecheck && bun run test"
   },
+  "exports": {
+    ".": "./src/index.ts",
+    "./test": "./src/test.ts"
+  },
+  "dependencies": {
+    "typeshade": "https://github.com/typeshade/typeshade/archive/da311c32bf5f8f1f2ac35d6e12952beecde9d62e.tar.gz"
+  },
   "devDependencies": {
     "@types/node": "25.6.0",
     "prettier": "^3.5.3",
     "typescript": "5.6.3",
-    "typeshade": "https://github.com/typeshade/typeshade/archive/da311c32bf5f8f1f2ac35d6e12952beecde9d62e.tar.gz",
     "vite": "7.3.7",
     "vitest": "5.0.5"
-  },
-  "exports": {
-    ".": "./src/index.ts",
-    "./test": "./src/test.ts"
   }
 }
