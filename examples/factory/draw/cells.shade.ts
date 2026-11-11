@@ -29,8 +29,10 @@ export function place(corner: builtin<"vertex_index">, row: builtin<"instance_in
   return { at: view * vec4(cell + unit, 0., 1.), local: unit * 2. - 1., row };
 }
 
-/** The colour of one pixel: the colour its cell gives. */
+/** The colour of one pixel: the colour its cell gives, and a thin line between cells. */
 @fragment
 export function paint(corner: Corner): Color {
-  return { color: vec4(cells[corner.row].color(corner.local), 1.) };
+  let color: vec3 = cells[corner.row].color(corner.local);
+  if (abs(corner.local.x) > 0.94 || abs(corner.local.y) > 0.94) { color = color * 0.6; }
+  return { color: vec4(color, 1.) };
 }

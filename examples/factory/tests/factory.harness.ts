@@ -54,7 +54,9 @@ async function measureCell(view: Page, shot: Buffer) {
     const pixels = copy.getImageData(0, 0, width, height).data;
     const green = (i: number) => {
       const index = i * 4;
-      return pixels[index + 1] > pixels[index] + 40 && pixels[index + 1] > pixels[index + 2] + 30;
+      // Green by its share, so that the darker line at the edge of the cell counts too.
+      const [r, g, b] = [pixels[index], pixels[index + 1], pixels[index + 2]];
+      return g > 30 && g > r * 1.5 && g > b * 1.3;
     };
     let start = -1;
     for (let i = 0; i < width * height && start < 0; i++) if (green(i)) start = i;

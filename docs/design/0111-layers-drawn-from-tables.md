@@ -307,9 +307,8 @@ each one.
     `view`, a wrong `view.fit` or `view.clear`, an empty `draw`, a layer file that `draw` does not
     name, and a name with the wrong kind of binding. Each error names the file, the fact and a
     remedy. Disposition: made part of the record by an amendment of section 2.
-  - The factory's picture lost the thin line between cells. The layer of section 2 draws the
-    colour of the cell only. Disposition: open. The owner decides whether the layer draws the
-    line.
+  - The layer of section 2 draws the colour of the cell only. The factory's layer also draws
+    the thin line between cells, as the picture of the game had it before. Disposition: closed.
   - A layer that declares a name that its entries do not use is refused at the first frame, not
     at `radiance sync`. The text is the compiler's, for example that the entry "paint" reaches
     no binding "tick" and binds "cells", "view" and "width". Disposition: open. The engine can
