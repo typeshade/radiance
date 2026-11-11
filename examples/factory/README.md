@@ -25,14 +25,14 @@ E>>>v
 - Two belts can point at one cell. The cell takes from the first ready neighbour in the order
   north, east, south, west.
 
-| File                 | Lines | Content                                                                 |
-| -------------------- | ----- | ----------------------------------------------------------------------- |
-| `cells.shade.ts`     | 158   | The class `Cell`, three helper functions and `tick`                     |
-| `level.ts`           | 148   | Host code: a level from text, the factory as text, an input, the counts |
-| `factory.test.ts`    | 150   | Eight tests on a device of the CPU tier                                 |
-| `draw.shade.ts`      | 48    | The fragment entry that draws the cells                                 |
-| `main.ts`            | 82    | The page: the device, the picture, the pointer                          |
-| `factory.harness.ts` | 117   | Four checks in a browser                                                |
+| File                 | Lines | Content                                                                            |
+| -------------------- | ----- | ---------------------------------------------------------------------------------- |
+| `cells.shade.ts`     | 239   | The classes `Belt`, `Source`, `Machine` and `Cell`, one helper function and `tick` |
+| `level.ts`           | 156   | Host code: a level from text, the factory as text, an input, the counts            |
+| `factory.test.ts`    | 150   | Eight tests on a device of the CPU tier                                            |
+| `draw.shade.ts`      | 35    | The fragment entry that draws the cells                                            |
+| `main.ts`            | 82    | The page: the device, the picture, the pointer                                     |
+| `factory.harness.ts` | 117   | Four checks in a browser                                                           |
 
 ## What was observed
 
@@ -269,6 +269,99 @@ proposal 0048.
 | P12 | Open.                                                                                             |
 | P13 | Closed: one function gives the input on each tier.                                                |
 | P14 | Open.                                                                                             |
+
+## Kinds as classes (design record 0105)
+
+Each kind of cell is now a class with its own fields, its rules as methods and its colour as a
+method. `Cell` is a tag and one field for each kind, written by hand. The engine adds no code
+for this. Its one change is that an input can write a field that holds a class.
+
+Before, one class for every kind, and the rules as blocks of the tick function:
+
+```ts
+export class Cell {
+  kind: u32 = 0;
+  dir: u32 = 0;
+  item: u32 = 0;
+  wait: u32 = 0; // three meanings, by kind
+  stock: u32 = 0;
+  made: u32 = 0; // two meanings, by kind
+}
+
+// in tick:
+if (c.kind == BELT) {
+  if (gives) { c.item = 0; }
+  if (takes) {
+    c.item = 1;
+    c.wait = BELT_PERIOD;
+  } else if (c.item != 0 && c.wait > 0) {
+    c.wait = c.wait - 1;
+  }
+}
+```
+
+After, the belt is one class, and the tick function calls `c.step(takes, gives)`:
+
+```ts
+export class Belt {
+  dir: u32 = 0;
+  item: u32 = 0;
+  wait: u32 = 0;
+  ready(): bool {
+    return this.item != 0 && this.wait == 0;
+  }
+  step(takes: bool, gives: bool) {
+    if (gives) { this.item = 0; }
+    if (takes) {
+      this.item = 1;
+      this.wait = BELT_PERIOD;
+    } else if (this.item != 0 && this.wait > 0) {
+      this.wait = this.wait - 1;
+    }
+  }
+  color(local: vec2): vec3 {
+    return sender(vec3(0.26, 0.28, 0.32), this.dir, this.item, local);
+  }
+}
+```
+
+What changed, measured on 2026-11-11 (compiler pin `6d6a979`, headless Chromium, Playwright
+1.63.0, WebGPU on SwiftShader):
+
+| Item                                  | Before  | After                                |
+| ------------------------------------- | ------- | ------------------------------------ |
+| The lines of the tick function        | 81      | 44                                   |
+| The lines of `cells.shade.ts`         | 158     | 239                                  |
+| The lines of `draw.shade.ts`          | 48      | 35                                   |
+| The files a new kind changes          | 2       | 1, and the host's parser and printer |
+| The fields with two or three meanings | 2       | 0                                    |
+| The words of one cell                 | 6       | 11                                   |
+| The bytes the page loads              | 276,081 | 297,630                              |
+| The same, with gzip                   | 87,984  | 91,262                               |
+
+The tests give the same pictures and the same counts as before. The harness passed: the cells
+of the GPU device equal the cells of the CPU device.
+
+The costs:
+
+- The game got longer by 76 lines in all. Each kind says its fields and its rules in full.
+- A cell holds the fields of every kind, so a cell is 44 bytes and was 24.
+- The page loads 21,549 bytes more.
+
+What is hard now:
+
+| Id  | What the author wrote by hand                                                          | Size in this game                       |
+| --- | -------------------------------------------------------------------------------------- | --------------------------------------- |
+| P15 | The choice by the tag: each method of `Cell` asks the kind and calls the kind's method | 5 methods, 11 lines with `if`           |
+| P16 | The dump of a cell shows the fields of every kind, and only one kind is in use         | 3 objects in each line                  |
+| P17 | An input that puts a cell names the fields of the new kind, one form for each kind     | 6 lines, and 1 before                   |
+| P18 | On WebGL2 the picture does not emit: the cells hold a class in a class                 | Compiler issue typeshade/typeshade#1249 |
+
+| Id  | State after design record 0105                                                           |
+| --- | ---------------------------------------------------------------------------------------- |
+| P4  | Closed for the meaning of the fields. The tag and the choice by the tag stay (P15).      |
+| P8  | Part closed: the rules of a kind left the tick function, as methods. The two scans stay. |
+| P11 | Closed: the colour of a kind is a method of its class.                                   |
 
 ## What this game does not test
 

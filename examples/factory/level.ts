@@ -56,10 +56,10 @@ export function parseLevel(text: string): Level {
       if (ch === '.') cell.kind = EMPTY;
       else if (DIRS.includes(ch)) {
         cell.kind = BELT;
-        cell.dir = DIRS.indexOf(ch);
+        cell.belt.dir = DIRS.indexOf(ch);
       } else if (SOURCES.includes(ch)) {
         cell.kind = SOURCE;
-        cell.dir = SOURCES.indexOf(ch);
+        cell.source.dir = SOURCES.indexOf(ch);
       } else if (ch === 'M') cell.kind = MACHINE;
       else {
         throw new TypeError(
@@ -85,10 +85,11 @@ export function render(
     let line = '';
     for (let x = 0; x < factory.width; x++) {
       const c = cells[y * factory.width + x];
-      if (c.kind === BELT) line += c.item !== 0 ? 'o' : DIRS[c.dir];
-      else if (c.kind === SOURCE)
-        line += c.item !== 0 ? SOURCES[c.dir].toLowerCase() : SOURCES[c.dir];
-      else if (c.kind === MACHINE) line += String(c.stock);
+      if (c.kind === BELT) line += c.belt.item !== 0 ? 'o' : DIRS[c.belt.dir];
+      else if (c.kind === SOURCE) {
+        const letter = SOURCES[c.source.dir];
+        line += c.source.item !== 0 ? letter.toLowerCase() : letter;
+      } else if (c.kind === MACHINE) line += String(c.machine.stock);
       else line += '.';
     }
     lines.push(line);
@@ -124,7 +125,14 @@ export function createFactory(
  */
 export function putCell(factory: Factory, x: number, y: number, kind: number, dir: number): void {
   if (x < 0 || y < 0 || x >= factory.width || y >= factory.height) return;
-  factory.sim.input('cells', y * factory.width + x, { kind, dir, item: 0, wait: 0, stock: 0 });
+  const index = y * factory.width + x;
+  // The input writes the tag and the fields of the new kind. The other kinds keep theirs.
+  if (kind === BELT) factory.sim.input('cells', index, { kind, belt: { dir, item: 0, wait: 0 } });
+  else if (kind === SOURCE)
+    factory.sim.input('cells', index, { kind, source: { dir, item: 0, wait: 0 } });
+  else if (kind === MACHINE)
+    factory.sim.input('cells', index, { kind, machine: { stock: 0, wait: 0 } });
+  else factory.sim.input('cells', index, { kind });
 }
 
 /** The counts a test and a score read. */
@@ -136,12 +144,12 @@ export function totals(cells: readonly Cell[]) {
   let inStock = 0;
   for (const c of cells) {
     if (c.kind === SOURCE) {
-      made += c.made;
-      inSources += c.item;
-    } else if (c.kind === BELT) onBelts += c.item;
+      made += c.source.made;
+      inSources += c.source.item;
+    } else if (c.kind === BELT) onBelts += c.belt.item;
     else if (c.kind === MACHINE) {
-      goods += c.made;
-      inStock += c.stock;
+      goods += c.machine.made;
+      inStock += c.machine.stock;
     }
   }
   return { made, goods, onBelts, inSources, inStock };

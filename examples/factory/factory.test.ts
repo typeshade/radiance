@@ -132,9 +132,9 @@ test('the dump of the engine reads the cells', async () => {
       'tick 2  seed 1  hz 60',
       'cells',
       // The source gave its item in tick 2 and began the count to its next item in the same tick.
-      '  [0]  kind 2  dir 1  item 0  wait 5  stock 0  made 1',
-      '  [1]  kind 1  dir 1  item 1  wait 2  stock 0  made 0',
-      '  [2]  kind 3  dir 0  item 0  wait 0  stock 0  made 0',
+      '  [0]  kind 2  belt {dir 0, item 0, wait 0}  source {dir 1, item 0, wait 5, made 1}  machine {stock 0, wait 0, made 0}',
+      '  [1]  kind 1  belt {dir 1, item 1, wait 2}  source {dir 0, item 0, wait 0, made 0}  machine {stock 0, wait 0, made 0}',
+      '  [2]  kind 3  belt {dir 0, item 0, wait 0}  source {dir 0, item 0, wait 0, made 0}  machine {stock 0, wait 0, made 0}',
       '',
     ].join('\n'),
   );
