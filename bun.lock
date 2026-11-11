@@ -7,12 +7,12 @@
       "dependencies": {
         "typescript": "5.6.3",
         "typeshade": "https://github.com/typeshade/typeshade/archive/6d6a979bbf9859c364d483f002a688401796021c.tar.gz",
+        "vite": "7.3.7",
       },
       "devDependencies": {
         "@types/node": "25.6.0",
         "playwright": "1.63.0",
         "prettier": "^3.5.3",
-        "vite": "7.3.7",
         "vitest": "5.0.5",
       },
     },

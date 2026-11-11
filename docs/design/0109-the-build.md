@@ -216,5 +216,8 @@ The agent made these decisions under D9. The owner can change each one.
 - **Approval.** The agent showed the owner the measurement and this scope on 2026-11-11. The
   owner answered: "네, 그 범위로 진행해주세요". The owner's rule of 2026-11-11 approves a merge
   with green checks in advance (`CLAUDE.md`, Merging).
-- **Validation.** Does not yet apply: no step is implemented.
+- **Validation.** Step 1, on 2026-11-11, compiler pin `6d6a979`: `bun run check` passed with
+  124 tests. `bun run harness` passed with 4 checks in headless Chromium, WebGPU on SwiftShader.
+  The page of the factory loads 282,641 bytes, 92,580 with gzip. It loaded 306,828 bytes before.
+  Step 2 is not implemented.
 - **Deviations.** None.

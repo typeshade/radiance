@@ -36,7 +36,6 @@ E>>>v
 | `input/pointer.ts`      | 31    | The pointer: a drag puts belts                                                                |
 | `cells.ts`, `levels/`   | 126   | Host code: a level from text, the factory as text, the input that puts a cell, the counts     |
 | `radiance.config.ts`    | 8     | The order of a tick and the values                                                            |
-| `main.ts`               | 48    | The page: one call of `run`, and a handle for the browser check                               |
 | `tests/`                | 256   | Eight tests on the CPU tier, and four checks in a browser                                     |
 
 ## What was observed
@@ -453,3 +452,38 @@ This is a list of candidates, in the order of the cost above. None is designed.
 | The frame loop                                     | P10        | The build                                                       |
 | A picture from the kinds                           | P11        | The build, or a library in TypeShade                            |
 | The pointer on a grid                              | P12        | A small host library                                            |
+
+## The engine builds the page (design record 0109)
+
+The game had a `vite.config.ts`, an `index.html` and a `main.ts`. The engine writes them now,
+from the project. The config names the page:
+
+```ts
+// radiance.config.ts
+export default defineGame({
+  tick: ['tick'],
+  values: { width: 8, height: 5 },
+  name: 'Factory',
+  start: { level: 'demo', seed: 1 },
+  budget: 300_000,
+});
+```
+
+`radiance build examples/factory` builds the page into `dist/`. It prints the size, and it
+fails when the page loads more than the budget.
+
+What changed, measured on 2026-11-11 (compiler pin `6d6a979`, Vite 7.3.7, headless Chromium,
+WebGPU on SwiftShader):
+
+| Item                               | Before  | After   |
+| ---------------------------------- | ------- | ------- |
+| The files of the page, in the game | 3       | 0       |
+| The lines of those files           | 87      | 0       |
+| The bytes the page loads           | 306,828 | 282,641 |
+| The same, with gzip                | 94,420  | 92,580  |
+
+The page lost 24,187 bytes. The build leaves the planner of fused kernels out of the page's
+first script, since the config does not ask for `fuse`. The compiler's runtime is still most of
+the page. `typeshade/typeshade` issue #1259 asks for a runtime with no CPU tier.
+
+The browser check drives the page as a player does: a drag of the mouse puts the belts.

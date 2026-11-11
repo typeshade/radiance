@@ -14,7 +14,7 @@
     "typecheck": "tshc sync --check && bun bin/radiance.ts sync --check examples/dungeon examples/factory && tshc check test examples && tsc -p tsconfig.json",
     "test": "vitest run",
     "check": "bun run format:check && bun run check:prose && bun run check:ste && bun run typecheck && bun run test",
-    "build:factory": "vite build --config examples/factory/vite.config.ts",
+    "build:factory": "bun bin/radiance.ts build examples/factory",
     "harness": "vitest run --config vitest.harness.config.ts"
   },
   "bin": {
@@ -27,13 +27,13 @@
   },
   "dependencies": {
     "typeshade": "https://github.com/typeshade/typeshade/archive/6d6a979bbf9859c364d483f002a688401796021c.tar.gz",
-    "typescript": "5.6.3"
+    "typescript": "5.6.3",
+    "vite": "7.3.7"
   },
   "devDependencies": {
     "@types/node": "25.6.0",
     "playwright": "1.63.0",
     "prettier": "^3.5.3",
-    "vite": "7.3.7",
     "vitest": "5.0.5"
   }
 }

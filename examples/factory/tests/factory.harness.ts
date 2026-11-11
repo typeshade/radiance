@@ -1,29 +1,35 @@
-// The browser check of the reference game. It builds the page, opens it in headless Chromium
-// with WebGPU, and holds the cells the GPU computed to the cells the CPU tier computes.
+// The browser check of the reference game. The engine builds the page. The check opens it in
+// headless Chromium with WebGPU, drives it as a player does, and holds the cells the GPU
+// computed to the cells the CPU tier computes.
 
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import { chromium, type Browser, type Page } from 'playwright';
-import { build, preview, type PreviewServer } from 'vite';
+import { preview, type PreviewServer } from 'vite';
 import { afterAll, beforeAll, expect, test } from 'vitest';
+import { buildProject, viteConfig, type BuildResult } from '../../../src/build.ts';
+import { loadConfig } from '../../../src/cli.ts';
 import { load } from '../../../src/test.ts';
 import type { Game } from '../.radiance/game.ts';
 import { putCell } from '../cells.ts';
 import { BELT } from '../kinds.shade.ts';
 
 const here = new URL('..', import.meta.url).pathname;
-const config = `${here}vite.config.ts`;
 
 let server: PreviewServer;
 let browser: Browser;
 let page: Page;
 const requested: string[] = [];
 
+let result: BuildResult;
+
 beforeAll(async () => {
-  await build({ configFile: config, logLevel: 'error' });
+  // The engine builds the page, with the hook of a browser check (design record 0109).
+  const dir = here.replace(/\/$/, '');
+  const config = await loadConfig(dir);
+  result = await buildProject(dir, config, { hook: true });
   server = await preview({
-    configFile: config,
+    ...viteConfig(dir, config),
     preview: { port: 4317, strictPort: true },
-    logLevel: 'error',
   });
   // The installed browser of this machine, where there is one. CI installs Playwright's own.
   const local = '/opt/pw-browsers/chromium';
@@ -57,13 +63,24 @@ test('the page opens a WebGPU device', async () => {
 
 test('the cells the GPU computes equal the cells of the CPU tier, with an input on the way', async () => {
   // In the browser: 50 ticks, a belt in the cell (3, 3) that sends its item north, 150 ticks.
-  const gpu = await page.evaluate(async (belt) => {
-    const game = await (globalThis as any).game;
-    await game.step(50);
-    game.put(3, 3, belt, 0);
-    await game.step(150);
-    return JSON.stringify(await game.read());
-  }, BELT);
+  // The grid is 10 by 6 on a canvas of 800 by 480, so a cell is 80 pixels. The drag starts in
+  // the cell (3, 3) and goes north, as a player's does.
+  const step = (n: number) =>
+    page.evaluate(async (ticks) => {
+      const game = await (globalThis as any).game;
+      await game.step(ticks);
+      await game.draw();
+      await game.wait();
+    }, n);
+  await step(50);
+  await page.mouse.move(3 * 80 + 40, 3 * 80 + 40);
+  await page.mouse.down();
+  await page.mouse.move(3 * 80 + 40, 2 * 80 + 40, { steps: 4 });
+  await page.mouse.up();
+  await step(150);
+  const gpu = await page.evaluate(async () =>
+    JSON.stringify(await (await (globalThis as any).game).tables.cells.read()),
+  );
 
   // On the CPU tier: the same project, the same level, the same `putCell` at the same tick.
   const cpu = await load<Game>('examples/factory', { seed: 1, level: 'demo' });
@@ -76,7 +93,7 @@ test('the cells the GPU computes equal the cells of the CPU tier, with an input 
 });
 
 test('the picture shows the cells', async () => {
-  await page.evaluate(async () => void (await (await (globalThis as any).game).step(0)));
+  await page.evaluate(async () => void (await (await (globalThis as any).game).draw()));
   // A screenshot of the page is what a person sees. The page decodes it to read a pixel.
   const shot = await page.screenshot({ path: `${here}dist/shot.png` });
   const pixel = (x: number, y: number) =>
@@ -99,19 +116,13 @@ test('the picture shows the cells', async () => {
   expect(Math.max(empty[0], empty[1], empty[2])).toBeLessThan(40);
 });
 
-test('the size of the shipped game is recorded', () => {
-  const dir = `${here}dist/assets/`;
-  const files = readdirSync(dir).filter((name) => name.endsWith('.js'));
-  const sizes = Object.fromEntries(files.map((name) => [name, statSync(dir + name).size]));
-  const built = Object.values(sizes).reduce((a, b) => a + b, 0);
-  const loaded = requested
-    .filter((path) => path.endsWith('.js'))
-    .map((path) => path.split('/').pop()!)
-    .reduce((sum, name) => sum + (sizes[name] ?? 0), 0);
-  console.log(
-    `factory size: ${built} bytes built in ${files.length} files, ${loaded} bytes loaded by the page`,
-  );
-  console.log(`factory files: ${JSON.stringify(sizes)}`);
-  console.log(`factory requests: ${JSON.stringify(requested)}`);
-  expect(loaded).toBeGreaterThan(0);
+test('the page loads its script within the budget, and no script of a tier it did not open', () => {
+  const { bytes, gzip } = result.loaded;
+  console.log(`factory: the page loads ${bytes} bytes of script at its start, ${gzip} with gzip`);
+  expect(result.over).toBe(false);
+  expect(bytes).toBeLessThanOrEqual(result.budget!);
+  // The browser asked for the entry script only: the WebGL2 runtime and the planner stayed.
+  const scripts = requested.filter((path) => path.endsWith('.js'));
+  expect(scripts.length).toBe(1);
+  expect(statSync(`${here}dist/${scripts[0].replace(/^\//, '')}`).size).toBe(bytes);
 });
