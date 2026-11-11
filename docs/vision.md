@@ -1,7 +1,7 @@
 # Radiance: the design of the game engine
 
 > **Status:** design, written 2026-11-11. Nothing in this document is implemented. The owner
-> decided D1 to D12 and accepted U1 to U9 on 2026-11-11. Every claim about the compiler names
+> decided D1 to D13 and accepted U1 to U9 on 2026-11-11. Every claim about the compiler names
 > a section of its surface document (`docs/use-typeshade-surface.md`, "§"), a rule of its design
 > rules (`docs/language-design.md`, "Rule"), or a change proposal (`changes/`, "change NNNN").
 > The compiler was read at `typeshade/typeshade` `main` `da311c32`. The names in the sketches are
@@ -32,8 +32,9 @@ What that gives, in one line each:
   same method across every instance (Rule 8.29, changes 0109 and 0110).
 - **A game is a function of a seed and its inputs.** The simulation runs on a fixed tick. A
   save, a replay and a bug report are the same data.
-- **The engine is a tool.** A shipped game holds the game's own code and the compiler's
-  runtime. The engine checks, tests, explains and builds, and it does not ship (D10).
+- **The engine is the framework a game is written on.** It owns the device, the memory and the
+  runtime, and a game touches none of them. A build gives a small result: it removes each part
+  of the framework that the game does not use (D13, which changed D10).
 - **The limits are stated.** A shipped game runs on WebGPU, or on WebGL2 where there is no
   WebGPU. The CPU tier runs the tests, and its result is the reference (D12).
 
@@ -42,20 +43,21 @@ What that gives, in one line each:
 The owner gave these answers in the conversation of 2026-11-11. They are the constraints of
 this design.
 
-| Id  | Decision                                                                                              |
-| --- | ----------------------------------------------------------------------------------------------------- |
-| D1  | The engine is designed from nothing. It keeps the name Radiance and nothing else of the first model.  |
-| D2  | The engine supports 2D and 3D games.                                                                  |
-| D3  | The first games are offline games of the roguelike kind and the automation kind.                      |
-| D4  | Development is fully agent-driven. The bar for developer experience is that of a frontier engine.     |
-| D5  | The platform is the web.                                                                              |
-| D6  | A game ships as a built application through an application store. An update is a new package.         |
-| D7  | A game needs no server.                                                                               |
-| D8  | Rigid-body dynamics is not in the first scope. The owner named no game that needs it yet.             |
-| D9  | The agent that builds the engine decides what the engine is for and how the engine is built.          |
-| D10 | A shipped game uses nothing at run time past the level of TypeShade's `Device`. The engine is a tool. |
-| D11 | A game's tick is a function of a `"use typeshade"` file. The compiler joins it at build time.         |
-| D12 | A shipped game runs on WebGPU first, and on WebGL2 where there is no WebGPU.                          |
+| Id  | Decision                                                                                             |
+| --- | ---------------------------------------------------------------------------------------------------- |
+| D1  | The engine is designed from nothing. It keeps the name Radiance and nothing else of the first model. |
+| D2  | The engine supports 2D and 3D games.                                                                 |
+| D3  | The first games are offline games of the roguelike kind and the automation kind.                     |
+| D4  | Development is fully agent-driven. The bar for developer experience is that of a frontier engine.    |
+| D5  | The platform is the web.                                                                             |
+| D6  | A game ships as a built application through an application store. An update is a new package.        |
+| D7  | A game needs no server.                                                                              |
+| D8  | Rigid-body dynamics is not in the first scope. The owner named no game that needs it yet.            |
+| D9  | The agent that builds the engine decides what the engine is for and how the engine is built.         |
+| D10 | Changed by D13. It said: a shipped game uses nothing at run time past TypeShade's `Device`.          |
+| D11 | A game's tick is a function of a `"use typeshade"` file. The compiler joins it at build time.        |
+| D12 | A shipped game runs on WebGPU first, and on WebGL2 where there is no WebGPU.                         |
+| D13 | Radiance is the framework a game is implemented on. It owns memory, the runtime and the device.      |
 
 **D9, in the owner's words (2026-11-11):** "This codebase is yours: what it's for and how it's
 built are your call, and you'll keep building on it."
@@ -73,7 +75,10 @@ What D9 means for the work:
 코드가 포함되지 않잖아요. 그것부터 정해야하지 않나 싶어서요", and "런타임은, typeshade의 device
 수준이어도 괜찮지 않나 싶어서요".
 
-What D10 means for the work:
+D13 changed D10 on 2026-11-11. The framework's runtime is in a shipped game, and the build
+makes it small. The list below is what D10 meant before D13. Its last item still holds.
+
+What D10 meant for the work:
 
 - What runs on the player's device is the compiler's runtime: a `Device`, its resources and
   the compiled programs. The engine adds no runtime of its own to a shipped game.
@@ -110,6 +115,29 @@ What D12 means for the work:
 - D12 changes U2. U2 said that game logic runs on the CPU tier. The row below keeps U2's text
   and names the change.
 - The owner's statement on the stores is a planning assumption. No device was measured (M1).
+
+**D13, in the owner's words (2026-11-11):** "Radiance는 지금 구현을 위한 하나의 큰
+프레임워크입니다. 빌드하면 작은게 나오는거고요. 메모리 관리부터 기타 런타임 및 디바이스 관리, 등을
+모두 전담할겁니다. 그 위에서 구현되는게 게임이고요. 근데 지금 보니까 하나의 특정 장르를 위한 엔진이
+되어버리는 느낌입니다."
+
+The agent then showed two readings. In reading A the framework works at build time only, and
+the build writes the code a game needs (D10 as it was). In reading B the framework's runtime
+is in a shipped game, and the build removes what the game does not use. The owner answered
+"B".
+
+What D13 means for the work:
+
+- A game does not open a device, make an array on a device or free one. The framework does.
+- The framework has layers, and each layer is for every kind of game: the device, the memory,
+  the runtime (the loop, the inputs, a pause), the drawing, the assets, the tools and the build.
+- The framework's runtime is in a shipped game. The build removes each part that the game
+  does not use. The size of a shipped game stays a number in CI.
+- A feature comes from a layer of the framework. A reference game tests a layer. It is not
+  the source of a feature.
+- D3 names the first games. It does not name the shape of the framework.
+- The work up to design record 0107 took its features from two reference games. A later
+  record places each one in a layer, or removes it.
 
 ## 3. What the owner accepted
 
@@ -404,13 +432,13 @@ The costs:
 | M4  | Does `SharedArrayBuffer` work at a WebView's local address?                          | TypeAudio's real-time path uses it             |
 | M5  | How long is the first frame after a cold start, with shaders compiled at build time? | A phone game is judged in its first seconds    |
 | M6  | How much heat and battery does a steady 60 Hz frame cost?                            | A long session is the normal session for D3    |
-| M7  | How many bytes is a shipped game, and how long does it take to start?                | D10 makes the size a number in CI              |
+| M7  | How many bytes is a shipped game, and how long does it take to start?                | D13 keeps the size a number in CI              |
 
 Two builds were measured on 2026-11-11 at compiler pin `6d6a979`, with Vite 7.3.7. Each is a
 scene of two nodes. A build on the engine's world of design record 0100 is 145.5 kB, and 89% of
 it is the compiler's CPU runtime. A build that runs one kernel function through a `Device` is
 661.3 kB in three files, and the largest file is the planner of `fuse`. Neither build is the
-build of D10 and D11, which holds no CPU runtime and no planner. That build is not measured.
+build of D11 and D13, which holds no CPU runtime and no planner. That build is not measured.
 
 ## 13. The compiler loop
 
@@ -466,8 +494,8 @@ are the first model. The owner's words of 2026-11-11: "Radiance는 초기모델�
 - Draft written 2026-11-11 in a Claude Code session with the owner, in Korean.
 - Baselines read: `typeshade/radiance` `main` `3e4efb3f`. `typeshade/typeshade` `main`
   `da311c32`. TypeAudio's `docs/vision.md` is the model for this document's shape.
-- Decisions D1 to D12 are the owner's. The owner accepted U1 to U9 on 2026-11-11. D12 changed
+- Decisions D1 to D13 are the owner's. D13 changed D10 on 2026-11-11. The owner accepted U1 to U9 on 2026-11-11. D12 changed
   U2 on the same day.
-- Design records 0100 and 0101 are implemented. Their world runs on the CPU tier. Since D10 it
+- Design records 0100 and 0101 are implemented. Their world runs on the CPU tier. Since D12 it
   is the reference and the tool of the tests, and it is not what a shipped game runs.
 - Nothing in this document is implemented. No measurement of section 12 has run.

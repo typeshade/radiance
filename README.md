@@ -113,7 +113,9 @@ bun run harness         # the page in headless Chromium, held to the CPU tier
 - A scene is TypeScript code. A node's behaviour is a class in a `"use typeshade"` file.
 - The author writes a tree of nodes. The engine stores and runs tables.
 - The simulation runs on a fixed tick. A game is a function of a seed and its inputs.
-- Game logic runs on the CPU tier. The GPU draws the frame and computes wide effects.
+- The engine is the framework a game is written on. It owns the device, the memory and the
+  runtime. A build gives a small result.
+- A shipped game runs its tick on a GPU tier. The CPU tier runs the tests.
 - The platform is the web. A game ships as a store package and needs no server.
 - The first games are offline games of the roguelike kind and the automation kind.
 
