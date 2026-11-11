@@ -331,7 +331,9 @@ each one.
 - **On a device.** The owner's picture of commit `1d9331a`, taken on 2026-11-11 on an iPhone 14
   Pro Max with iOS 27.0.1 in Safari, upright: the cells are squares, and the grid is in the
   middle with a bar above it and a bar below it. The readout said `webgpu`, tick 1.1 ms, frame
-  16.7 ms. A drag of a finger was not reported.
+  16.7 ms. The owner's picture of commit `21ab711` on the same phone, on the same day, is the
+  look at step 2: the owner put a column of belts with a finger and said "놓이며", the items are
+  between two cells, and the readout said `webgpu`, tick 0.9 ms, frame 16.7 ms with two layers.
 - **Amendment of 2026-11-11.** Section 6 now says what the second step is: a layer that blends
   and the name `blend`. The table of the tick before and the pool of events stay for later.
   The reason: the first reference game needs neither, and a part with no game that uses it has
