@@ -15,7 +15,7 @@
     "noEmit": true,
     "skipLibCheck": true,
     "types": ["node"],
-    "paths": { "radiance": ["./src/index.ts"] },
+    "paths": { "radiance": ["./src/index.ts"], "radiance/page": ["./src/page.ts"] },
     "experimentalDecorators": false,
     "moduleSuffixes": [".typeshade", ""]
   },

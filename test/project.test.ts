@@ -162,7 +162,8 @@ test('one module reads source, and the runtime imports no module of the project 
   expect(files.filter((name) => /from '\.\/facts\.ts'/.test(source(name)))).toEqual(['project.ts']);
   // Section 10, rule 7: the runtime and the page stand below the project.
   for (const name of ['engine.ts', 'sim.ts', 'page.ts', 'index.ts', 'config.ts']) {
-    expect(source(name), name).not.toMatch(/from '\.\/(project|facts|cli|test)\.ts'/);
+    expect(source(name), name).not.toMatch(/from '\.\/(project|facts|cli|test|build)\.ts'/);
+    expect(source(name), name).not.toMatch(/from 'vite'/);
     expect(source(name), name).not.toMatch(/from 'node:/);
   }
 });
