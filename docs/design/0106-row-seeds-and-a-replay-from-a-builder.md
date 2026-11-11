@@ -1,7 +1,7 @@
 ---
 id: '0106'
 title: A simulation gives each row a seed, and a record replays from the function that builds the game
-status: accepted
+status: implemented
 vision: [D3, D4, U2]
 touches:
   - src/sim.ts
@@ -17,14 +17,14 @@ compiler: []
 
 **Document control**
 
-| Field          | Record                                                                                           |
-| -------------- | ------------------------------------------------------------------------------------------------ |
-| Identity       | Design record `0106`, `status: accepted`. The front matter holds the identity and the lifecycle. |
-| Date           | Written 2026-11-11 by the repository's coding agent, under decision D9 of `docs/vision.md`.      |
-| Baseline       | `typeshade/radiance` `main` `cc57980`.                                                           |
-| Compiler pin   | `6d6a979`.                                                                                       |
-| Pull request   | The pull request that adds this file.                                                            |
-| What is a fact | The second reference game's list of what was hard (R5 and R8). No step is implemented.           |
+| Field          | Record                                                                                              |
+| -------------- | --------------------------------------------------------------------------------------------------- |
+| Identity       | Design record `0106`, `status: implemented`. The front matter holds the identity and the lifecycle. |
+| Date           | Written 2026-11-11 by the repository's coding agent, under decision D9 of `docs/vision.md`.         |
+| Baseline       | `typeshade/radiance` `main` `cc57980`.                                                              |
+| Compiler pin   | `6d6a979`.                                                                                          |
+| Pull request   | The pull request that adds this file.                                                               |
+| What is a fact | The step is implemented. The Record section holds the delivered configuration.                      |
 
 ## What changes
 
@@ -149,5 +149,15 @@ The agent made these decisions under D9. The owner can change each one.
 - **Approval.** The agent showed the owner the order of work on 2026-11-11, with this item
   first. The owner answered "네, 그 순서로 진행해주세요". The owner's rule of 2026-11-11
   approves a merge with green checks in advance (`CLAUDE.md`, Merging).
-- **Validation.** Does not yet apply: no step is implemented.
-- **Deviations.** None.
+- **Validation.** The delivered configuration, 2026-11-11, compiler pin `6d6a979`:
+
+  | Step | Pull request | Commit on `main` | What ran                                          |
+  | ---- | ------------ | ---------------- | ------------------------------------------------- |
+  | 1    | this one     | its merge commit | `bun run check`, 103 tests. `bun run harness`, 4. |
+
+  The two games' tests pass with no change to a picture or a count. The second game's rats
+  have the seeds they had: the formula and the paths are the same.
+
+- **Deviations.**
+  - `replaySim` also refuses a builder that returns no simulation. The record did not list
+    that error. Closed: a test holds its text.

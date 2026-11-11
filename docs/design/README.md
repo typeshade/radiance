@@ -81,7 +81,7 @@ request), and these sections:
 | [0103](0103-the-game-in-a-browser.md)                 | The reference game runs in a browser on WebGPU, and a harness holds its cells, its picture and its size           | implemented |
 | [0104](0104-the-simulation-on-a-device.md)            | A simulation runs on a device, so a test on the CPU tier and a page on a GPU tier run the same code               | implemented |
 | [0105](0105-kinds-as-classes.md)                      | A kind of cell is a class with its own fields and rules, and an input writes a field that holds a class           | implemented |
-| [0106](0106-row-seeds-and-a-replay-from-a-builder.md) | A simulation gives each row a seed, and a record replays from the function that builds the game                   | accepted    |
+| [0106](0106-row-seeds-and-a-replay-from-a-builder.md) | A simulation gives each row a seed, and a record replays from the function that builds the game                   | implemented |
 
 The first model's records hold the numbers 0001 to 0011. They are on the branch `legacy`, and
 compiler proposals cite them by number. A record of this engine does not use those numbers

@@ -63,17 +63,36 @@ export function replay(scene: Scene, record: RunRecord): World {
   return world;
 }
 
+/** What `replaySim` gives the function that builds a simulation: the record's seed and tick rate. */
+export interface ReplayRun {
+  readonly seed: number;
+  readonly hz: number;
+}
+
 /**
- * Runs a record of a simulation again: builds a simulation from the same first rows and
- * options, with the record's seed and tick rate, gives it each input at the input's tick, and
- * runs the record's ticks. Its dump equals the dump of the run that made the record (design
- * record 0102, section 4).
+ * Runs a record of a simulation again. It gives the simulation each input at the input's tick
+ * and runs the record's ticks. Its dump equals the dump of the run that made the record.
+ *
+ * `replaySim(build, record)` calls the function that builds the game with the record's seed and
+ * tick rate (design record 0106, section 2). `replaySim(tables, options, record)` builds the
+ * simulation from the same first rows and options (design record 0102, section 4).
  */
+export async function replaySim<T extends SimTables, B extends keyof T = never>(
+  build: (run: ReplayRun) => Sim<T, B>,
+  record: SimRecord,
+): Promise<Sim<T, B>>;
 export async function replaySim<T extends SimTables, B extends keyof T = never>(
   tables: T,
   options: Omit<SimOptions<T, B>, 'seed' | 'hz'>,
   record: SimRecord,
+): Promise<Sim<T, B>>;
+export async function replaySim<T extends SimTables, B extends keyof T = never>(
+  first: T | ((run: ReplayRun) => Sim<T, B>),
+  second: Omit<SimOptions<T, B>, 'seed' | 'hz'> | SimRecord,
+  third?: SimRecord,
 ): Promise<Sim<T, B>> {
+  const build = typeof first === 'function' ? first : undefined;
+  const record = (build === undefined ? third : second) as SimRecord;
   if (typeof record !== 'object' || record === null || record.version !== 1) {
     const version = (record as { version?: unknown } | null)?.version;
     throw new TypeError(
@@ -100,10 +119,30 @@ export async function replaySim<T extends SimTables, B extends keyof T = never>(
     }
     last = input.tick;
   });
-  const sim = createSim(tables, { ...options, seed: record.seed, hz: record.hz } as SimOptions<
-    T,
-    B
-  >);
+  let sim: Sim<T, B>;
+  if (build === undefined) {
+    sim = createSim(
+      first as T,
+      { ...second, seed: record.seed, hz: record.hz } as SimOptions<T, B>,
+    );
+  } else {
+    sim = build({ seed: record.seed, hz: record.hz });
+    if (typeof sim !== 'object' || sim === null || typeof sim.step !== 'function') {
+      throw new TypeError(
+        `replaySim(): the function returned no simulation. Return the simulation that createSim() gives, for example (run) => createGame({ seed: run.seed }).sim.`,
+      );
+    }
+    if (sim.tick !== 0) {
+      throw new RangeError(
+        `replaySim(): the simulation is at tick ${sim.tick}. Return a simulation at tick 0.`,
+      );
+    }
+    if (sim.seed !== record.seed || sim.hz !== record.hz) {
+      throw new RangeError(
+        `replaySim(): the simulation has the seed ${sim.seed} and ${sim.hz} hz, and the record has the seed ${record.seed} and ${record.hz} hz. Build the simulation with the seed and the hz that the function gets.`,
+      );
+    }
+  }
   let next = 0;
   for (let tick = 0; tick < ticks; tick++) {
     while (next < inputs.length && inputs[next].tick === tick) {
