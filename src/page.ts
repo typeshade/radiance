@@ -4,7 +4,7 @@
 
 import { createDevice, createRuntime, type Device } from 'typeshade/runtime';
 import { createDrawing, type Drawing } from './draw.ts';
-import { Engine, type InputEvent, type StartOptions } from './engine.ts';
+import { Engine, setLoopBlend, type InputEvent, type StartOptions } from './engine.ts';
 
 /** The options of `run`: the start of a game, its canvas, and what a test gives in place of the page. */
 export interface RunOptions extends StartOptions {
@@ -178,6 +178,8 @@ export async function run<G extends Engine>(Game: new () => G, options: RunOptio
   let stopped = false;
   let before = now();
   let owed = 0;
+  // A game with turns: the time of the latest tick, so that `blend` runs from 0 to 1 after it.
+  let ticked = -Infinity;
   const frame = async () => {
     if (stopped) return;
     const at = now();
@@ -185,6 +187,8 @@ export async function run<G extends Engine>(Game: new () => G, options: RunOptio
       // The ticks of the time the page was hidden are not run after.
       before = at;
       owed = 0;
+      ticked = -Infinity;
+      setLoopBlend(game, game.stepOn === 'input' ? 1 : 0);
     } else {
       let ticks: number;
       if (game.stepOn === 'input') {
@@ -198,6 +202,14 @@ export async function run<G extends Engine>(Game: new () => G, options: RunOptio
       const frameMs = at - before;
       before = at;
       if (ticks > 0) await game.step(ticks);
+      // `blend` (design record 0111, section 6). A game with a clock gives the part of a tick that
+      // the loop still owes. A game with turns gives the time since its latest tick, in ticks.
+      if (game.stepOn === 'input') {
+        if (ticks > 0) ticked = at;
+        setLoopBlend(game, Math.min(1, Math.max(0, ((at - ticked) / 1000) * game.hz)));
+      } else {
+        setLoopBlend(game, owed);
+      }
       let tickMs = 0;
       if (options.onFrame !== undefined && ticks > 0) {
         await game.wait();

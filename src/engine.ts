@@ -163,6 +163,21 @@ export interface StartOptions {
 }
 
 const SIM = Symbol('radiance.sim');
+const LOOP_BLEND = Symbol('radiance.blend');
+
+/** What `drawLayers` takes (design record 0111, section 6). */
+export interface DrawOptions {
+  /**
+   * How far the frame is from the last tick to the tick after it, from 0 to 1. When it is not
+   * given, the frame uses the value of the loop of `radiance/page`: 0 before the loop gave one.
+   */
+  readonly blend?: number;
+}
+
+/** @internal The loop of a page gives the game the `blend` of its frame. */
+export function setLoopBlend(game: Engine, blend: number): void {
+  (game as unknown as { [LOOP_BLEND]: number })[LOOP_BLEND] = blend;
+}
 
 /** @internal The simulation inside a started game, for the engine's own tools. */
 export function simOf(game: Engine): Sim<Record<string, object[]>, string> {
@@ -197,6 +212,8 @@ export abstract class Engine {
   readonly layers?: readonly Layer[];
   /** The view of the layers: the rectangle of the world that the screen shows (record 0111, section 3). */
   readonly view?: ViewOptions;
+  /** The `blend` that the loop of a page gave. 0 before the loop gave one. */
+  [LOOP_BLEND] = 0;
   #surface: unknown;
   #stops: (() => void)[] = [];
   #sim: Sim<Record<string, object[]>, string> | undefined;
@@ -300,17 +317,32 @@ export abstract class Engine {
     });
   }
   /**
-   * Draws the layers of the game into one texture, and shows the texture on the surface (design
-   * record 0111, section 4). The loop of `radiance/page` calls it for each frame.
+   * The `blend` of the loop's latest frame: how far the frame is from the last tick to the tick
+   * after it, from 0 to 1 (design record 0111, section 6). It is 0 before the loop gave one, and
+   * in a game that no loop runs.
    */
-  async drawLayers(): Promise<void> {
+  get blend(): number {
+    return this[LOOP_BLEND];
+  }
+  /**
+   * Draws the layers of the game into one texture, and shows the texture on the surface (design
+   * record 0111, section 4). The loop of `radiance/page` calls it for each frame. With
+   * `{ blend }` it draws the frame for that `blend`, as a browser check needs.
+   */
+  async drawLayers(options: DrawOptions = {}): Promise<void> {
     this.#live('drawLayers()');
     if (this.#drawing === undefined) {
       throw new Error(
         `${this.constructor.name}.drawLayers(): the game has no layers on a device. Add "draw" and "view" to radiance.config.ts, and run the game with run() of radiance/page.`,
       );
     }
-    await this.#drawing.frame();
+    const blend = options.blend ?? this[LOOP_BLEND];
+    if (typeof blend !== 'number' || !(blend >= 0 && blend <= 1)) {
+      throw new RangeError(
+        `${this.constructor.name}.drawLayers(): blend is ${String(blend)}. Give a number from 0 to 1, for example drawLayers({ blend: 0.5 }).`,
+      );
+    }
+    await this.#drawing.frame(blend);
   }
   /**
    * The place in the world of a place of the surface, through the view (design record 0111,

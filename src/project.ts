@@ -4,8 +4,8 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import type { GameConfig } from './config.ts';
-import { readFunctions, readLayer, readSystem, readTable } from './facts.ts';
+import type { Blend, GameConfig } from './config.ts';
+import { readFunctions, readLayer, readSystem, readTable, unusedNames } from './facts.ts';
 
 /** A table of a project. */
 export interface ProjectTable {
@@ -40,6 +40,8 @@ export interface ProjectLayer {
   readonly fragment: string;
   /** The table the layer draws: one instance for each row. */
   readonly table: string;
+  /** How the colour of the layer meets the colour under it (section 6). Not given: it covers it. */
+  readonly blend: Blend | undefined;
   /** For each `declare const` of the layer, one expression of the game's class. */
   readonly bindings: readonly { readonly name: string; readonly expr: string }[];
 }
@@ -66,6 +68,8 @@ export interface Project {
 
 const SUFFIX = '.shade.ts';
 const ENGINE_VALUES = ['tick', 'seed', 'dt'];
+/** The names that only a layer gets: the view, and the time between two ticks (record 0111). */
+const LAYER_ONLY = ['view', 'blend'];
 const EVENTS = ['pointerdown', 'pointermove', 'pointerup', 'keydown', 'keyup'];
 const DRAW_FILE = join('draw', 'draw.ts');
 
@@ -85,6 +89,28 @@ function shadeFiles(dir: string, sub: string): string[] {
 }
 
 const LAYER_KINDS = ['storage', 'uniform'];
+const BLENDS: readonly Blend[] = ['alpha', 'add'];
+
+/** The name and the blend of each entry of `draw` (design record 0111, section 6). */
+function drawEntries(draw: NonNullable<GameConfig['draw']>) {
+  const entries: { name: string; blend: Blend | undefined }[] = [];
+  for (const entry of draw) {
+    const name = typeof entry === 'string' ? entry : entry?.layer;
+    if (typeof name !== 'string') {
+      throw new TypeError(
+        `radiance.config.ts: an entry of "draw" is ${JSON.stringify(entry)}. Give a layer name, or { layer: '<name>', blend: 'alpha' }.`,
+      );
+    }
+    const blend = typeof entry === 'string' ? undefined : entry.blend;
+    if (blend !== undefined && !BLENDS.includes(blend)) {
+      throw new TypeError(
+        `radiance.config.ts: "draw" gives the layer "${name}" the blend ${JSON.stringify(blend)}. The choices are ${BLENDS.map((b) => `'${b}'`).join(' and ')}. Leave "blend" out for a layer that covers what is under it.`,
+      );
+    }
+    entries.push({ name, blend });
+  }
+  return entries;
+}
 
 /** Reads the layers of the config's `draw`, checks their names and says what each name gets. */
 function readLayers(
@@ -138,15 +164,17 @@ function readLayers(
       `radiance.config.ts: "view.clear" is ${JSON.stringify(clear)}. Give a colour, three numbers from 0 to 1, for example { clear: [0.07, 0.07, 0.09] }.`,
     );
   }
+  const entries = drawEntries(draw);
+  const order = entries.map((entry) => entry.name);
   const found = shadeFiles(dir, 'draw');
-  for (const name of draw) {
+  for (const name of order) {
     if (!found.includes(name)) {
       throw new TypeError(
         `radiance.config.ts: "draw" names the layer "${name}", and draw/ has no ${name}${SUFFIX}. The layers are ${found.join(', ')}.`,
       );
     }
   }
-  const unused = found.filter((name) => !draw.includes(name));
+  const unused = found.filter((name) => !order.includes(name));
   if (unused.length > 0) {
     throw new TypeError(
       `draw/${unused[0]}${SUFFIX}: the config's "draw" does not name this layer. Add "${unused[0]}" to "draw", or remove the file.`,
@@ -154,7 +182,7 @@ function readLayers(
   }
   const names = tables.map((table) => table.name);
   const layers: ProjectLayer[] = [];
-  for (const name of [...new Set(draw)]) {
+  for (const { name, blend } of entries.filter((e, i) => order.indexOf(e.name) === i)) {
     const file = join('draw', name + SUFFIX);
     const facts = readLayer(file, read(file));
     const shown = file.split('\\').join('/');
@@ -174,22 +202,23 @@ function readLayers(
     for (const { name: binding, kind } of facts.declares) {
       const table = tables.find((t) => t.name === binding);
       const wanted = table !== undefined ? 'storage' : 'uniform';
-      if (table === undefined && binding !== 'view' && !engineNames.includes(binding)) {
-        const known = [...names, 'view', ...engineNames];
+      if (table === undefined && !LAYER_ONLY.includes(binding) && !engineNames.includes(binding)) {
+        const known = [...names, ...LAYER_ONLY, ...engineNames];
         throw new TypeError(
-          `${shown}: the engine knows no value for the name "${binding}" of the layer "${name}". A name is a table, a scratch table, view, ${ENGINE_VALUES.join(', ')}, or a value of the config. The names are ${known.join(', ')}.`,
+          `${shown}: the engine knows no value for the name "${binding}" of the layer "${name}". A name is a table, a scratch table, ${LAYER_ONLY.join(', ')}, ${ENGINE_VALUES.join(', ')}, or a value of the config. The names are ${known.join(', ')}.`,
         );
       }
       if (!LAYER_KINDS.includes(kind) || kind !== wanted) {
         throw new TypeError(
-          `${shown}: the name "${binding}" of the layer "${name}" is a ${kind} binding. The engine gives ${table !== undefined ? 'a table' : binding === 'view' ? 'the view' : 'a value'} as a ${wanted} binding, for example "declare const ${binding}: ${wanted}<${table !== undefined ? 'array<Row>' : binding === 'view' ? 'mat4x4' : 'u32'}>;".`,
+          `${shown}: the name "${binding}" of the layer "${name}" is a ${kind} binding. The engine gives ${table !== undefined ? 'a table' : binding === 'view' ? 'the view' : binding === 'blend' ? 'the blend' : 'a value'} as a ${wanted} binding, for example "declare const ${binding}: ${wanted}<${table !== undefined ? 'array<Row>' : binding === 'view' ? 'mat4x4' : binding === 'blend' ? 'f32' : 'u32'}>;".`,
         );
       }
       if (table !== undefined) {
         drawn.push(binding);
         bindings.push({ name: binding, expr: `this.tables.${binding}.rows` });
-      } else if (binding === 'view') bindings.push({ name: binding, expr: 'view' });
-      else if (ENGINE_VALUES.includes(binding))
+      } else if (binding === 'view' || binding === 'blend') {
+        bindings.push({ name: binding, expr: binding });
+      } else if (ENGINE_VALUES.includes(binding))
         bindings.push({ name: binding, expr: `this.${binding}` });
       else bindings.push({ name: binding, expr: `this.values.${binding}` });
     }
@@ -200,12 +229,20 @@ function readLayers(
           : `${shown}: the layer "${name}" names ${drawn.length} tables (${drawn.join(', ')}). A layer draws the rows of one table. Name one table, and make one layer for each table.`,
       );
     }
+    // The compiler refuses a name that no entry reaches, and it does so at the first frame.
+    const idle = unusedNames(file, read(file));
+    if (idle.length > 0) {
+      throw new TypeError(
+        `${shown}: the layer "${name}" declares "${idle[0]}", and its file never uses it. The compiler refuses a name that no entry reaches, at the first frame. Remove "declare const ${idle[0]}", or use it in an entry.`,
+      );
+    }
     layers.push({
       name,
       file,
       vertex: facts.vertex[0],
       fragment: facts.fragment[0],
       table: drawn[0],
+      blend,
       bindings,
     });
   }
@@ -407,6 +444,9 @@ export function writeGame(project: Project): string {
       const bound = layer.bindings.map((b) =>
         b.name === b.expr ? b.name : `${b.name}: ${b.expr}`,
       );
+      const params = layer.bindings.some((b) => b.name === 'blend')
+        ? 'view: readonly number[], blend: number'
+        : 'view: readonly number[]';
       lines.push(
         `    // ${layer.file.split('\\').join('/')}`,
         '    {',
@@ -415,7 +455,8 @@ export function writeGame(project: Project): string {
         `      vertex: '${layer.vertex}',`,
         `      fragment: '${layer.fragment}',`,
         `      rows: this.tables.${layer.table},`,
-        `      bind: (view: readonly number[]) => ({ ${bound.join(', ')} }),`,
+        ...(layer.blend === undefined ? [] : [`      blend: '${layer.blend}' as const,`]),
+        `      bind: (${params}) => ({ ${bound.join(', ')} }),`,
         '    },',
       );
     }

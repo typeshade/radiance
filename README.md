@@ -119,12 +119,17 @@ drawing. The config gives the order of the layers and the view:
 export default defineGame({
   tick: ['tick'],
   values: ['width', 'height'],
-  draw: ['cells'],
+  draw: ['cells', { layer: 'items', blend: 'alpha' }],
   view: { fit: [10, 6], clear: [0.03, 0.03, 0.04] },
 });
 ```
 
-- `draw` lists the layers from the back to the front. Each name is a file `draw/<name>.shade.ts`.
+- `draw` lists the layers from the back to the front. An entry is a name, a file
+  `draw/<name>.shade.ts`, or `{ layer, blend }`.
+- `blend` says how the colour of a layer meets the colour under it. Without it, the layer covers
+  what is under it. `'alpha'` draws the colour over it by the layer's alpha. `'add'` adds the
+  colour, by the layer's alpha, to it. `radiance sync` refuses any other word and gives the
+  choices.
 - `view.fit` is a rectangle of the world, `[width, height]`, with its first corner at the
   origin. The x axis goes right, and the y axis goes down.
 - The engine gives the layers a `view` matrix. The whole rectangle is on the screen, in the
@@ -141,13 +146,21 @@ layer by its name:
 | -------------------------------- | ------------------------------------------------------------ |
 | The name of a table or a scratch | The table on the device. A layer names exactly one table.    |
 | `view`                           | `uniform<mat4x4>`: a place of the world to a place on screen |
+| `blend`                          | `uniform<f32>`: the time between two ticks, from 0 to 1      |
 | `tick`, `seed`, `dt`             | The engine's values, as a system gets them                   |
 | A name of the config's `values`  | That value                                                   |
 
-`radiance sync` refuses any other name, and it names the names that the engine knows. A layer
-changes no table. A replay does not run it. A layer runs on WebGPU only at this compiler pin.
+`radiance sync` refuses any other name, and it names the names that the engine knows. It also
+refuses a name that the layer's file never uses, because the compiler refuses it at the first
+frame. A layer changes no table. A replay does not run it. A layer runs on WebGPU only at this compiler pin.
 A browser with no WebGPU gets an error that names the layer and the compiler issues. The CPU
 tier runs the ticks and draws nothing.
+
+`blend` is how far the frame is from the last tick to the tick after it. A game with a clock
+gets the part of a tick that the loop still owes. A game with `stepOn: 'input'` gets 0 after a
+tick, and 1 one tick later. A layer uses it to place what moves. A tick does not read it, and
+`load` of `radiance/test` gives 0. `game.blend` is the value of the loop.
+`game.drawLayers({ blend })` draws one frame with a given `blend`.
 
 ## The design in short
 

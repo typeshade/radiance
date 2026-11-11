@@ -6,6 +6,7 @@
 // Verifies: Design 0111.2
 // Verifies: Design 0111.3
 // Verifies: Design 0111.4
+// Verifies: Design 0111.6
 //
 // The project of a game (design record 0108): the engine reads it and writes the game's class.
 
@@ -181,6 +182,8 @@ const layer = (body = '', names = 'declare const cells: storage<array<Cell>>;') 
     'declare const view: uniform<mat4x4>;',
     'declare const width: uniform<u32>;',
     body,
+    // Each declared name is used, as the compiler needs (the check of unused names).
+    `function uses() { ${[...`${names}\n${body}`.matchAll(/declare const (\w+):/g), ['', 'view'], ['', 'width']].map((m) => `${m[1]};`).join(' ')} }`,
     '@vertex',
     'export function place(corner: builtin<"vertex_index">): vec4 { return vec4(0., 0., 0., 1.); }',
     '@fragment',
@@ -314,7 +317,7 @@ test('each error of a layer names the file, the fact and a remedy', () => {
       readProject(project({ ...BASE, ...LAYERS, ...files }), config);
   // A name that the engine does not know.
   expect(bad({ 'draw/cells.shade.ts': layer('declare const speed: uniform<f32>;') })).toThrow(
-    'draw/cells.shade.ts: the engine knows no value for the name "speed" of the layer "cells". A name is a table, a scratch table, view, tick, seed, dt, or a value of the config. The names are cells, spare, marks, view, tick, seed, dt, width.',
+    'draw/cells.shade.ts: the engine knows no value for the name "speed" of the layer "cells". A name is a table, a scratch table, view, blend, tick, seed, dt, or a value of the config. The names are cells, spare, marks, view, blend, tick, seed, dt, width.',
   );
   // Two tables.
   expect(
@@ -391,4 +394,97 @@ test('each error of a layer names the file, the fact and a remedy', () => {
   expect(bad({}, { ...CONFIG, view: { fit: [10, 6] } })).toThrow(
     'radiance.config.ts: the config has "view" and no "draw". A view is for layers. Add "draw: [\'<layer>\']" with a file of draw/, or remove "view".',
   );
+});
+
+// Design 0111, section 6: a layer that blends, and the name `blend`.
+
+test('an entry of draw is a name, or a layer with a blend, and the blend is written into the class', () => {
+  const dir = project({ ...BASE, ...LAYERS });
+  const config: GameConfig = {
+    ...DRAWING,
+    draw: ['cells', { layer: 'marks', blend: 'alpha' }],
+  };
+  const read = readProject(dir, config);
+  expect(read.layers.map((l) => [l.name, l.blend])).toEqual([
+    ['cells', undefined],
+    ['marks', 'alpha'],
+  ]);
+  const text = writeGame(read);
+  // A layer with no blend has no `blend` line, as in step 1.
+  expect(text).toContain(['      rows: this.tables.cells,', '      bind: ('].join('\n'));
+  expect(text).toContain(
+    ['      rows: this.tables.marks,', "      blend: 'alpha' as const,", '      bind: ('].join(
+      '\n',
+    ),
+  );
+  // 'add' is the other choice, and an object with no blend covers what is under it.
+  const add = readProject(dir, {
+    ...config,
+    draw: [{ layer: 'cells', blend: 'add' }, { layer: 'marks' }],
+  });
+  expect(add.layers.map((l) => l.blend)).toEqual(['add', undefined]);
+});
+
+test('a blend that is none of the choices is refused with the fact and the choices', () => {
+  const dir = project({ ...BASE, ...LAYERS });
+  const bad = (entry: unknown) => () =>
+    readProject(dir, { ...DRAWING, draw: ['cells', entry as string] });
+  expect(bad({ layer: 'marks', blend: 'multiply' })).toThrow(
+    'radiance.config.ts: "draw" gives the layer "marks" the blend "multiply". The choices are \'alpha\' and \'add\'. Leave "blend" out for a layer that covers what is under it.',
+  );
+  expect(bad({ layer: 'marks', blend: 3 })).toThrow(
+    'radiance.config.ts: "draw" gives the layer "marks" the blend 3. The choices are \'alpha\' and \'add\'. Leave "blend" out for a layer that covers what is under it.',
+  );
+  expect(bad({ blend: 'alpha' })).toThrow(
+    'radiance.config.ts: an entry of "draw" is {"blend":"alpha"}. Give a layer name, or { layer: \'<name>\', blend: \'alpha\' }.',
+  );
+});
+
+test('the name blend is the time between two ticks, and the layer that names it gets it', () => {
+  const names = [
+    'declare const cells: storage<array<Cell>>;',
+    'declare const blend: uniform<f32>;',
+  ].join('\n');
+  const dir = project({ ...BASE, 'draw/cells.shade.ts': layer('', names) });
+  const config = { ...DRAWING, draw: ['cells'] };
+  expect(writeGame(readProject(dir, config))).toContain(
+    '      bind: (view: readonly number[], blend: number) => ({ cells: this.tables.cells.rows, blend, view, width: this.values.width }),',
+  );
+  // A blend of the wrong kind is refused with the line to write.
+  const wrong = project({
+    ...BASE,
+    'draw/cells.shade.ts': layer('', names.replace('uniform<f32>', 'storage<array<f32>>')),
+  });
+  expect(() => readProject(wrong, config)).toThrow(
+    'draw/cells.shade.ts: the name "blend" of the layer "cells" is a storage binding. The engine gives the blend as a uniform binding, for example "declare const blend: uniform<f32>;".',
+  );
+});
+
+test('a layer that declares a name that its file never uses is refused at sync, with a remedy', () => {
+  const names = [
+    'declare const cells: storage<array<Cell>>;',
+    'declare const tick: uniform<u32>;',
+  ].join('\n');
+  // `layer()` uses each name, so this file is written by hand.
+  const text = layer('', names).replace(
+    /function uses\(\) \{.*\}/,
+    'function uses() { cells; view; width; }',
+  );
+  const dir = project({ ...BASE, 'draw/cells.shade.ts': text });
+  expect(() => readProject(dir, { ...DRAWING, draw: ['cells'] })).toThrow(
+    'draw/cells.shade.ts: the layer "cells" declares "tick", and its file never uses it. The compiler refuses a name that no entry reaches, at the first frame. Remove "declare const tick", or use it in an entry.',
+  );
+  // A member with the same name is no use: `corner.tick` does not read the uniform.
+  const member = text.replace('function uses() {', 'function uses() { corner.tick;');
+  expect(() =>
+    readProject(project({ ...BASE, 'draw/cells.shade.ts': member }), {
+      ...DRAWING,
+      draw: ['cells'],
+    }),
+  ).toThrow('the layer "cells" declares "tick"');
+  // A use in an entry or in a helper is a use.
+  const used = text.replace('function uses() {', 'function uses() { tick;');
+  expect(() =>
+    readProject(project({ ...BASE, 'draw/cells.shade.ts': used }), { ...DRAWING, draw: ['cells'] }),
+  ).not.toThrow();
 });

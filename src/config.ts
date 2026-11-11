@@ -21,12 +21,24 @@ export interface GameConfig {
   /** True keeps the compiler's records of fusion in the page. */
   readonly fuse?: boolean;
   /**
-   * The layers of the picture, by name, from the back to the front (design record 0111,
-   * section 3). Each name is a file of `draw/`: `draw/<name>.shade.ts`.
+   * The layers of the picture, from the back to the front (design record 0111, sections 3 and
+   * 6). An entry is the name of a file of `draw/` (`draw/<name>.shade.ts`), or an object that
+   * names the layer and how its colour meets the colour under it.
    */
-  readonly draw?: readonly string[];
+  readonly draw?: readonly (string | DrawEntry)[];
   /** The view of the layers. A game with `draw` gives it. */
   readonly view?: ViewConfig;
+}
+
+/** How the colour of a layer meets the colour under it (design record 0111, section 6). */
+export type Blend = 'alpha' | 'add';
+
+/** An entry of `draw` that gives a layer a blend. */
+export interface DrawEntry {
+  /** The name of the layer: a file of `draw/`. */
+  readonly layer: string;
+  /** `'alpha'` draws over the colour under it by its alpha. `'add'` adds its colour by its alpha. */
+  readonly blend?: Blend;
 }
 
 /** The view of a game's layers (design record 0111, section 3). */

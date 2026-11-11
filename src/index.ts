@@ -10,6 +10,7 @@ export { fnv1a, nodeSeed } from './seed.ts';
 export type { SimInput, SimRecord, SimSnapshot } from './sim.ts';
 export { Engine, Rows } from './engine.ts';
 export type {
+  DrawOptions,
   InputEvent,
   Inputs,
   KeyInput,
@@ -23,4 +24,4 @@ export type {
 } from './engine.ts';
 export type { Layer, Place, ViewOptions } from './draw.ts';
 export { defineGame } from './config.ts';
-export type { GameConfig, ViewConfig } from './config.ts';
+export type { Blend, DrawEntry, GameConfig, ViewConfig } from './config.ts';

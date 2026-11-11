@@ -131,6 +131,36 @@ export function readLayer(file: string, source: string): LayerFacts {
   return { vertex, fragment, declares };
 }
 
+/**
+ * The `declare const` names of a layer's file that the file never uses. The compiler refuses such
+ * a name at the first frame, when the engine binds it (design record 0111, section 2). A name
+ * after a dot, as in `a.view`, is a member and no use.
+ */
+export function unusedNames(file: string, source: string): readonly string[] {
+  const sourceFile = parse(file, source);
+  const declared = new Map<string, ts.Node>();
+  for (const node of sourceFile.statements) {
+    if (!ts.isVariableStatement(node)) continue;
+    if (!(node.modifiers ?? []).some((m) => m.kind === ts.SyntaxKind.DeclareKeyword)) continue;
+    for (const decl of node.declarationList.declarations) {
+      if (ts.isIdentifier(decl.name)) declared.set(decl.name.text, decl.name);
+    }
+  }
+  const used = new Set<string>();
+  const visit = (node: ts.Node): void => {
+    if (ts.isIdentifier(node) && declared.has(node.text) && declared.get(node.text) !== node) {
+      const parent = node.parent;
+      const member =
+        (ts.isPropertyAccessExpression(parent) && parent.name === node) ||
+        (ts.isPropertyAssignment(parent) && parent.name === node);
+      if (!member) used.add(node.text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return [...declared.keys()].filter((name) => !used.has(name));
+}
+
 /** Reads the names of the functions a host file exports, in the order of the file. */
 export function readFunctions(file: string, source: string): readonly string[] {
   const names: string[] = [];
