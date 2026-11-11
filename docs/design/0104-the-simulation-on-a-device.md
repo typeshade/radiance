@@ -232,7 +232,7 @@ The agent made these decisions under D9. The owner can change each one.
 
   | Step | Pull request | Commit on `main` | What ran                                         |
   | ---- | ------------ | ---------------- | ------------------------------------------------ |
-  | 1    | #105         | `89f4ec1`        | `bun run check`, 82 tests. `bun run harness`, 4. |
+  | 1    | #105         | `89f4ec1`        | `bun run check`, 83 tests. `bun run harness`, 4. |
   | 2    | this one     | its merge commit | `bun run check`, 87 tests. `bun run harness`, 4. |
 
   The harness ran in headless Chromium (Playwright 1.63.0) with WebGPU on SwiftShader. After
