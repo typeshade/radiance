@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "seed": 7,
+  "hz": 60,
+  "ticks": 2,
+  "inputs": [
+    {
+      "tick": 0,
+      "path": "line-1/Belt#0",
+      "fields": {
+        "speed": 4
+      }
+    }
+  ]
+}

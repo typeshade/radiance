@@ -2,6 +2,7 @@
 // tick on the CPU tier. It reads no clock, no random source and no device (invariants 2 and 3).
 
 import { dump, snapshot, type Snapshot } from './dump.ts';
+import { checkFields, type AppliedInput, type InputValue, type RunRecord } from './input.ts';
 import type { NodeClass, Scene, SceneNode } from './node.ts';
 
 /** The options of `createWorld`. */
@@ -52,6 +53,9 @@ export class World {
   #tick = 0;
   readonly #byClass = new Map<NodeClass, Table>();
   readonly #byPath = new Map<string, object>();
+  readonly #classOf = new Map<string, NodeClass>();
+  #queue: { path: string; fields: { readonly [field: string]: InputValue } }[] = [];
+  readonly #applied: AppliedInput[] = [];
 
   /** @internal Use `createWorld`. */
   constructor(scene: Scene, options: WorldOptions) {
@@ -87,6 +91,7 @@ export class World {
       }
       list.push(Object.freeze({ node, instance }));
       this.#byPath.set(node.path, instance);
+      this.#classOf.set(node.path, node.cls);
     }
     this.tables = Object.freeze(tables);
   }
@@ -97,9 +102,9 @@ export class World {
   }
 
   /**
-   * Runs `n` ticks, 1 when `n` is not given. One tick calls `step(dt)` on each row of each
-   * table that declares it, tables in schedule order and rows in visit order, then adds 1 to
-   * `tick`.
+   * Runs `n` ticks, 1 when `n` is not given. One tick applies the queued inputs in the order
+   * they were given, then calls `step(dt)` on each row of each table that declares it, tables
+   * in schedule order and rows in visit order, then adds 1 to `tick`.
    */
   step(n = 1): void {
     if (!Number.isInteger(n) || n < 0) {
@@ -109,6 +114,20 @@ export class World {
     }
     const dt = this.dt;
     for (let i = 0; i < n; i++) {
+      // The input phase (design record 0101, section 1, rules 5 and 6).
+      if (this.#queue.length > 0) {
+        const queue = this.#queue;
+        this.#queue = [];
+        for (const input of queue) {
+          const instance = this.#byPath.get(input.path) as Record<string, unknown>;
+          for (const [field, value] of Object.entries(input.fields)) {
+            instance[field] = Array.isArray(value) ? structuredClone(value) : value;
+          }
+          this.#applied.push(
+            Object.freeze({ tick: this.#tick, path: input.path, fields: input.fields }),
+          );
+        }
+      }
       for (const table of this.tables) {
         for (const row of table.rows) {
           if (hasStep(row.instance)) row.instance.step(dt);
@@ -133,6 +152,40 @@ export class World {
   /** The instance at a path, or `undefined` for a group or a path the scene does not hold. */
   find<T extends object = object>(path: string): T | undefined {
     return this.#byPath.get(path) as T | undefined;
+  }
+
+  /**
+   * Gives the world an input: a write of field values to the node at `path`. The world checks
+   * it now, applies it at the start of the next tick that runs, and records it with that tick.
+   */
+  input(path: string, fields: { readonly [field: string]: InputValue }): void {
+    const instance = this.#byPath.get(path);
+    const cls = this.#classOf.get(path);
+    if (instance === undefined || cls === undefined) {
+      const group = this.scene.nodes.some((node) => node.path === path);
+      throw new TypeError(
+        group
+          ? `World.input(): the node at ${JSON.stringify(path)} is a group and has no field. Give the path of a node with a class.`
+          : `World.input(): the scene holds no node at ${JSON.stringify(path)}. Read the paths in world.dump().`,
+      );
+    }
+    const checked = checkFields('World.input()', path, cls.name, Object.keys(instance), fields);
+    this.#queue.push({ path, fields: checked });
+  }
+
+  /** The record of the run so far: a copy that JSON holds (design record 0101, section 2). */
+  record(): RunRecord {
+    return {
+      version: 1,
+      seed: this.seed,
+      hz: this.hz,
+      ticks: this.#tick,
+      inputs: this.#applied.map((input) => ({
+        tick: input.tick,
+        path: input.path,
+        fields: structuredClone(input.fields),
+      })),
+    };
   }
 
   /** The world as text: a header, then one line for each node (design record 0100, section 4). */
