@@ -116,7 +116,6 @@ export function turn(
   width: u32,
   height: u32,
   tick: u32,
-  seed: u32,
   sx: u32,
   sy: u32,
 ) {
@@ -133,7 +132,8 @@ export function turn(
         if (b.kind != NONE && b.x == sx && b.y == sy) { spawns = false; }
       }
       if (spawns) {
-        const word: u32 = hash32(seed ^ (tick * 2654435761) ^ i);
+        // The slot has a seed of its own. The tick makes each monster of the slot differ.
+        const word: u32 = hash32(a.seed ^ tick);
         a.kind = RAT;
         a.hp = RAT_HP;
         if ((word & 1) == 1) {

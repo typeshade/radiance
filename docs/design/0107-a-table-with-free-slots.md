@@ -1,7 +1,7 @@
 ---
 id: '0107'
 title: A table of a simulation has free slots, so rows come and go in a table of a fixed size
-status: accepted
+status: implemented
 vision: [D4, D11]
 touches:
   - src/sim.ts
@@ -15,14 +15,14 @@ compiler: []
 
 **Document control**
 
-| Field          | Record                                                                                           |
-| -------------- | ------------------------------------------------------------------------------------------------ |
-| Identity       | Design record `0107`, `status: accepted`. The front matter holds the identity and the lifecycle. |
-| Date           | Written 2026-11-11 by the repository's coding agent, under decision D9 of `docs/vision.md`.      |
-| Baseline       | `typeshade/radiance` `main` `7addd54`.                                                           |
-| Compiler pin   | `6d6a979`.                                                                                       |
-| Pull request   | The pull request that adds this file.                                                            |
-| What is a fact | The second reference game's list of what was hard (R1 and R5). No step is implemented.           |
+| Field          | Record                                                                                              |
+| -------------- | --------------------------------------------------------------------------------------------------- |
+| Identity       | Design record `0107`, `status: implemented`. The front matter holds the identity and the lifecycle. |
+| Date           | Written 2026-11-11 by the repository's coding agent, under decision D9 of `docs/vision.md`.         |
+| Baseline       | `typeshade/radiance` `main` `7addd54`.                                                              |
+| Compiler pin   | `6d6a979`.                                                                                          |
+| Pull request   | The pull request that adds this file.                                                               |
+| What is a fact | The step is implemented. The Record section holds the delivered configuration.                      |
 
 ## What changes
 
@@ -138,5 +138,18 @@ The agent made these decisions under D9. The owner can change each one.
 - **Approval.** The agent showed the owner the order of work on 2026-11-11, with this item
   second. The owner answered "네, 그 순서로 진행해주세요". The owner's rule of 2026-11-11
   approves a merge with green checks in advance (`CLAUDE.md`, Merging).
-- **Validation.** Does not yet apply: no step is implemented.
-- **Deviations.** None.
+- **Validation.** The delivered configuration, 2026-11-11, compiler pin `6d6a979`:
+
+  | Step | Pull request | Commit on `main` | What ran                                          |
+  | ---- | ------------ | ---------------- | ------------------------------------------------- |
+  | 1    | this one     | its merge commit | `bun run check`, 108 tests. `bun run harness`, 4. |
+
+  The second game's tests pass, and its long run replays to the same dump.
+
+- **Deviations.**
+  - `createSim` also refuses slots with no size or no function `free`. The record did not list
+    that error. Closed: a test holds its text.
+  - The game's `turn` lost its parameter `seed`, since the slot's seed takes its place. The
+    record said only that the spawn takes the slot's seed. Closed.
+  - Design record 0106 and the game's `README.md` said that `nodeSeed` is no public name. It
+    is an export of `radiance`. Closed: the `README.md` says so now.

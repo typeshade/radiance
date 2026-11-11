@@ -3,7 +3,7 @@
 A game engine written in [TypeShade](https://typeshade.dev), made for development by a coding
 agent.
 
-**Status: early.** Design records 0100 to 0106 are implemented. A scene of nodes runs as tables
+**Status: early.** Design records 0100 to 0107 are implemented. A scene of nodes runs as tables
 on the CPU tier, on a fixed tick. A test reads its dump with no device. A world takes inputs,
 records them and replays them. A simulation runs a game's tick on a device, in a test and in a
 page. The engine draws nothing yet. [`docs/vision.md`](docs/vision.md) is the design: the claim, the owner's decisions, what an

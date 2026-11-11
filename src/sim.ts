@@ -33,6 +33,14 @@ export interface TickTime {
   readonly tick: number;
 }
 
+/** A table with free slots: its number of rows, and what a free row is. */
+export interface Slots<R> {
+  /** The number of rows of the table, an integer. `createSim` adds free rows up to it. */
+  readonly size: number;
+  /** True when the row is a free slot. */
+  free(row: R): boolean;
+}
+
 /** The options of `createSim`. */
 export interface SimOptions<T extends SimTables, B extends keyof T = never> {
   /** The device that holds the tables: the CPU tier in a test, a GPU tier in a page. */
@@ -43,6 +51,8 @@ export interface SimOptions<T extends SimTables, B extends keyof T = never> {
   readonly hz?: number;
   /** The tables that a tick reads and writes through two arrays. */
   readonly buffered?: readonly B[];
+  /** The tables with free slots (design record 0107). */
+  readonly slots?: { readonly [K in keyof T]?: Slots<T[K][number]> };
   /** One tick. The simulation waits for the promise it returns. */
   tick(tables: Frame<T, B>, time: TickTime): void | Promise<void>;
 }
@@ -123,6 +133,7 @@ export class Sim<T extends SimTables, B extends keyof T = never> {
   readonly #write = new Map<string, Resident<object[]>>();
   /** What the check of an input needs of each table: its row count, a copy of a row, its class. */
   readonly #shape = new Map<string, { length: number; sample: object; className: string }>();
+  readonly #slots = new Map<string, Slots<object>>();
   #queue: { table: string; index: number; fields: InputObject }[] = [];
   readonly #applied: SimInput[] = [];
 
@@ -155,6 +166,26 @@ export class Sim<T extends SimTables, B extends keyof T = never> {
     this.#options = options;
     this.#device = device;
     this.names = Object.freeze(Object.keys(tables));
+    for (const [name, slots] of Object.entries(options.slots ?? {})) {
+      if (!this.names.includes(name)) {
+        throw new TypeError(
+          `createSim(): slots names ${JSON.stringify(name)}, which is no table. The tables are ${this.names.join(', ')}.`,
+        );
+      }
+      const given = slots as Slots<object> | undefined;
+      if (
+        typeof given !== 'object' ||
+        given === null ||
+        !Number.isInteger(given.size) ||
+        typeof given.free !== 'function'
+      ) {
+        throw new TypeError(
+          `createSim(): the slots of ${JSON.stringify(name)} need a size and a function free, for example { size: 16, free: (row) => row.kind === 0 }.`,
+        );
+      }
+      this.#slots.set(name, given);
+    }
+    const built = new Map<string, object[]>();
     for (const name of this.names) {
       const rows = tables[name];
       if (!Array.isArray(rows)) {
@@ -168,13 +199,39 @@ export class Sim<T extends SimTables, B extends keyof T = never> {
         );
       }
       const first = rows[0];
+      const className =
+        (first as { constructor?: { name?: string } }).constructor?.name || 'the row';
       this.#shape.set(name, {
-        length: rows.length,
+        length: this.#slots.get(name)?.size ?? rows.length,
         sample: structuredClone(first),
-        className: (first as { constructor?: { name?: string } }).constructor?.name || 'the row',
+        className,
       });
       // The device keeps a copy, so a later change to the caller's rows does not reach it.
-      const copies = rows.map((row, index) => {
+      const slots = this.#slots.get(name);
+      const all: object[] = [...rows];
+      if (slots !== undefined) {
+        if (rows.length > slots.size) {
+          throw new RangeError(
+            `createSim(): the table ${JSON.stringify(name)} has ${rows.length} rows, and its slots are ${slots.size}. Give more slots or fewer rows.`,
+          );
+        }
+        const cls = (first as { constructor?: unknown }).constructor;
+        if (rows.length < slots.size && (typeof cls !== 'function' || cls === Object)) {
+          throw new TypeError(
+            `createSim(): the rows of ${JSON.stringify(name)} have no class, so the simulation cannot make a free row. Give rows of a class.`,
+          );
+        }
+        while (all.length < slots.size) {
+          const added = new (cls as new () => object)();
+          if (!slots.free(added)) {
+            throw new TypeError(
+              `createSim(): a new row of the class ${className} is not free, in the table ${JSON.stringify(name)}. The function free must be true for a row with the class's first values.`,
+            );
+          }
+          all.push(added);
+        }
+      }
+      const copies = all.map((row, index) => {
         const copy = copyRow(row) as { seed?: unknown };
         // Design: 0106, section 1. A row with `seed` 0 gets a seed from the run's seed and its path.
         if (Object.hasOwn(copy, 'seed') && copy.seed === 0) {
@@ -182,6 +239,7 @@ export class Sim<T extends SimTables, B extends keyof T = never> {
         }
         return copy;
       });
+      built.set(name, copies);
       this.#read.set(name, device.array(copies) as Resident<object[]>);
     }
     for (const name of options.buffered ?? []) {
@@ -190,7 +248,7 @@ export class Sim<T extends SimTables, B extends keyof T = never> {
           `createSim(): buffered names ${JSON.stringify(name)}, which is no table. The tables are ${this.names.join(', ')}.`,
         );
       }
-      const rows = tables[name as string];
+      const rows = built.get(name as string)!;
       this.#write.set(name as string, device.array(rows.map(copyRow)) as Resident<object[]>);
     }
   }
@@ -312,8 +370,15 @@ export class Sim<T extends SimTables, B extends keyof T = never> {
   async dump(): Promise<string> {
     const lines = [`tick ${this.#tick}  seed ${this.seed}  hz ${this.hz}`];
     for (const name of this.names) {
-      lines.push(name);
-      (await this.#read.get(name)!.read()).forEach((row, index) => {
+      const rows = await this.#read.get(name)!.read();
+      const slots = this.#slots.get(name);
+      // Design: 0107, section 2. A table with slots shows its count and no free row.
+      const shown = rows.map((row) => slots === undefined || !slots.free(row));
+      lines.push(
+        slots === undefined ? name : `${name}  ${shown.filter(Boolean).length} of ${slots.size}`,
+      );
+      rows.forEach((row, index) => {
+        if (!shown[index]) return;
         const parts = [`[${index}]`];
         for (const [field, value] of Object.entries(row))
           parts.push(`${field} ${formatValue(value)}`);

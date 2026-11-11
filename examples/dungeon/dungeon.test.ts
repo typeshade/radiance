@@ -127,16 +127,24 @@ test('another seed gives another run', async () => {
 });
 
 test('a wrong level is refused with the fact and the remedy', () => {
-  const parse = (text: string, slots = 4) => parseLevel(text, { slots });
-  expect(() => parse('@.\n.')).toThrow(
+  expect(() => parseLevel('@.\n.')).toThrow(
     'parseLevel(): row 1 has 1 cells, and row 0 has 2. Give each row the same length.',
   );
-  expect(() => parse('@?')).toThrow(
+  expect(() => parseLevel('@?')).toThrow(
     'parseLevel(): row 0 holds "?". A cell is one of # . ! S @ r o.',
   );
-  expect(() => parse('..')).toThrow('parseLevel(): the level has no player. Give one @.');
-  expect(() => parse('@@')).toThrow('parseLevel(): the level has two players. Give one @.');
-  expect(() => parse('@rr', 2)).toThrow(
-    'parseLevel(): the level has 3 actors, and the table has 2 slots. Give more slots.',
+  expect(() => parseLevel('..')).toThrow('parseLevel(): the level has no player. Give one @.');
+  expect(() => parseLevel('@@')).toThrow('parseLevel(): the level has two players. Give one @.');
+  expect(() => make('@rr', 2)).toThrow(
+    'createSim(): the table "actors" has 3 rows, and its slots are 2. Give more slots or fewer rows.',
   );
+});
+
+test('the dump shows the actors and no free slot', async () => {
+  const d = make('@o.S', 8);
+  await go(d, EAST, EAST);
+  const lines = (await d.sim.dump()).split('\n');
+  expect(lines[1]).toBe('actors  1 of 8');
+  expect(lines[2]).toMatch(/^  \[0\]  kind 1  x 0  y 0  hp 3  move 0  seed \d+  kills 1$/);
+  expect(lines[3]).toBe('tiles');
 });
