@@ -21,5 +21,9 @@
     "typeshade": "https://github.com/typeshade/typeshade/archive/da311c32bf5f8f1f2ac35d6e12952beecde9d62e.tar.gz",
     "vite": "7.3.7",
     "vitest": "5.0.5"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./test": "./src/test.ts"
   }
 }
