@@ -4,6 +4,7 @@
 import { dump, snapshot, type Snapshot } from './dump.ts';
 import { checkFields, type AppliedInput, type InputValue, type RunRecord } from './input.ts';
 import type { NodeClass, Scene, SceneNode } from './node.ts';
+import { nodeSeed } from './seed.ts';
 
 /** The options of `createWorld`. */
 export interface WorldOptions {
@@ -81,6 +82,11 @@ export class World {
       if (node.cls === undefined) continue;
       const instance = new node.cls();
       Object.assign(instance, node.fields);
+      // A class with a field named `seed` takes its seed from the world's seed and the node's
+      // path, unless the node gave one (design record 0101, section 4).
+      if (Object.hasOwn(instance, 'seed') && !Object.hasOwn(node.fields, 'seed')) {
+        (instance as { seed: number }).seed = nodeSeed(seed, node.path);
+      }
       let list = rows.get(node.cls);
       if (list === undefined) {
         list = [];
