@@ -4,13 +4,13 @@
 
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { typeshade } from 'typeshade/vite';
 import { build, createServer, type InlineConfig, type ViteDevServer } from 'vite';
 import type { GameConfig } from './config.ts';
-import { syncProject } from './project.ts';
+import { gameName, syncProject } from './project.ts';
 
 /** The options of a build. */
 export interface BuildOptions {
@@ -112,13 +112,14 @@ export function pageFiles(
       : `const seed = ${config.start.seed};`;
   const hook = options.hook === true;
   const readout = options.readout === true;
+  // Design: 0112, section 3. A game with `save` in its config keeps its save in the browser.
+  const save = config.save;
   const main = [
     '// Written by "radiance build" from the project. Do not change this file: change the',
     '// project, and build again.',
     '',
-    readout
-      ? "import { readout, run, type FrameStats } from 'radiance/page';"
-      : "import { run } from 'radiance/page';",
+    `import { ${[...(save === undefined ? [] : ['browserStore']), ...(readout ? ['readout'] : []), 'run', ...(readout ? ['type FrameStats'] : [])].join(', ')} } from 'radiance/page';`,
+    ...(hook ? ["import type { Save } from 'radiance';"] : []),
     `import level from '../levels/${config.start.level}.ts';`,
     "import { Game } from './game.ts';",
     '',
@@ -139,9 +140,23 @@ export function pageFiles(
           '// The readout: the tier of the device, the times and the commit of this build.',
           "const line = document.querySelector('#readout')!;",
           `const text = readout(${JSON.stringify(options.commit ?? 'unknown')});`,
-          'const onFrame = (stats: FrameStats) => {',
-          '  line.textContent = text(stats);',
-          '};',
+          ...(save === undefined
+            ? [
+                'const onFrame = (stats: FrameStats) => {',
+                '  line.textContent = text(stats);',
+                '};',
+              ]
+            : [
+                '// What the page says about its save comes before the numbers.',
+                "let notice = '';",
+                'const onNotice = (message: string) => {',
+                '  notice = message;',
+                '  line.textContent = message;',
+                '};',
+                'const onFrame = (stats: FrameStats) => {',
+                "  line.textContent = notice === '' ? text(stats) : `${notice}  ${text(stats)}`;",
+                '};',
+              ]),
           '// A page that cannot run shows the reason, and does not stay empty.',
           'const onError = (error: unknown) => {',
           '  line.textContent = error instanceof Error ? error.message : String(error);',
@@ -156,17 +171,32 @@ export function pageFiles(
       : []),
     `${hook ? 'const game = ' : readout ? 'const game = ' : 'void '}run(Game, {`,
     '  seed,',
+    `  game: ${JSON.stringify(gameName(dir, config))},`,
     '  canvas,',
     '  rows: level.rows,',
     '  values: level.values,',
+    ...(save === undefined
+      ? []
+      : [
+          `  version: ${save.version},`,
+          '  store: browserStore(),',
+          readout ? '  onNotice,' : '  onNotice: (message: string) => console.warn(message),',
+        ]),
     ...(readout ? ['  onFrame,', '  onError,'] : []),
     ...(hook ? ['  ...(manual ? { schedule: () => {} } : {}),'] : []),
     '});',
     ...(readout ? ['game.catch(onError);'] : []),
-    ...(hook ? ['(globalThis as { game?: unknown }).game = game;'] : []),
+    ...(hook
+      ? [
+          '(globalThis as { game?: unknown }).game = game;',
+          '// The hook also starts a second run from a save, on a canvas of its own (design record 0112).',
+          '(globalThis as { runFrom?: unknown }).runFrom = (from: Save) =>',
+          `  run(Game, { game: ${JSON.stringify(gameName(dir, config))}, canvas: document.createElement('canvas'), from, schedule: () => {} });`,
+        ]
+      : []),
     '',
   ].join('\n');
-  const title = (config.name ?? basename(dir)).replace(/[<>&]/g, '');
+  const title = gameName(dir, config).replace(/[<>&]/g, '');
   const html = [
     '<!doctype html>',
     '<html lang="en">',

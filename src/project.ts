@@ -3,7 +3,7 @@
 // never in a shipped game.
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { basename, join, relative } from 'node:path';
 import type { Blend, GameConfig } from './config.ts';
 import { readFunctions, readLayer, readSystem, readTable, unusedNames } from './facts.ts';
 
@@ -64,6 +64,11 @@ export interface Project {
   /** The layers of the picture, in the order of the config's `draw`. Empty with `draws`. */
   readonly layers: readonly ProjectLayer[];
   readonly inputs: readonly ProjectInput[];
+}
+
+/** The name of a game: the config's `name`, or the name of the project's directory. */
+export function gameName(dir: string, config: GameConfig): string {
+  return config.name ?? basename(dir);
 }
 
 const SUFFIX = '.shade.ts';
@@ -255,6 +260,15 @@ export function readProject(dir: string, config: GameConfig): Project {
     throw new TypeError(
       `radiance.config.ts: "tick" lists no system. Give the systems in the order they run, for example { tick: ['move', 'draw'] }.`,
     );
+  }
+  // Design: 0112, section 3. The version of the game's state in its saves.
+  if (config.save !== undefined) {
+    const version = (config.save as { version?: unknown } | null)?.version;
+    if (typeof version !== 'number' || !Number.isInteger(version) || version < 1) {
+      throw new TypeError(
+        `radiance.config.ts: "save.version" is ${JSON.stringify(version) ?? 'missing'}. Give the version of the game's state as an integer from 1, for example { save: { version: 1 } }.`,
+      );
+    }
   }
   const read = (file: string) => readFileSync(join(dir, file), 'utf8');
   const tables: { -readonly [K in keyof ProjectTable]: ProjectTable[K] }[] = [];

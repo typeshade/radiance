@@ -7,6 +7,7 @@
 // Verifies: Design 0111.3
 // Verifies: Design 0111.4
 // Verifies: Design 0111.6
+// Verifies: Design 0112.3
 //
 // The project of a game (design record 0108): the engine reads it and writes the game's class.
 
@@ -487,4 +488,18 @@ test('a layer that declares a name that its file never uses is refused at sync, 
   expect(() =>
     readProject(project({ ...BASE, 'draw/cells.shade.ts': used }), { ...DRAWING, draw: ['cells'] }),
   ).not.toThrow();
+});
+
+test('the version of a save is an integer from 1, and sync refuses another value with a remedy', () => {
+  const dir = project(BASE);
+  expect(() => readProject(dir, { ...CONFIG, save: { version: 1 } })).not.toThrow();
+  expect(() => readProject(dir, { ...CONFIG, save: { version: 7 } })).not.toThrow();
+  const refuse = (save: unknown, shown: string) =>
+    expect(() => readProject(dir, { ...CONFIG, save } as GameConfig)).toThrow(
+      `radiance.config.ts: "save.version" is ${shown}. Give the version of the game's state as an integer from 1, for example { save: { version: 1 } }.`,
+    );
+  refuse({ version: 0 }, '0');
+  refuse({ version: 1.5 }, '1.5');
+  refuse({ version: '2' }, '"2"');
+  refuse({}, 'missing');
 });

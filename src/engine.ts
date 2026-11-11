@@ -6,7 +6,15 @@
 import type { Device, Resident } from 'typeshade/runtime';
 import type { Drawing, Layer, Place, ViewOptions } from './draw.ts';
 import type { InputObject } from './input.ts';
-import { createSim, type Sim, type SimRecord, type SimSnapshot } from './sim.ts';
+import {
+  checkNoLevel,
+  checkSave,
+  restoreRows,
+  saveNumber,
+  type Save,
+  type SaveShape,
+} from './save.ts';
+import { createSim, snapshotValue, type Sim, type SimRecord, type SimSnapshot } from './sim.ts';
 
 /** The kinds of memory a game declares. */
 export type MemoryKind = 'table' | 'pool' | 'scratch';
@@ -145,14 +153,24 @@ export interface Inputs {
 
 /** What `start` gives a game: the run's seed, its tick rate, its first rows and its values. */
 export interface StartOptions {
-  /** The seed of the run, a `u32`. */
-  readonly seed: number;
-  /** The tick rate, an integer from 1. 60 when it is not given. */
+  /** The seed of the run, a `u32`. A start `from` a save takes none: the save holds it. */
+  readonly seed?: number;
+  /** The tick rate, an integer from 1. 60 when it is not given. A save holds its own. */
   readonly hz?: number;
   /** The first rows of each table, by the name of its field. */
   readonly rows?: { readonly [table: string]: readonly object[] };
   /** The values of the run, by name. */
   readonly values?: { readonly [name: string]: number };
+  /**
+   * A save to start from (design record 0112, section 2): the run starts with the tables, the
+   * tick, the seed, the tick rate and the values of the save. With it, `seed`, `rows` and
+   * `values` are refused, and `hz` is refused when it is not the save's.
+   */
+  readonly from?: Save;
+  /** The name of the game in its saves: the config's `name`. The name of the class when not given. */
+  readonly game?: string;
+  /** The version of the game's state in its saves, an integer from 1. 1 when not given. */
+  readonly version?: number;
   /** What the game draws to, when it runs in a page. The engine does not read it. */
   readonly surface?: unknown;
   /**
@@ -160,6 +178,83 @@ export interface StartOptions {
    * the engine calls its `frame` and `toWorld`.
    */
   readonly drawing?: Drawing;
+}
+
+/** What a start from a save reads out of it. */
+interface FromSave {
+  readonly seed: number;
+  readonly hz: number;
+  readonly startTick: number;
+  readonly values: { readonly [name: string]: number };
+  readonly rows: { readonly [table: string]: readonly object[] };
+}
+
+/**
+ * Checks `options.from` against the game's tables and reads the seed, the tick rate, the tick,
+ * the values and the rows out of it (design record 0112, section 2). It throws a refusal with
+ * the fact and a remedy.
+ */
+function readSave(
+  where: string,
+  game: string,
+  version: number,
+  tables: readonly { readonly name: string; readonly handle: Rows<unknown> }[],
+  options: StartOptions,
+): FromSave {
+  const from = options.from!;
+  checkNoLevel(
+    where,
+    (['seed', 'rows', 'values'] as const).filter((name) => options[name] !== undefined),
+  );
+  const state = tables.filter((t) => t.handle.kind !== 'scratch');
+  const shape: SaveShape = {
+    game,
+    version,
+    tables: state.map((t) => ({
+      name: t.name,
+      className: t.handle.cls.name,
+      fields: Object.keys(new t.handle.cls() as object),
+    })),
+  };
+  checkSave(where, from, shape);
+  if (options.hz !== undefined && options.hz !== from.hz) {
+    throw new RangeError(
+      `${where}: the save runs at ${from.hz} hz, and the options give ${options.hz} hz. A run from a save keeps its tick rate. Leave "hz" out.`,
+    );
+  }
+  const values = Object.fromEntries(
+    Object.entries(from.values).map(([name, value]) => {
+      const number = saveNumber(value);
+      if (number === undefined) {
+        throw new TypeError(
+          `${where}: the value ${JSON.stringify(name)} of the save is ${JSON.stringify(value)}. A value is a number. Start from a save that game.save() wrote.`,
+        );
+      }
+      return [name, number];
+    }),
+  );
+  const rows = Object.fromEntries(
+    from.tables.map((table) => {
+      const handle = state.find((t) => t.name === table.name)!.handle;
+      return [
+        table.name,
+        restoreRows(where, table.name, handle.cls as new () => object, table.rows),
+      ];
+    }),
+  );
+  return { seed: from.seed, hz: from.hz, startTick: from.tick, values, rows };
+}
+
+/**
+ * @internal Checks a save against a game that has not started, as a start from it would. The
+ * page uses it to choose the save to start from. It throws the refusal of the start.
+ */
+export function checkStartFrom(game: Engine, options: StartOptions): void {
+  const where = game.constructor.name;
+  const tables = Object.entries(game.tables ?? {}).flatMap(([name, handle]) =>
+    handle instanceof Rows ? [{ name, handle: handle as Rows<unknown> }] : [],
+  );
+  readSave(where, options.game ?? where, options.version ?? 1, tables, options);
 }
 
 const SIM = Symbol('radiance.sim');
@@ -227,6 +322,13 @@ export abstract class Engine {
   #tables: { name: string; handle: Rows<unknown> }[] = [];
   #scratch = new Map<string, Resident<object[]>>();
   #values: { readonly [name: string]: number } = {};
+  #game = '';
+  #version = 1;
+  #systems: [string, () => unknown][] = [];
+  /** What `restart()` starts from: the first rows, the values and the seed of a new run. */
+  #fresh: StartOptions | undefined;
+  /** Where `save()` also writes: the page's store (design record 0112, section 3). */
+  #saver: ((save: Save) => Promise<void>) | undefined;
 
   /** Declares a table of the game's state. */
   protected table<R>(cls: new () => R, options: TableOptions = {}): Rows<R> {
@@ -370,6 +472,52 @@ export abstract class Engine {
   snapshot(): Promise<SimSnapshot> {
     return this.#live('snapshot()').snapshot();
   }
+  /**
+   * The save of the run: every table of the game's state, and no scratch table (design record
+   * 0112). It waits for the tick in work and reads each table once. An input that waits for the
+   * next tick is not in it. It is a plain value, and `JSON.stringify` holds it.
+   */
+  async save(): Promise<Save> {
+    const sim = this.#live('save()');
+    const snapshot = await sim.snapshot();
+    const save: Save = {
+      format: 1,
+      game: this.#game,
+      version: this.#version,
+      tick: snapshot.tick,
+      seed: snapshot.seed,
+      hz: snapshot.hz,
+      values: Object.fromEntries(
+        Object.entries(this.#values).map(([name, value]) => [name, snapshotValue(value)]),
+      ) as { [name: string]: number },
+      tables: snapshot.tables,
+    };
+    // In a page with a store, the save is also written (design record 0112, section 3).
+    await this.#saver?.(save);
+    return save;
+  }
+
+  /**
+   * Starts a new run on the same device, from the first rows, the values and the seed that the
+   * game started with. In a page, these are the config's `start`, and the new state is written
+   * over the save as `save()` writes it. The arrays of the run before stay on the device until
+   * it closes. An input that waits, and the record of the run before, are dropped. The picture
+   * and the loop go on.
+   */
+  async restart(): Promise<void> {
+    const sim = this.#live('restart()');
+    const fresh = this.#fresh;
+    if (fresh === undefined) {
+      throw new Error(
+        `${this.constructor.name}.restart(): the game started from a save, so it has no first rows to start from. Start the game with a seed and a level, or run it with run() of radiance/page.`,
+      );
+    }
+    // The tick in work ends first, so that no tick runs on the tables that are left.
+    await sim.idle();
+    this.#make(fresh);
+    await this.save();
+  }
+
   /** The record of the run so far. */
   record(): SimRecord {
     return this.#live('record()').record();
@@ -397,12 +545,22 @@ export abstract class Engine {
   }
 
   /** @internal Use `start` of `radiance/test` or `run` of `radiance/page`. */
-  static start<G extends Engine>(game: G, device: Device, options: StartOptions): G {
-    game.#start(device, options);
+  static start<G extends Engine>(
+    game: G,
+    device: Device,
+    options: StartOptions,
+    fresh: StartOptions | undefined = options.from === undefined ? options : undefined,
+  ): G {
+    game.#start(device, options, fresh);
     return game;
   }
 
-  #start(device: Device, options: StartOptions): void {
+  /** @internal The page gives the game the function that writes each save to its store. */
+  static setSaver(game: Engine, saver: (save: Save) => Promise<void>): void {
+    game.#saver = saver;
+  }
+
+  #start(device: Device, options: StartOptions, fresh: StartOptions | undefined): void {
     const game = this.constructor.name;
     if (this.#sim !== undefined || this.#disposed) {
       throw new Error(`${game}: the game started before. Make a new game for a new run.`);
@@ -421,7 +579,40 @@ export abstract class Engine {
       }
       this.#tables.push({ name, handle: handle as Rows<unknown> });
     }
-    const given = options.rows ?? {};
+    this.#device = device;
+    this.#surface = options.surface;
+    this.#drawing = options.drawing;
+    this.#systems = systems;
+    this.#fresh = fresh;
+    this.#make(options);
+  }
+
+  /**
+   * Makes the simulation and binds each table of the game: the start of a run, and the start
+   * again of `restart()`. The device, the systems and the tables of the class stay.
+   */
+  #make(options: StartOptions): void {
+    const game = this.constructor.name;
+    const device = this.#device!;
+    const systems = this.#systems;
+    this.#game = options.game ?? game;
+    const version = options.version ?? 1;
+    if (!Number.isInteger(version) || version < 1) {
+      throw new RangeError(
+        `${game}: the version is ${String(version)}. Give the version of the game's state as an integer from 1.`,
+      );
+    }
+    this.#version = version;
+    let given = options.rows ?? {};
+    let seed = options.seed;
+    let hz = options.hz;
+    let values: { readonly [name: string]: number } = options.values ?? {};
+    let startTick: number | undefined;
+    if (options.from !== undefined) {
+      const read = readSave(game, this.#game, version, this.#tables, options);
+      ({ seed, hz, startTick, values } = read);
+      given = read.rows;
+    }
     for (const name of Object.keys(given)) {
       if (!this.#tables.some((t) => t.name === name && t.handle.kind !== 'scratch')) {
         const names = this.#tables.filter((t) => t.handle.kind !== 'scratch').map((t) => t.name);
@@ -462,14 +653,15 @@ export abstract class Engine {
       tables[name] = rows;
     }
 
-    this.#device = device;
-    this.#surface = options.surface;
-    this.#drawing = options.drawing;
-    this.#values = Object.freeze({ ...(options.values ?? {}) });
+    this.#values = Object.freeze({ ...values });
+    this.#scratch.clear();
+    this.#frame = {};
+    this.#waited = false;
     const sim = createSim(tables, {
       device,
-      seed: options.seed,
-      hz: options.hz,
+      seed: seed as number,
+      hz,
+      startTick,
       buffered,
       slots,
       tick: async (frame) => {

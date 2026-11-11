@@ -162,6 +162,94 @@ tick, and 1 one tick later. A layer uses it to place what moves. A tick does not
 `load` of `radiance/test` gives 0. `game.blend` is the value of the loop.
 `game.drawLayers({ blend })` draws one frame with a given `blend`.
 
+## A save and a start from it
+
+A run gives a save, and a run starts from a save (design record 0112). A
+save is JSON. It holds each table of the game's state by the names of its fields. It holds no
+scratch table, because a tick makes a scratch table again.
+
+```ts
+import { load } from 'radiance/test';
+
+const game = await load('examples/factory', { seed: 1, level: 'demo' });
+await game.step(50);
+const save = await game.save();
+await game.dispose();
+
+const again = await load('examples/factory', { from: save });
+await again.step(50); // The dump equals the dump of one run of 100 ticks.
+```
+
+- `game.save()` waits for the tick in work. Then it reads each table once. It gives a `Save`.
+  `JSON.parse(JSON.stringify(save))` equals the save.
+- A number that JSON cannot hold is the text that a dump uses: `"NaN"`, `"Infinity"`,
+  `"-Infinity"` and `"-0"`. A start from the save reads the text as the number.
+- A save holds the `format` (1), the `game` (the name of the config, or the name of the
+  project's directory), the `version`, the `tick`, the `seed`, the `hz`, the `values` and the
+  `tables`. Until step 3, the `version` is always 1.
+- A start from a save needs no level and no seed. A save holds each one of them. `load` and `run`
+  refuse `from` together with a `seed`, a `level` (the `rows` and the `values`) or another `hz`.
+- A start from a save goes on as a run that never stopped. The check is: 50 ticks, a save, a
+  start from it and 50 ticks give the dump of 100 ticks. It runs on both reference games on the
+  CPU tier, and on the factory in the browser on WebGPU.
+- A start from a save refuses a save of another game, a `format` that the engine does not know,
+  a table or a field that the game does not have, a table or a field that the game has and the
+  save lacks, and a `version` later than the game's. Each message gives the fact and a remedy.
+- An input that waits for the next tick is not in a save. Call `game.save()` after the inputs
+  of the last tick.
+- The record of a run that started from a save has a `from`: the tick of the save. A record
+  with `from` replays only with the same save, as `replayGame(Game, { from: save }, record)`.
+
+### The page keeps the save
+
+A game with `save` in its config keeps its save on the device (design record 0112, section 3):
+
+```ts
+export default defineGame({
+  name: 'Factory',
+  save: { version: 1 },
+});
+```
+
+- `save.version` is an integer from 1. `radiance sync` refuses another value.
+- The entry file that `radiance build` writes gives `run` a store of the browser (`browserStore()`
+  of `radiance/page`, over IndexedDB) and the version. A game with no `save` gets no store.
+- A store is `{ read(key), write(key, text) }`. `read` gives `undefined` for a key with no
+  text. A test, a native shell or a store package gives its own, as the `store` option of `run`.
+  `run` needs the `game` option with a store, because the name of the game is the key.
+- **The keys.** The latest save is under the name of the game, for example `Factory`. The save
+  before it is under `Factory.backup`.
+- **When.** The page saves when it goes out of view: on `visibilitychange` when the document is
+  hidden, and on `pagehide`. It saves when the game calls `game.save()`. In a page with a
+  store, `game.save()` also writes. The page does not save on each tick.
+- **The order of the two writes.** One save is two writes:
+  1. Write the latest good save that the page knows under the backup key.
+  2. Write the new save under the name of the game.
+
+  A write is whole or it fails. After write 1, both keys hold the latest good save. After write
+  2, the name holds the new save and the backup holds the one before. A failed write, or a page
+  that closes between the two writes, leaves a good save to read. The first save of a game has
+  no save before it, so it is one write. A browser's write is one IndexedDB transaction.
+
+- **At the start.** `run` reads the latest save. With one that the game reads, the run starts
+  from it. With none, the run starts from `start` of the config, as it did.
+- **A save that cannot be read.** A text that is not JSON, or that the start refuses, is not
+  read. `run` then tries the backup. With no backup that reads, `run` starts from `start`.
+  Each text that was not read is copied under `Factory.unreadable` or
+  `Factory.backup.unreadable`. When that key holds another text, the copy goes under the key
+  with `.2`, `.3` and so on. The engine never deletes a save. When a copy fails, or the store
+  cannot be read, the page writes no save in that run.
+- **What the page says.** `run` calls `onNotice(message)` with one sentence about a save that
+  was not read, and about a write that failed in a page that went out of view. The loop goes on.
+  The page of a build with `--readout` shows the sentence before the numbers. Without
+  `--readout`, the page writes it to the console.
+- **A new run.** `game.restart()` starts a new run on the same device, from the first rows, the
+  values and the seed that the page started with (the config's `start`). It writes the new
+  state over the save, and the run before becomes the backup. The picture and the loop go on.
+  The arrays of the run before stay on the device until the game is disposed.
+- **The readout.** The line shows `at tick N`: the tick the game is at. A page that was opened
+  again shows the tick of its save.
+
 ## The design in short
 
 - An agent makes the game. Each thing the engine does is text the agent can read.

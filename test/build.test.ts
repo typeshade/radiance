@@ -1,5 +1,6 @@
 // Verifies: Design 0109.2
 // Verifies: Design 0109.3
+// Verifies: Design 0112.3
 //
 // The build of a project (design record 0109): the page's two files and the size of a page.
 // The build itself runs in the harness, which has a browser.
@@ -35,6 +36,7 @@ test('the build writes the entry of the page, with the level and the seed of the
       'const seed = 1;',
       'void run(Game, {',
       '  seed,',
+      '  game: "Factory",',
       '  canvas,',
       '  rows: level.rows,',
       '  values: level.values,',
@@ -52,6 +54,8 @@ test('a page with no seed takes one from the clock, and the hook is there only w
   const hooked = pageFiles('/games/factory', CONFIG, { hook: true }).main;
   expect(hooked).toContain('(globalThis as { game?: unknown }).game = game;');
   expect(hooked).toContain("const manual = new URLSearchParams(location.search).has('manual');");
+  expect(hooked).toContain('(globalThis as { runFrom?: unknown }).runFrom = (from: Save) =>');
+  expect(plain).not.toContain('runFrom');
 });
 
 test('the page is one canvas, with the name of the config or of the directory as its title', () => {
@@ -139,4 +143,30 @@ test('the page of a game is at one address, the one that Access covers', () => {
   expect(config.routes).toEqual([{ pattern: 'game.typeshade.dev', custom_domain: true }]);
   // Static assets only: no code runs on the host (D7).
   expect(config.main).toBeUndefined();
+});
+
+test('the entry of a game with save in its config gives run a store and the version, and no other entry does', () => {
+  const kept = pageFiles('/games/factory', { ...CONFIG, save: { version: 2 } }).main;
+  expect(kept).toContain("import { browserStore, run } from 'radiance/page';");
+  expect(kept).toContain('  version: 2,');
+  expect(kept).toContain('  store: browserStore(),');
+  expect(kept).toContain('  onNotice: (message: string) => console.warn(message),');
+  // The name of the game is the key of the save.
+  expect(kept).toContain('  game: "Factory",');
+  const none = pageFiles('/games/factory', CONFIG).main;
+  expect(none).not.toContain('browserStore');
+  expect(none).not.toContain('store');
+  expect(none).not.toContain('version');
+  expect(none).not.toContain('onNotice');
+
+  // With the readout, the notice of the save comes before the numbers.
+  const shown = pageFiles('/games/factory', { ...CONFIG, save: { version: 1 } }, { readout: true });
+  expect(shown.main).toContain(
+    "import { browserStore, readout, run, type FrameStats } from 'radiance/page';",
+  );
+  expect(shown.main).toContain('  onNotice,');
+  expect(shown.main).toContain(
+    "  line.textContent = notice === '' ? text(stats) : `${notice}  ${text(stats)}`;",
+  );
+  expect(pageFiles('/games/factory', CONFIG, { readout: true }).main).not.toContain('onNotice');
 });

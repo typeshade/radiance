@@ -49,3 +49,18 @@ test('README: a project loads, runs and prints its dump', async () => {
   expect((await game.dump()).split('\n')[0]).toBe('tick 1  seed 7  hz 60');
   await game.dispose();
 });
+
+test('README: a save of a run, and a run from the save, give the dump of one long run', async () => {
+  const { load } = await import('../src/test.ts');
+  const game = await load('examples/factory', { seed: 1, level: 'demo' });
+  await game.step(50);
+  const save = await game.save();
+  await game.dispose();
+
+  const again = await load('examples/factory', { from: save });
+  await again.step(50);
+  const whole = await load('examples/factory', { seed: 1, level: 'demo' });
+  await whole.step(100);
+  expect(await again.dump()).toBe(await whole.dump());
+  await Promise.all([again.dispose(), whole.dispose()]);
+});

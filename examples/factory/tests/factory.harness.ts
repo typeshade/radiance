@@ -263,6 +263,205 @@ test('the cells the GPU computes equal the cells of the CPU tier, with an input 
   await cpu.dispose();
 });
 
+// Verifies: Design 0112.2
+test('50 ticks, a save, a start from it and 50 ticks give the cells of 100 ticks, on the GPU and on the CPU tier', async () => {
+  const view = await browser.newPage({ viewport: { width: 800, height: 480 } });
+  try {
+    await view.goto('http://localhost:4317/?manual');
+    await view.evaluate(async () => void (await (globalThis as any).game));
+    // The page runs 50 ticks and saves. The save is JSON text, as the page would keep it.
+    const saved = await view.evaluate(async () => {
+      const game = await (globalThis as any).game;
+      await game.step(50);
+      return JSON.stringify(await game.save());
+    });
+    // The same page goes on with a drag of a belt and 50 ticks: the run that never stopped.
+    await view.mouse.move(3 * 80 + 40, 3 * 80 + 40);
+    await view.mouse.down();
+    await view.mouse.move(3 * 80 + 40, 2 * 80 + 40, { steps: 4 });
+    await view.mouse.up();
+    const whole = await view.evaluate(async () => {
+      const game = await (globalThis as any).game;
+      await game.step(50);
+      return JSON.stringify(await game.tables.cells.read());
+    });
+    // A second run in the same page starts from the save, and gets the same belt as an input.
+    const second = await view.evaluate(async (text) => {
+      const game = await (globalThis as any).runFrom(JSON.parse(text));
+      const start = game.tick;
+      game.tables.cells.input(3 * 10 + 3, { kind: 1, belt: { dir: 0, item: 0, wait: 0 } });
+      await game.step(50);
+      return { start, tier: game.tier, cells: JSON.stringify(await game.tables.cells.read()) };
+    }, saved);
+    expect([second.start, second.tier]).toEqual([50, 'webgpu']);
+    expect(JSON.parse(second.cells)).toEqual(JSON.parse(whole));
+
+    // The CPU tier starts from the save that the GPU wrote, and from no save at all.
+    const cpu = await load<Game>('examples/factory', { from: JSON.parse(saved) });
+    putCell(cpu, 3, 3, BELT, 0);
+    await cpu.step(50);
+    const fresh = await load<Game>('examples/factory', { seed: 1, level: 'demo' });
+    await fresh.step(50);
+    putCell(fresh, 3, 3, BELT, 0);
+    await fresh.step(50);
+    const cells = JSON.parse(JSON.stringify(await fresh.tables.cells.read()));
+    expect(JSON.parse(whole)).toEqual(cells);
+    expect(JSON.parse(JSON.stringify(await cpu.tables.cells.read()))).toEqual(cells);
+    expect(await cpu.dump()).toBe(await fresh.dump());
+    await Promise.all([cpu.dispose(), fresh.dispose()]);
+  } finally {
+    await view.close();
+  }
+});
+
+/** The text that the page's store holds under a key, read from IndexedDB in the page. */
+const stored = (view: Page, key: string) =>
+  view.evaluate(
+    (name) =>
+      new Promise<string | undefined>((resolve, reject) => {
+        const open = indexedDB.open('radiance');
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const db = open.result;
+          const transaction = db.transaction('saves', 'readonly');
+          const request = transaction.objectStore('saves').get(name);
+          transaction.oncomplete = () => {
+            db.close();
+            resolve(request.result);
+          };
+          transaction.onerror = () => reject(transaction.error);
+        };
+      }),
+    key,
+  );
+
+/** Puts text under a key of the page's store. */
+const store = (view: Page, key: string, text: string) =>
+  view.evaluate(
+    ([name, value]) =>
+      new Promise<void>((resolve, reject) => {
+        const open = indexedDB.open('radiance');
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const db = open.result;
+          const transaction = db.transaction('saves', 'readwrite');
+          transaction.objectStore('saves').put(value, name);
+          transaction.oncomplete = () => {
+            db.close();
+            resolve();
+          };
+          transaction.onerror = () => reject(transaction.error);
+        };
+      }),
+    [key, text] as const,
+  );
+
+/** The cells of a page's game, read from the device. */
+const cellsOf = (view: Page) =>
+  view.evaluate(async () => (await (globalThis as any).game).tables.cells.read());
+
+// Verifies: Design 0112.3
+test('a page that is opened again goes on from its tick, with the same cells', async () => {
+  // Each check that depends on a save makes a context of its own. A context has its own
+  // IndexedDB, so a save of an earlier check is not there, and the shared page keeps its own.
+  const context = await browser.newContext({ viewport: { width: 800, height: 480 } });
+  try {
+    const first = await context.newPage();
+    await first.goto('http://localhost:4317/?manual');
+    await first.evaluate(async () => void (await (globalThis as any).game));
+    expect(await first.evaluate(async () => (await (globalThis as any).game).tick)).toBe(0);
+    const step = (n: number) =>
+      first.evaluate(async (ticks) => {
+        const game = await (globalThis as any).game;
+        await game.step(ticks);
+        await game.wait();
+      }, n);
+    await step(50);
+    await first.mouse.move(3 * 80 + 40, 3 * 80 + 40);
+    await first.mouse.down();
+    await first.mouse.move(3 * 80 + 40, 2 * 80 + 40, { steps: 4 });
+    await first.mouse.up();
+    // The first of these ticks applies the belt, which waits for the next tick: a save has no
+    // input that waits.
+    await step(20);
+    // The page saves as it does when it goes out of view: the same function that the page's
+    // `pagehide` event calls. The write is asynchronous, so the check waits for the key.
+    await first.evaluate(() => window.dispatchEvent(new Event('pagehide')));
+    await expect
+      .poll(async () => JSON.parse((await stored(first, 'Factory')) ?? '{"tick":-1}').tick, {
+        timeout: 20_000,
+      })
+      .toBe(70);
+    await first.close();
+
+    // A new page of the same context, so of the same address, goes on from tick 70.
+    const second = await context.newPage();
+    await second.goto('http://localhost:4317/?manual');
+    await second.evaluate(async () => void (await (globalThis as any).game));
+    expect(await second.evaluate(async () => (await (globalThis as any).game).tick)).toBe(70);
+    const cpu = await load<Game>('examples/factory', { seed: 1, level: 'demo' });
+    await cpu.step(50);
+    putCell(cpu, 3, 3, BELT, 0);
+    await cpu.step(20);
+    expect(await cellsOf(second)).toEqual(
+      JSON.parse(JSON.stringify(await cpu.tables.cells.read())),
+    );
+    // It goes on as the run that never stopped.
+    await second.evaluate(async () => (await (globalThis as any).game).step(30));
+    await cpu.step(30);
+    expect(await cellsOf(second)).toEqual(
+      JSON.parse(JSON.stringify(await cpu.tables.cells.read())),
+    );
+    await cpu.dispose();
+    await second.close();
+  } finally {
+    await context.close();
+  }
+});
+
+// Verifies: Design 0112.3
+test('a second, fresh browser context starts from the level', async () => {
+  const context = await browser.newContext({ viewport: { width: 800, height: 480 } });
+  try {
+    const view = await context.newPage();
+    await view.goto('http://localhost:4317/?manual');
+    await view.evaluate(async () => void (await (globalThis as any).game));
+    expect(await view.evaluate(async () => (await (globalThis as any).game).tick)).toBe(0);
+    expect(await stored(view, 'Factory')).toBeUndefined();
+    const cpu = await load<Game>('examples/factory', { seed: 1, level: 'demo' });
+    expect(await cellsOf(view)).toEqual(JSON.parse(JSON.stringify(await cpu.tables.cells.read())));
+    await cpu.dispose();
+  } finally {
+    await context.close();
+  }
+});
+
+// Verifies: Design 0112.3
+test('a save that cannot be read starts the page from the level, says so on the readout and stays in the store', async () => {
+  const context = await browser.newContext({ viewport: { width: 800, height: 480 } });
+  try {
+    const view = await context.newPage();
+    await view.goto('http://localhost:4317/?manual');
+    await view.evaluate(async () => void (await (globalThis as any).game));
+    await store(view, 'Factory', 'not a save');
+    await view.goto('http://localhost:4317/');
+    const line = view.locator('#readout');
+    await expect
+      .poll(() => line.textContent(), { timeout: 20_000 })
+      .toContain('The page started from the level.');
+    const text = (await line.textContent())!;
+    console.log(`factory: with a save that cannot be read the readout says "${text}"`);
+    expect(text).toMatch(
+      /^The save under the key "Factory" is not a save that this game reads \(.+\)\. The page started from the level\. The page kept each unread save under the key "Factory\.unreadable"\./,
+    );
+    // The bytes are still in the store, and a copy is under the other key.
+    expect(await stored(view, 'Factory')).toBe('not a save');
+    expect(await stored(view, 'Factory.unreadable')).toBe('not a save');
+  } finally {
+    await context.close();
+  }
+});
+
 test('the picture shows the cells', async () => {
   await frame(page);
   // A screenshot of the page is what a person sees. The page decodes it to read a pixel.
@@ -555,7 +754,9 @@ test('the readout shows the tier, three numbers and the commit', async () => {
     const line = view.locator('#readout');
     await expect
       .poll(() => line.textContent(), { timeout: 20_000 })
-      .toMatch(/^webgpu  tick \d+\.\d ms  frame \d+\.\d ms  \d+(\.\d)? tick\/frame  abc1234$/);
+      .toMatch(
+        /^webgpu  at tick \d+  tick \d+\.\d ms  frame \d+\.\d ms  \d+(\.\d)? tick\/frame  abc1234$/,
+      );
     console.log(`factory: the readout says "${await line.textContent()}"`);
   } finally {
     await view.close();
