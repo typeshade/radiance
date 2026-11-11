@@ -5,3 +5,4 @@ export { createWorld, World } from './world.ts';
 export type { Row, Table, WorldOptions } from './world.ts';
 export { formatNumber, formatValue } from './dump.ts';
 export type { Snapshot, SnapshotValue } from './dump.ts';
+export type { AppliedInput, InputValue, RunRecord } from './input.ts';
