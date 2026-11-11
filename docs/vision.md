@@ -1,7 +1,7 @@
 # Radiance: the design of the game engine
 
 > **Status:** design, written 2026-11-11. Nothing in this document is implemented. The owner
-> decided D1 to D13 and accepted U1 to U9 on 2026-11-11. Every claim about the compiler names
+> decided D1 to D14 and accepted U1 to U9 on 2026-11-11. Every claim about the compiler names
 > a section of its surface document (`docs/use-typeshade-surface.md`, "§"), a rule of its design
 > rules (`docs/language-design.md`, "Rule"), or a change proposal (`changes/`, "change NNNN").
 > The compiler was read at `typeshade/typeshade` `main` `da311c32`. The names in the sketches are
@@ -58,6 +58,7 @@ this design.
 | D11 | A game's tick is a function of a `"use typeshade"` file. The compiler joins it at build time.        |
 | D12 | A shipped game runs on WebGPU first, and on WebGL2 where there is no WebGPU.                         |
 | D13 | Radiance is the framework a game is implemented on. It owns memory, the runtime and the device.      |
+| D14 | The engine is a class that a game extends. The framework manages the project and its files.          |
 
 **D9, in the owner's words (2026-11-11):** "This codebase is yours: what it's for and how it's
 built are your call, and you'll keep building on it."
@@ -139,23 +140,70 @@ What D13 means for the work:
 - The work up to design record 0107 took its features from two reference games. A later
   record places each one in a layer, or removes it.
 
+**D14, in the owner's words (2026-11-11):** "그냥 엔진이 클래스면요? 잘 알려진 게임엔진이 런타임겸
+같이 실행되도록하는 방식, 다만 구현 자체는 데코레이터 등 구현 자체는 편하게 가능하도록 하고싶어요".
+Then: "저 shade.ts 파일 관리까지 가능할 것 같은데 언리얼이나, 유니티 보면 관리가 체계적이잖아요". Then:
+"vite 같은 성격으로 만들면 좋을 것 같네요. 좀 더 예를 들자면, nextjs, nestjs 느낌이려나요".
+
+What D14 means for the work:
+
+- **The engine is a class.** A game is a class that extends it. The class says the game's
+  state, its systems, its inputs and its drawing. The engine is also the runtime: it runs with
+  the game, in a test and in a shipped game (D13).
+- **Writing a game is easy.** A declaration is a field, a decorator or a list. The game writes
+  no code that opens a device, makes a buffer, passes a table to a function or runs a loop.
+- **The framework manages the project.** A project has a fixed shape. It says where an entity,
+  a system, a drawing, a level and a test are. The framework finds each `.shade.ts` file by its
+  place. It writes the files that a tool can write, calls the compiler and builds the package.
+  A file that the framework writes is in one directory, and a person does not change it.
+- **One tool.** The framework has the character of Vite: one configuration file, one command
+  for development with a fast loop, one command for the build. It has the conventions of
+  Next.js, where a file's place says what it is. It has the classes and decorators of NestJS.
+- **The layers.** Each one is for every kind of game (D13):
+
+  | Layer            | What the framework owns                                                   |
+  | ---------------- | ------------------------------------------------------------------------- |
+  | Device           | Opening, WebGPU first and WebGL2 after (D12), loss and recovery           |
+  | Memory           | Each table, scratch buffer and texture: its size, its release, its budget |
+  | Runtime          | The start, the fixed tick, the frames, a pause, the inputs as data        |
+  | Drawing          | The passes, the cameras, 2D and 3D (D2)                                   |
+  | Assets and saves | Assets from code first (U4), sound, a save and a load                     |
+  | Tools            | The dump, the replay, the tests, `explain`                                |
+  | Project          | The shape of a project, the files it writes, the compiler, the build      |
+
+- **The compiler's work stays the compiler's.** The framework places, writes and compiles
+  `.shade.ts` files. It does not change the language. GPU code is still a function or a class
+  of a `"use typeshade"` file (D11).
+- D14 changes U1. The tree of nodes is no longer what the author writes first. Section 6 keeps
+  its text and names the change.
+
+The names in this sketch are not decided. A design record decides them.
+
+```ts
+export class Dungeon extends Engine {
+  actors = pool(Actor, 16);
+  tiles = grid(Tile);
+  systems = [plan, turn, pickup];
+}
+```
+
 ## 3. What the owner accepted
 
 Each row was a working assumption of the first draft. The owner accepted all nine on 2026-11-11.
 The owner's words: "U1~U9 모두 추천대로 진행해주세요". The rest of the document is written on these
 decisions. U9 fixes the kind of shell. The choice of the tool waits on M1 and M4 (section 12).
 
-| Id  | Question                 | Decision                                                                      | Section |
-| --- | ------------------------ | ----------------------------------------------------------------------------- | ------- |
-| U1  | The scene model          | The author writes a tree of nodes. The engine stores and runs tables.         | 6       |
-| U2  | Where game logic runs    | Changed by D12: on the GPU tier. The CPU tier is the reference of the tests.  | 7       |
-| U3  | The simulation clock     | A fixed tick, and a deterministic result for one seed and one input record.   | 7       |
-| U4  | Physics                  | Phase 1 is collision and queries, written in TypeShade. Phase 2 waits on D8.  | 8       |
-| U5  | Assets                   | Procedural first: shapes as distance fields, sound as TypeAudio patches.      | 9       |
-| U6  | The first vertical slice | A 2D top-down automation game.                                                | 14      |
-| U7  | The first store          | Android first. iOS follows, built on a macOS runner.                          | 10      |
-| U8  | The repository           | This repository. The first model's tree stays reachable on a `legacy` branch. | 15      |
-| U9  | The native shell         | A WebView shell of the Capacitor kind. No shell is chosen.                    | 10      |
+| Id  | Question                 | Decision                                                                          | Section |
+| --- | ------------------------ | --------------------------------------------------------------------------------- | ------- |
+| U1  | The scene model          | Changed by D14: a game is a class that extends the engine, and it runs as tables. | 6       |
+| U2  | Where game logic runs    | Changed by D12: on the GPU tier. The CPU tier is the reference of the tests.      | 7       |
+| U3  | The simulation clock     | A fixed tick, and a deterministic result for one seed and one input record.       | 7       |
+| U4  | Physics                  | Phase 1 is collision and queries, written in TypeShade. Phase 2 waits on D8.      | 8       |
+| U5  | Assets                   | Procedural first: shapes as distance fields, sound as TypeAudio patches.          | 9       |
+| U6  | The first vertical slice | A 2D top-down automation game.                                                    | 14      |
+| U7  | The first store          | Android first. iOS follows, built on a macOS runner.                              | 10      |
+| U8  | The repository           | This repository. The first model's tree stays reachable on a `legacy` branch.     | 15      |
+| U9  | The native shell         | A WebView shell of the Capacitor kind. No shell is chosen.                        | 10      |
 
 ## 4. The moments
 
@@ -294,6 +342,10 @@ The compiler's eight principles (`docs/dx.md`) are inherited whole. These are th
 | Engine vocabulary in the library, none in the language | The question of `docs/dx.md` principle 7, unchanged                             |
 
 ## 6. The scene model: written as nodes, run as tables
+
+> **Changed by D14 (2026-11-11).** A game is a class that extends the engine. Its state is
+> tables, and its rules are systems. The tree of nodes below stays as a way to write the parts
+> of a game that have a hierarchy. The text below is the design as U1 made it.
 
 Two questions are separate. What does the author write? How does the engine store and run it?
 
@@ -494,7 +546,7 @@ are the first model. The owner's words of 2026-11-11: "Radiance는 초기모델�
 - Draft written 2026-11-11 in a Claude Code session with the owner, in Korean.
 - Baselines read: `typeshade/radiance` `main` `3e4efb3f`. `typeshade/typeshade` `main`
   `da311c32`. TypeAudio's `docs/vision.md` is the model for this document's shape.
-- Decisions D1 to D13 are the owner's. D13 changed D10 on 2026-11-11. The owner accepted U1 to U9 on 2026-11-11. D12 changed
+- Decisions D1 to D14 are the owner's. D13 changed D10 and D14 changed U1 on 2026-11-11. The owner accepted U1 to U9 on 2026-11-11. D12 changed
   U2 on the same day.
 - Design records 0100 and 0101 are implemented. Their world runs on the CPU tier. Since D12 it
   is the reference and the tool of the tests, and it is not what a shipped game runs.

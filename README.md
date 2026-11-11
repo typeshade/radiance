@@ -111,7 +111,7 @@ bun run harness         # the page in headless Chromium, held to the CPU tier
 
 - An agent makes the game. Each thing the engine does is text the agent can read.
 - A scene is TypeScript code. A node's behaviour is a class in a `"use typeshade"` file.
-- The author writes a tree of nodes. The engine stores and runs tables.
+- A game is a class that extends the engine. The framework manages the project and its files.
 - The simulation runs on a fixed tick. A game is a function of a seed and its inputs.
 - The engine is the framework a game is written on. It owns the device, the memory and the
   runtime. A build gives a small result.
