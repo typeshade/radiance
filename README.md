@@ -202,6 +202,7 @@ its commits, and those commits stay reachable.
 | `docs/design/0109-*.md` | Design record 0109: the build                                                                      |
 | `docs/design/0110-*.md` | Design record 0110: a build the owner opens on a phone                                             |
 | `docs/design/0111-*.md` | Design record 0111: layers drawn from tables                                                       |
+| `docs/design/0112-*.md` | Design record 0112: a save of a run                                                                |
 | `examples/factory/`     | The reference game, and what was hard to write in it                                               |
 | `examples/dungeon/`     | The second reference game, a roguelike, and what was hard in it                                    |
 | `src/`                  | The engine: the runtime `Engine`, the project reader, the simulation inside it, the world of nodes |
