@@ -213,8 +213,7 @@ The snapshot is the base of a save. Loading a snapshot into a world is not in th
   the seed and gives it to nothing yet. Random numbers for a class are a later record.
 - **Text first (D4).** The dump is the agent's view of the game. It comes before any picture.
 - **A source tarball for the pin.** It is what the three sibling libraries use, and it needs no
-  submodule. The first model's submodule made each checkout and each CI job fetch a second
-  repository.
+  submodule. The first model's submodule added a second repository to each checkout and each CI job.
 
 ## What is not in this record
 
