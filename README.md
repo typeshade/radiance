@@ -113,7 +113,7 @@ its commits, and those commits stay reachable.
 ## The compiler pin
 
 The compiler is pinned as a source tarball: the `typeshade` entry of `dependencies` in
-`package.json`. The pin is commit `da311c32`. Design record 0100 (section 1) holds the decision.
+`package.json`. The pin is commit `6d6a979`. Design record 0100 (section 1) holds the decision.
 
 ## Licence
 
