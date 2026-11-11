@@ -185,7 +185,17 @@ The agent made these decisions under D9. The owner can change each one.
   `https://game.typeshade.dev/` with no login got a redirect to the Access login. The owner
   opened the address on a phone and said: "잘 나오네요". The owner gave no device, system version
   or number, so this is no measurement of `docs/vision.md` (section 12).
+  The owner then sent a picture of the page, taken on 2026-11-11: an iPhone, Safari, the page
+  upright, commit `ee0425f`. The readout said `webgpu  tick 4.1 ms  frame 16.6 ms  1 tick/frame`.
+  The owner gave no model and no system version. The level is 10 by 6 cells.
 - **Deviations.**
+  - Section 3 says that the canvas fills the screen. On the owner's iPhone the canvas reached
+    under the bar of Safari, and the bar hid the last row of cells and stood over the readout.
+    The canvas now has the height that the browser leaves to the page, and it follows a change
+    of its place. Disposition: closed by the pull request that records this line.
+  - The picture is stretched on an upright phone: a cell is taller than it is wide. The game's
+    own drawing fills the canvas with the grid. Disposition: open. The drawing layer gives a
+    game a view that keeps the shape of a cell.
   - Section 4 said that no file holds the domain, and that the workflow reads the account
     from a secret. `wrangler.jsonc` holds both, as the sibling repositories do, and the workflow
     reads one secret. The owner named the address. Disposition: made part of this record.
