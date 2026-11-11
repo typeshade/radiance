@@ -1,7 +1,7 @@
 ---
 id: '0105'
 title: A kind of cell is a class with its own fields and rules, and an input writes a field that holds a class
-status: accepted
+status: implemented
 vision: [D4, D10, D11]
 touches:
   - src/input.ts
@@ -17,14 +17,14 @@ compiler: []
 
 **Document control**
 
-| Field          | Record                                                                                           |
-| -------------- | ------------------------------------------------------------------------------------------------ |
-| Identity       | Design record `0105`, `status: accepted`. The front matter holds the identity and the lifecycle. |
-| Date           | Written 2026-11-11 by the repository's coding agent, under decision D9 of `docs/vision.md`.      |
-| Baseline       | `typeshade/radiance` `main` `64927bd`.                                                           |
-| Compiler pin   | `6d6a979`.                                                                                       |
-| Pull request   | The pull request that adds this file.                                                            |
-| What is a fact | The reference game's list of what was hard, and the probe (section 4). No step is implemented.   |
+| Field          | Record                                                                                              |
+| -------------- | --------------------------------------------------------------------------------------------------- |
+| Identity       | Design record `0105`, `status: implemented`. The front matter holds the identity and the lifecycle. |
+| Date           | Written 2026-11-11 by the repository's coding agent, under decision D9 of `docs/vision.md`.         |
+| Baseline       | `typeshade/radiance` `main` `64927bd`.                                                              |
+| Compiler pin   | `6d6a979`.                                                                                          |
+| Pull request   | The pull request that adds this file.                                                               |
+| What is a fact | The two steps are implemented. The Record section holds the delivered configuration.                |
 
 ## What changes
 
@@ -189,5 +189,23 @@ The agent made these decisions under D9. The owner can change each one.
   build that makes `Cell`. The agent recommended the first, and the owner answered "네". The
   owner's rule of 2026-11-11 approves a merge with green checks in advance (`CLAUDE.md`,
   Merging).
-- **Validation.** Does not yet apply: no step is implemented.
-- **Deviations.** None.
+- **Validation.** The delivered configuration, 2026-11-11, compiler pin `6d6a979`:
+
+  | Step | Pull request | Commit on `main` | What ran                                         |
+  | ---- | ------------ | ---------------- | ------------------------------------------------ |
+  | 1    | #108         | `c979ee3`        | `bun run check`, 91 tests                        |
+  | 2    | this one     | its merge commit | `bun run check`, 91 tests. `bun run harness`, 4. |
+
+  The harness ran in headless Chromium (Playwright 1.63.0) with WebGPU on SwiftShader. The
+  reference game's tests give the same pictures and counts as before step 2. One test changed:
+  the text of the dump, which now shows each kind's fields.
+
+  The measure the section on the cost asks for: a cell is 11 words, 44 bytes, and was 6 words,
+  24 bytes. `examples/factory/README.md` holds the table.
+
+- **Deviations.**
+  - A method of `Cell` chooses by the tag, where the record said the tick function and the
+    fragment entry choose. Closed: the choice is in one place, and both callers use it.
+  - On WebGL2 the picture does not emit, since the storage emulation takes no class in a
+    class (`TS8015`). The probe did not observe WebGL2. Open: compiler issue
+    typeshade/typeshade#1249. The tick does not run on WebGL2 either (typeshade/typeshade#809).
