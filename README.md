@@ -3,10 +3,10 @@
 A game engine written in [TypeShade](https://typeshade.dev), made for development by a coding
 agent.
 
-**Status: early.** Design records 0100 to 0108 are implemented. A game is a project of a fixed
-shape. The engine reads the project, writes the game's class and runs it: it opens the device,
-owns each array and runs the loop. A test loads the same project on the CPU tier. The engine
-has no drawing layer of its own yet. [`docs/vision.md`](docs/vision.md) is the design: the
+**Status: early.** Design records 0100 to 0110 are implemented, and 0111 is in progress. A game
+is a project of a fixed shape. The engine reads the project, writes the game's class and runs
+it: it opens the device, owns each array and runs the loop. A test loads the same project on the
+CPU tier. A game draws in layers, on WebGPU. [`docs/vision.md`](docs/vision.md) is the design: the
 claim, the owner's decisions, what an agent writes and reads, the tick, and what is not
 promised.
 
@@ -91,9 +91,10 @@ await game.dispose();
 `bun bin/radiance.ts sync examples/dungeon` writes `.radiance/game.ts`, the class of the game.
 A table of the game is `game.tables.actors`.
 
-The factory also runs in a browser. `run` of `radiance/page` opens a WebGPU device, runs the
-loop, gives the pointer to the functions of the project's `input/` and calls its `draw/draw.ts`
-for each frame:
+The factory also runs in a browser. `run` of `radiance/page` opens a device, runs the loop,
+gives the pointer to the functions of the project's `input/` and draws each frame. A game with
+layers draws its layers (next section). A game with a `draw/draw.ts` and no `draw` in its
+config calls that function for each frame:
 
 ```ts
 import { run } from 'radiance/page';
@@ -107,6 +108,46 @@ bun run build:factory   # the page, in examples/factory/dist
 bun bin/radiance.ts build --readout examples/factory   # the same, with the tier, the times and the commit on the page
 bun run harness         # the page in headless Chromium, held to the CPU tier
 ```
+
+## A layer
+
+A game draws in layers (design record 0111). A layer is a file of `draw/`. It draws one square
+for each row of one table, and the table stays on the device. The game writes no host code for
+drawing. The config gives the order of the layers and the view:
+
+```ts
+export default defineGame({
+  tick: ['tick'],
+  values: ['width', 'height'],
+  draw: ['cells'],
+  view: { fit: [10, 6], clear: [0.03, 0.03, 0.04] },
+});
+```
+
+- `draw` lists the layers from the back to the front. Each name is a file `draw/<name>.shade.ts`.
+- `view.fit` is a rectangle of the world, `[width, height]`, with its first corner at the
+  origin. The x axis goes right, and the y axis goes down.
+- The engine gives the layers a `view` matrix. The whole rectangle is on the screen, in the
+  middle, as large as it can be. One unit has the same length on both axes.
+- `view.clear` is the colour of the part of the screen that the rectangle does not cover.
+- `game.toWorld({ x, y })` turns a place of the screen, from 0 to 1 as the pointer gives it,
+  into a place of the world. A drag in `input/` uses it.
+
+A layer exports one `@vertex` entry and one `@fragment` entry. The vertex entry runs six times
+for each row, for the two triangles of a square. The engine binds each `declare const` of the
+layer by its name:
+
+| Name                             | What the engine gives                                        |
+| -------------------------------- | ------------------------------------------------------------ |
+| The name of a table or a scratch | The table on the device. A layer names exactly one table.    |
+| `view`                           | `uniform<mat4x4>`: a place of the world to a place on screen |
+| `tick`, `seed`, `dt`             | The engine's values, as a system gets them                   |
+| A name of the config's `values`  | That value                                                   |
+
+`radiance sync` refuses any other name, and it names the names that the engine knows. A layer
+changes no table. A replay does not run it. A layer runs on WebGPU only at this compiler pin.
+A browser with no WebGPU gets an error that names the layer and the compiler issues. The CPU
+tier runs the ticks and draws nothing.
 
 ## The design in short
 
