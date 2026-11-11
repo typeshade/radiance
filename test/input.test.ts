@@ -83,7 +83,7 @@ test('rule 4: a value is a finite number, a boolean, or an array of these', () =
   expect(probe?.on).toBe(false);
   expect(Array.from(probe?.pos ?? [])).toEqual([3, 4]);
   expect(() => loose('root/Mover#0', { x: NaN })).toThrow(
-    'World.input(): the value of "x" at "root/Mover#0" is NaN. An input holds a finite number, a boolean, or an array of these.',
+    'World.input(): the value of "x" at "root/Mover#0" is NaN. An input holds a finite number, a boolean, an array of these, or an object for a field that holds an object.',
   );
   expect(() => loose('root/Mover#0', { x: '1' })).toThrow('is "1". An input holds');
   expect(() => loose('root/Mover#0', { x: { a: 1 } })).toThrow('is {"a":1}. An input holds');

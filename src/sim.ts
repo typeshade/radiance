@@ -6,7 +6,7 @@
 import type { Device, Resident } from 'typeshade/runtime';
 
 import { formatValue, type SnapshotValue } from './dump.ts';
-import { checkFields, type InputValue } from './input.ts';
+import { applyFields, checkFields, type InputObject } from './input.ts';
 
 /** The first rows of each table, by name. A row is an instance of a class. */
 export type SimTables = Record<string, object[]>;
@@ -51,7 +51,7 @@ export interface SimInput {
   readonly tick: number;
   readonly table: string;
   readonly index: number;
-  readonly fields: { readonly [field: string]: InputValue };
+  readonly fields: InputObject;
 }
 
 /** The record of a run of a simulation, version 1. */
@@ -120,12 +120,9 @@ export class Sim<T extends SimTables, B extends keyof T = never> {
   readonly #device: Device;
   readonly #read = new Map<string, Resident<object[]>>();
   readonly #write = new Map<string, Resident<object[]>>();
-  /** What the check of an input needs of each table: its row count, its fields, its class. */
-  readonly #shape = new Map<
-    string,
-    { length: number; fields: readonly string[]; className: string }
-  >();
-  #queue: { table: string; index: number; fields: { readonly [field: string]: InputValue } }[] = [];
+  /** What the check of an input needs of each table: its row count, a copy of a row, its class. */
+  readonly #shape = new Map<string, { length: number; sample: object; className: string }>();
+  #queue: { table: string; index: number; fields: InputObject }[] = [];
   readonly #applied: SimInput[] = [];
 
   /** @internal Use `createSim`. */
@@ -172,7 +169,7 @@ export class Sim<T extends SimTables, B extends keyof T = never> {
       const first = rows[0];
       this.#shape.set(name, {
         length: rows.length,
-        fields: Object.freeze(Object.keys(first)),
+        sample: structuredClone(first),
         className: (first as { constructor?: { name?: string } }).constructor?.name || 'the row',
       });
       // The device keeps a copy, so a later change to the caller's rows does not reach it.
@@ -248,9 +245,7 @@ export class Sim<T extends SimTables, B extends keyof T = never> {
             rows.set(input.table, table);
           }
           const row = table[input.index];
-          for (const [field, value] of Object.entries(input.fields)) {
-            row[field] = Array.isArray(value) ? structuredClone(value) : value;
-          }
+          applyFields(row, input.fields);
           this.#applied.push(Object.freeze({ tick: this.#tick, ...input }));
         }
         for (const [name, table] of rows) this.#read.get(name)!.write(table);
@@ -275,11 +270,7 @@ export class Sim<T extends SimTables, B extends keyof T = never> {
    * now, applies it at the start of the next tick that runs, and records it with that tick. It
    * is the same on each tier.
    */
-  input(
-    table: keyof T & string,
-    index: number,
-    fields: { readonly [field: string]: InputValue },
-  ): void {
+  input(table: keyof T & string, index: number, fields: InputObject): void {
     this.#handle('Sim.input()', table);
     const shape = this.#shape.get(table)!;
     if (!Number.isInteger(index) || index < 0 || index >= shape.length) {
@@ -291,7 +282,7 @@ export class Sim<T extends SimTables, B extends keyof T = never> {
       'Sim.input()',
       `${table}[${index}]`,
       shape.className,
-      shape.fields,
+      shape.sample,
       fields,
     );
     this.#queue.push({ table, index, fields: checked });

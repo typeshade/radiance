@@ -2,7 +2,13 @@
 // tick on the CPU tier. It reads no clock, no random source and no device (invariants 2 and 3).
 
 import { dump, snapshot, type Snapshot } from './dump.ts';
-import { checkFields, type AppliedInput, type InputValue, type RunRecord } from './input.ts';
+import {
+  applyFields,
+  checkFields,
+  type AppliedInput,
+  type InputObject,
+  type RunRecord,
+} from './input.ts';
 import type { NodeClass, Scene, SceneNode } from './node.ts';
 import { nodeSeed } from './seed.ts';
 
@@ -55,7 +61,7 @@ export class World {
   readonly #byClass = new Map<NodeClass, Table>();
   readonly #byPath = new Map<string, object>();
   readonly #classOf = new Map<string, NodeClass>();
-  #queue: { path: string; fields: { readonly [field: string]: InputValue } }[] = [];
+  #queue: { path: string; fields: InputObject }[] = [];
   readonly #applied: AppliedInput[] = [];
 
   /** @internal Use `createWorld`. */
@@ -126,9 +132,7 @@ export class World {
         this.#queue = [];
         for (const input of queue) {
           const instance = this.#byPath.get(input.path) as Record<string, unknown>;
-          for (const [field, value] of Object.entries(input.fields)) {
-            instance[field] = Array.isArray(value) ? structuredClone(value) : value;
-          }
+          applyFields(instance, input.fields);
           this.#applied.push(
             Object.freeze({ tick: this.#tick, path: input.path, fields: input.fields }),
           );
@@ -164,7 +168,7 @@ export class World {
    * Gives the world an input: a write of field values to the node at `path`. The world checks
    * it now, applies it at the start of the next tick that runs, and records it with that tick.
    */
-  input(path: string, fields: { readonly [field: string]: InputValue }): void {
+  input(path: string, fields: InputObject): void {
     const instance = this.#byPath.get(path);
     const cls = this.#classOf.get(path);
     if (instance === undefined || cls === undefined) {
@@ -175,7 +179,7 @@ export class World {
           : `World.input(): the scene holds no node at ${JSON.stringify(path)}. Read the paths in world.dump().`,
       );
     }
-    const checked = checkFields('World.input()', path, cls.name, Object.keys(instance), fields);
+    const checked = checkFields('World.input()', path, cls.name, instance, fields);
     this.#queue.push({ path, fields: checked });
   }
 
