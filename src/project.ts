@@ -5,7 +5,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import type { GameConfig } from './config.ts';
-import { readFunctions, readSystem, readTable } from './facts.ts';
+import { readFunctions, readLayer, readSystem, readTable } from './facts.ts';
 
 /** A table of a project. */
 export interface ProjectTable {
@@ -30,6 +30,20 @@ export interface ProjectSystem {
   readonly args: readonly string[];
 }
 
+/** A layer of a project (design record 0111, section 2), with what the engine gives each name. */
+export interface ProjectLayer {
+  readonly name: string;
+  readonly file: string;
+  /** The name of the `@vertex` entry. */
+  readonly vertex: string;
+  /** The name of the `@fragment` entry. */
+  readonly fragment: string;
+  /** The table the layer draws: one instance for each row. */
+  readonly table: string;
+  /** For each `declare const` of the layer, one expression of the game's class. */
+  readonly bindings: readonly { readonly name: string; readonly expr: string }[];
+}
+
 /** A host function of `input/` that takes an event of the page. */
 export interface ProjectInput {
   /** The event, which is also the function's name. */
@@ -45,6 +59,8 @@ export interface Project {
   readonly systems: readonly ProjectSystem[];
   /** True when the project has `draw/draw.ts`, the host function that draws a frame. */
   readonly draws: boolean;
+  /** The layers of the picture, in the order of the config's `draw`. Empty with `draws`. */
+  readonly layers: readonly ProjectLayer[];
   readonly inputs: readonly ProjectInput[];
 }
 
@@ -66,6 +82,134 @@ function shadeFiles(dir: string, sub: string): string[] {
     }
   }
   return names.filter((name) => name.endsWith(SUFFIX)).map((name) => name.slice(0, -SUFFIX.length));
+}
+
+const LAYER_KINDS = ['storage', 'uniform'];
+
+/** Reads the layers of the config's `draw`, checks their names and says what each name gets. */
+function readLayers(
+  dir: string,
+  config: GameConfig,
+  tables: readonly ProjectTable[],
+  engineNames: readonly string[],
+  draws: boolean,
+  read: (file: string) => string,
+): ProjectLayer[] {
+  const { draw, view } = config;
+  if (draw === undefined) {
+    if (view !== undefined) {
+      throw new TypeError(
+        `radiance.config.ts: the config has "view" and no "draw". A view is for layers. Add "draw: ['<layer>']" with a file of draw/, or remove "view".`,
+      );
+    }
+    return [];
+  }
+  if (draws) {
+    throw new TypeError(
+      `radiance.config.ts: the config has "draw", so the game draws in layers, and the project has draw/draw.ts, the host function of the older way. Remove draw/draw.ts, or remove "draw" from the config.`,
+    );
+  }
+  if (!Array.isArray(draw) || draw.length === 0) {
+    throw new TypeError(
+      `radiance.config.ts: "draw" lists no layer. Give the layers from the back to the front, for example { draw: ['cells'] }.`,
+    );
+  }
+  const fit = view?.fit;
+  if (
+    view === undefined ||
+    !Array.isArray(fit) ||
+    fit.length !== 2 ||
+    !fit.every((n) => typeof n === 'number' && Number.isFinite(n) && n > 0)
+  ) {
+    throw new TypeError(
+      view === undefined
+        ? `radiance.config.ts: the config has "draw" and no "view". Give the rectangle of the world that the screen shows, for example { view: { fit: [10, 6] } }.`
+        : `radiance.config.ts: "view.fit" is ${JSON.stringify(fit)}. Give the width and the height of the rectangle of the world, two numbers above 0, for example { fit: [10, 6] }.`,
+    );
+  }
+  const clear = view.clear;
+  if (
+    clear !== undefined &&
+    (!Array.isArray(clear) ||
+      clear.length !== 3 ||
+      !clear.every((n) => typeof n === 'number' && n >= 0 && n <= 1))
+  ) {
+    throw new TypeError(
+      `radiance.config.ts: "view.clear" is ${JSON.stringify(clear)}. Give a colour, three numbers from 0 to 1, for example { clear: [0.07, 0.07, 0.09] }.`,
+    );
+  }
+  const found = shadeFiles(dir, 'draw');
+  for (const name of draw) {
+    if (!found.includes(name)) {
+      throw new TypeError(
+        `radiance.config.ts: "draw" names the layer "${name}", and draw/ has no ${name}${SUFFIX}. The layers are ${found.join(', ')}.`,
+      );
+    }
+  }
+  const unused = found.filter((name) => !draw.includes(name));
+  if (unused.length > 0) {
+    throw new TypeError(
+      `draw/${unused[0]}${SUFFIX}: the config's "draw" does not name this layer. Add "${unused[0]}" to "draw", or remove the file.`,
+    );
+  }
+  const names = tables.map((table) => table.name);
+  const layers: ProjectLayer[] = [];
+  for (const name of [...new Set(draw)]) {
+    const file = join('draw', name + SUFFIX);
+    const facts = readLayer(file, read(file));
+    const shown = file.split('\\').join('/');
+    for (const [entry, list] of [
+      ['@vertex', facts.vertex],
+      ['@fragment', facts.fragment],
+    ] as const) {
+      if (list.length === 1) continue;
+      throw new TypeError(
+        list.length === 0
+          ? `${shown}: the layer "${name}" has no ${entry} entry. A layer exports one @vertex entry and one @fragment entry, for example "${entry} export function ${entry === '@vertex' ? 'place' : 'paint'}(...)".`
+          : `${shown}: the layer "${name}" has ${list.length} ${entry} entries (${list.join(', ')}). A layer exports one @vertex entry and one @fragment entry.`,
+      );
+    }
+    const bindings: { name: string; expr: string }[] = [];
+    const drawn: string[] = [];
+    for (const { name: binding, kind } of facts.declares) {
+      const table = tables.find((t) => t.name === binding);
+      const wanted = table !== undefined ? 'storage' : 'uniform';
+      if (table === undefined && binding !== 'view' && !engineNames.includes(binding)) {
+        const known = [...names, 'view', ...engineNames];
+        throw new TypeError(
+          `${shown}: the engine knows no value for the name "${binding}" of the layer "${name}". A name is a table, a scratch table, view, ${ENGINE_VALUES.join(', ')}, or a value of the config. The names are ${known.join(', ')}.`,
+        );
+      }
+      if (!LAYER_KINDS.includes(kind) || kind !== wanted) {
+        throw new TypeError(
+          `${shown}: the name "${binding}" of the layer "${name}" is a ${kind} binding. The engine gives ${table !== undefined ? 'a table' : binding === 'view' ? 'the view' : 'a value'} as a ${wanted} binding, for example "declare const ${binding}: ${wanted}<${table !== undefined ? 'array<Row>' : binding === 'view' ? 'mat4x4' : 'u32'}>;".`,
+        );
+      }
+      if (table !== undefined) {
+        drawn.push(binding);
+        bindings.push({ name: binding, expr: `this.tables.${binding}.rows` });
+      } else if (binding === 'view') bindings.push({ name: binding, expr: 'view' });
+      else if (ENGINE_VALUES.includes(binding))
+        bindings.push({ name: binding, expr: `this.${binding}` });
+      else bindings.push({ name: binding, expr: `this.values.${binding}` });
+    }
+    if (drawn.length !== 1) {
+      throw new TypeError(
+        drawn.length === 0
+          ? `${shown}: the layer "${name}" names no table. A layer draws one instance for each row of one table. Declare it, for example "declare const ${names[0] ?? 'cells'}: storage<array<Row>>;". The tables are ${names.join(', ')}.`
+          : `${shown}: the layer "${name}" names ${drawn.length} tables (${drawn.join(', ')}). A layer draws the rows of one table. Name one table, and make one layer for each table.`,
+      );
+    }
+    layers.push({
+      name,
+      file,
+      vertex: facts.vertex[0],
+      fragment: facts.fragment[0],
+      table: drawn[0],
+      bindings,
+    });
+  }
+  return layers;
 }
 
 /** Reads a project: its tables, its systems and what each parameter of a system gets. */
@@ -156,8 +300,10 @@ export function readProject(dir: string, config: GameConfig): Project {
     );
   }
 
-  // The drawing: one host function `draw(game)` in draw/draw.ts, when the game draws.
+  // The drawing: layers in draw/, when the config has "draw" (design record 0111), or one host
+  // function `draw(game)` in draw/draw.ts, when the game draws as it did before.
   const draws = existsSync(join(dir, DRAW_FILE));
+  const layers = readLayers(dir, config, tables, ENGINE_VALUES.concat(values), draws, read);
   if (draws && !readFunctions(DRAW_FILE, read(DRAW_FILE)).includes('draw')) {
     throw new TypeError(
       `${DRAW_FILE}: the file exports no function "draw". Export the function that draws one frame: "export function draw(game: Game) { ... }".`,
@@ -184,8 +330,11 @@ export function readProject(dir: string, config: GameConfig): Project {
       inputs.push({ event, file });
     }
   }
-  return { dir, config, tables, systems, draws, inputs };
+  return { dir, config, tables, systems, draws, layers, inputs };
 }
+
+/** The name that `.radiance/game.ts` gives a layer's program. No other name has the prefix. */
+const layerName = (layer: ProjectLayer) => `layer_${layer.name.replace(/\W/g, '_')}`;
 
 /** The text of `.radiance/game.ts`: the class of the game, as a person could write it. */
 export function writeGame(project: Project): string {
@@ -201,6 +350,9 @@ export function writeGame(project: Project): string {
   }
   for (const sys of project.systems) {
     lines.push(`import { ${sys.name} } from '${up(sys.file)}';`);
+  }
+  for (const layer of project.layers) {
+    lines.push(`import ${layerName(layer)} from '${up(layer.file)}';`);
   }
   if (project.draws) lines.push(`import { draw } from '${up(DRAW_FILE)}';`);
   for (const file of new Set(project.inputs.map((item) => item.file))) {
@@ -247,6 +399,29 @@ export function writeGame(project: Project): string {
       ),
     ].sort();
     lines[3] = `import { Engine, ${types.map((t) => `type ${t}`).join(', ')} } from 'radiance';`;
+  }
+  if (project.layers.length > 0) {
+    const { fit, clear } = project.config.view!;
+    lines.push('', '  override readonly layers = [');
+    for (const layer of project.layers) {
+      const bound = layer.bindings.map((b) =>
+        b.name === b.expr ? b.name : `${b.name}: ${b.expr}`,
+      );
+      lines.push(
+        `    // ${layer.file.split('\\').join('/')}`,
+        '    {',
+        `      name: '${layer.name}',`,
+        `      program: ${layerName(layer)},`,
+        `      vertex: '${layer.vertex}',`,
+        `      fragment: '${layer.fragment}',`,
+        `      rows: this.tables.${layer.table},`,
+        `      bind: (view: readonly number[]) => ({ ${bound.join(', ')} }),`,
+        '    },',
+      );
+    }
+    lines.push('  ];', '');
+    const colour = clear === undefined ? '' : `, clear: [${clear.join(', ')}]`;
+    lines.push(`  override readonly view = { fit: [${fit.join(', ')}]${colour} } as const;`);
   }
   if (project.draws) {
     lines.push(

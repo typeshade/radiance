@@ -32,11 +32,11 @@ E>>>v
 | `kinds.shade.ts`        | 127   | The classes `Belt`, `Source` and `Machine`: the fields, the rules and the colour of each kind |
 | `state/cells.shade.ts`  | 44    | The class `Cell`, the one table of the game                                                   |
 | `systems/tick.shade.ts` | 73    | `tick(cellsNext, cells, width, height)`, the one step of a tick                               |
-| `draw/`                 | 49    | The fragment entry that draws the cells, and the host function that gives it the table        |
-| `input/pointer.ts`      | 31    | The pointer: a drag puts belts                                                                |
+| `draw/cells.shade.ts`   | 36    | The one layer: a square for each row of `cells`, coloured by `Cell.color`                     |
+| `input/pointer.ts`      | 33    | The pointer: a drag puts belts                                                                |
 | `cells.ts`, `levels/`   | 126   | Host code: a level from text, the factory as text, the input that puts a cell, the counts     |
-| `radiance.config.ts`    | 8     | The order of a tick and the values                                                            |
-| `tests/`                | 256   | Eight tests on the CPU tier, and four checks in a browser                                     |
+| `radiance.config.ts`    | 15    | The order of a tick, the values, the layer and the view                                       |
+| `tests/`                | 580   | Eight tests on the CPU tier, and twelve checks in a browser                                   |
 
 ## What was observed
 
@@ -487,3 +487,70 @@ first script, since the config does not ask for `fuse`. The compiler's runtime i
 the page. `typeshade/typeshade` issue #1259 asks for a runtime with no CPU tier.
 
 The browser check drives the page as a player does: a drag of the mouse puts the belts.
+
+## Layers drawn from tables (design record 0111)
+
+The game drew with one host function, `draw/draw.ts`. It called one fragment entry that filled
+the canvas and found the cell of each pixel. The picture took the shape of the canvas, so on an
+upright phone a cell was taller than it was wide. The game now has one layer, and the engine
+gives the layer a view.
+
+Before, two files held the drawing (49 lines, 14 of them host code):
+
+```ts
+// draw/draw.ts
+export function draw(game: Game) {
+  const canvas = game.surface as HTMLCanvasElement;
+  const { width, height } = game.values;
+  return picture(canvas, {
+    cells: game.tables.cells.rows,
+    view: { width, height, size: [canvas.width, canvas.height] },
+  });
+}
+```
+
+After, one file holds the drawing (36 lines, no host code), and the config names it:
+
+```ts
+// radiance.config.ts
+draw: ['cells'],
+view: { fit: [10, 6], clear: [0.03, 0.03, 0.04] },
+```
+
+```ts
+// draw/cells.shade.ts
+@vertex
+export function place(corner: builtin<"vertex_index">, row: builtin<"instance_index">): Corner {
+  // ...six corners for the two triangles of a square...
+  const cell: vec2 = vec2(f32(row % width), f32(row / width));
+  return { at: view * vec4(cell + unit, 0., 1.), local: unit * 2. - 1., row };
+}
+```
+
+What changed, measured on 2026-11-11 (compiler pin `6d6a979`, Chromium with WebGPU on
+SwiftShader):
+
+| Item                                    | Before                  | After                                  |
+| --------------------------------------- | ----------------------- | -------------------------------------- |
+| The files of the drawing                | 2 (`draw/`)             | 1 (`draw/cells.shade.ts`)              |
+| The lines of the drawing                | 49, of which 14 on host | 36, none on host                       |
+| A cell on 800 by 480                    | 80 by 80                | 80 by 80                               |
+| A cell on a Pixel 7 screen, 1082 x 2202 | Stretched               | 108 by 109, with a bar above and below |
+| The bytes the page loads                | 282,641                 | 292,502                                |
+| The same, with gzip                     | 92,580                  | 95,782                                 |
+| The pointer in `input/pointer.ts`       | `at.x * width`          | `game.toWorld(at)`, then `Math.floor`  |
+
+The eight tests on the CPU tier give the pictures and the counts they gave before. The harness
+holds the cells of the GPU to the cells of the CPU, measures the cells in a screenshot, and shows
+that the picture holds the table after a tick with no read of the table.
+
+What the layer costs:
+
+- The picture has no thin line between cells. The layer of the record draws the cell's colour
+  only.
+- The page loads 9,861 bytes more. The engine's drawing and its full-screen entry are in the
+  page.
+- The game runs on WebGPU only. A browser with WebGL2 and no WebGPU gets an error. `typeshade/typeshade`
+  issues #1249 and #1263 hold the compiler work.
+- `view.fit` is `[10, 6]` in the config, and the level `demo` is 10 by 6. A level of another size
+  needs another `fit`. The view does not read the level's values yet.

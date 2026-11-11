@@ -31,7 +31,7 @@ compiler:
 | Baseline       | `typeshade/radiance` `main` `711de9f`.                                                           |
 | Compiler pin   | `6d6a979`.                                                                                       |
 | Pull request   | The pull request that adds this file.                                                            |
-| What is a fact | Section 1, the probes. No step is implemented.                                                   |
+| What is a fact | Section 1, the probes. Step 1 is implemented. The Record section holds its checks.               |
 
 ## What changes
 
@@ -274,5 +274,45 @@ each one.
 - **Approval.** The agent showed the owner the probes and the sketch on 2026-11-11. The owner
   answered: "네". The owner's rule of 2026-11-11 approves a merge with green checks in advance
   (`CLAUDE.md`, Merging).
-- **Validation.** Does not yet apply: no step is implemented.
-- **Deviations.** None.
+- **Validation.** Step 1, on 2026-11-11, on `main` `c1be80d` with the changes of the pull
+  request, compiler pin `6d6a979`, Chromium with WebGPU on SwiftShader, Playwright 1.63.0.
+  `bun run check` passed with 143 tests. The 14 new tests are in `test/draw.test.ts` (8) and
+  `test/project.test.ts` (6). `bun run harness` passed with 12 checks. 4 of them are new: the
+  cells are squares on a wide screen and on an upright screen, the cells stay squares after the
+  surface changes its size, and the picture shows the table after a tick with no read of the
+  table. The measured cell is 80 by 80 pixels on a screen of 800 by 480. It is 108 by 109 pixels
+  on a Pixel 7 screen of 1082 by 2202, with a bar above the grid and a bar below it. The page of
+  the factory loads 292,502 bytes, 95,782 with gzip. It loaded 282,641 bytes before. Not run:
+  the WebGL2 tier (a game with layers does not start there), a physical phone, and the check of
+  a measurement against Tint for a refusal (this step adds no refusal that stands in for a Tint
+  error).
+- **Deviations.**
+  - Section 3 does not name a way to turn a place of the screen into a place of the world. A
+    touch at a point of a letterboxed screen must reach the cell under it. The engine gains
+    `game.toWorld({ x, y })`, and the factory's `input/pointer.ts` uses it. Disposition: made
+    part of the record by an amendment of section 3.
+  - Section 4 says that the engine holds the layers and the texture. `run` makes the drawing
+    (`createDrawing` of `src/draw.ts`) and gives it to the engine, which calls it. The reason: the
+    config imports `radiance`, and a static import of `src/show.shade.ts` from `src/engine.ts`
+    stops `radiance sync` on Bun, which cannot read a `.shade.ts` file. The engine still waits
+    once after the first tick. Disposition: made part of the record by an amendment of section 4.
+  - The engine's public shape grows, and no member is renamed. New: `Engine.layers`,
+    `Engine.view`, `Engine.drawLayers()`, `Engine.toWorld()`, `StartOptions.drawing`, the types
+    `Layer`, `ViewOptions`, `Place` and `ViewConfig`, and `Drawing` of `src/draw.ts`.
+    Disposition: made part of the record by an amendment of section 2.
+  - `run` refuses a `device` option for a game with layers, because a game with layers makes its
+    own device from its program runtime. Disposition: made part of the record by an amendment of
+    section 5.
+  - `radiance sync` refuses more than section 2 lists: a `view` with no `draw`, a `draw` with no
+    `view`, a wrong `view.fit` or `view.clear`, an empty `draw`, a layer file that `draw` does not
+    name, and a name with the wrong kind of binding. Each error names the file, the fact and a
+    remedy. Disposition: made part of the record by an amendment of section 2.
+  - The layer of section 2 draws the colour of the cell only. The factory's layer also draws
+    the thin line between cells, as the picture of the game had it before. Disposition: closed.
+  - A layer that declares a name that its entries do not use is refused at the first frame, not
+    at `radiance sync`. The text is the compiler's, for example that the entry "paint" reaches
+    no binding "tick" and binds "cells", "view" and "width". Disposition: open. The engine can
+    bind only the names that the entries reach, or the compiler can report the names at sync.
+  - `bun run typecheck` prints the warning `TS8015` for `draw/cells.shade.ts`: the WebGL2 emit
+    of a class with a class in a field fails (compiler issue #1249). It is no error. Disposition:
+    open until that issue is closed.

@@ -8,10 +8,12 @@ import { putCell } from '../cells.ts';
 
 let last: { x: number; y: number } | undefined;
 
-const cellOf = (game: Game, at: PointerInput) => ({
-  x: Math.floor(at.x * game.values.width),
-  y: Math.floor(at.y * game.values.height),
-});
+// The pointer gives a place of the screen. The view puts the world in the middle of the screen,
+// so the engine turns the place into a place of the world, and a unit of the world is one cell.
+const cellOf = (game: Game, at: PointerInput) => {
+  const place = game.toWorld(at);
+  return { x: Math.floor(place.x), y: Math.floor(place.y) };
+};
 
 export function pointerdown(game: Game, at: PointerInput) {
   last = cellOf(game, at);
