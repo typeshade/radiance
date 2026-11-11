@@ -360,8 +360,9 @@ Each step is one pull request. Each commit carries `Design: 0108`.
 2. **The project.** Sections 1 to 4: `src/facts.ts`, the reader, the writer, `radiance sync`,
    `radiance check` and `load`. The second reference game becomes a project, and its tests use
    `load`.
-3. **The page.** Section 7 and `run`. The first reference game becomes a project, and its page
-   uses `run`. The harness runs it, and the game's `README.md` records the lines and the bytes.
+3. **The page.** Section 7 and `run`, in two pull requests. The first adds `run`, `@input` and
+   the loop, with a clock and a canvas that a test gives. In the second, the first reference
+   game becomes a project, and its page uses `run`. The harness runs it, and the game's `README.md` records the lines and the bytes.
    `createSim`, `replaySim` and `frames` leave the public exports (section 10, rule 3). Set
    this record to `implemented`.
 
@@ -394,10 +395,12 @@ The agent made these decisions under D9. The owner can change each one.
   | Step | Pull request | Commit on `main` | What ran                   |
   | ---- | ------------ | ---------------- | -------------------------- |
   | 1    | #119         | `f6d86c6`        | `bun run check`, 113 tests |
-  | 2    | this one     | its merge commit | `bun run check`, 118 tests |
+  | 2    | #120         | `209510f`        | `bun run check`, 118 tests |
 
-  Step 2: the second reference game is a project. Its nine tests give the pictures and the
-  counts they gave before, and its long run replays to the same dump.
+| 3, first part | this one | its merge commit | `bun run check`, 124 tests |
+
+Step 2: the second reference game is a project. Its nine tests give the pictures and the
+counts they gave before, and its long run replays to the same dump.
 
 - **Deviations.**
   - Step 1 added `start(Game, options)` of `radiance/test`, which `load` is built on. Closed.
@@ -405,5 +408,8 @@ The agent made these decisions under D9. The owner can change each one.
     Open: the record of the world of nodes decides the one name (section 10, rule 4).
   - The first reference game and the removal of the old exports moved from step 2 to step 3,
     so that its page and its harness change once. The steps above say so. Closed.
+  - The runtime names no canvas, so that it reads no interface of a browser (design record
+    0100, invariant 2). A game reads what it draws to as `game.surface`, and `run` of
+    `radiance/page` takes the canvas. Closed.
   - A scratch table's size is in the config and not an export `like`, since a
     `"use typeshade"` file holds no string. Section 2 says so. Closed.
