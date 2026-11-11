@@ -73,11 +73,13 @@ request), and these sections:
 
 ## The records
 
-None yet. The first record takes the number 0100.
+| Id                                    | Title                                                                                                      | Status |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ------ |
+| [0100](0100-world-on-the-cpu-tier.md) | A scene of nodes runs as tables on the CPU tier, on a fixed tick, and a test reads its dump with no device | draft  |
 
 The first model's records hold the numbers 0001 to 0011. They are on the branch `legacy`, and
 compiler proposals cite them by number. A record of this engine does not use those numbers
 again.
 
 The first model kept a Doorstop tree of its records and their decisions (`reqs/` on `legacy`).
-A tree for this engine's records is open work. It is decided with the first record.
+Record 0100 adds no tree (its decision 9). A later record decides the tool.
