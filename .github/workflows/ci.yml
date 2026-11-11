@@ -1,11 +1,13 @@
 name: ci
 
-# The gate for this repository. One job does work: the format check, the two prose checks, the
-# type check and the tests, which are `bun run check`. The other three jobs keep the names of
-# the first model's jobs and report that they have nothing to run. The four names may be
-# required checks of the `main` ruleset (CLAUDE.md, Merging), and a required check that never
-# reports blocks every pull request. Each of the three jobs gets its steps back with the part it
-# checks, or the owner removes it from the ruleset and from this file in the same step.
+# The gate for this repository. Two jobs do work. `format + boundary + typecheck + test` runs
+# `bun run check`: the format check, the two prose checks, the type check and the tests.
+# `harness (headless WebGPU)` runs `bun run harness`: the reference game's page in a browser. The
+# other two jobs keep the names of the first model's jobs and report that they have nothing to
+# run. The four names may be required checks of the `main` ruleset (CLAUDE.md, Merging), and a
+# required check that never reports blocks every pull request. Each of the two empty jobs gets
+# its steps back with the part it checks, or the owner removes it from the ruleset and from this
+# file in the same step.
 
 on:
   push:
@@ -38,11 +40,30 @@ jobs:
       - run: bun run test
 
   harness:
+    # The checks that need a browser with a GPU (design record 0103): the reference game's page in
+    # headless Chromium, WebGPU on SwiftShader. It holds the cells the GPU computed to the CPU tier.
     name: harness (headless WebGPU)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: ''
     steps:
-      - run: echo 'The engine draws nothing yet, so no harness ran.'
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: bun install --frozen-lockfile
+      - run: npx playwright install --with-deps chromium
+      - run: bun run harness
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: factory-shot
+          path: examples/factory/dist/shot.png
+          if-no-files-found: ignore
 
   traceability:
     name: traceability (Doorstop)

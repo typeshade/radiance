@@ -2,7 +2,7 @@
 
 import { expect, test } from 'vitest';
 import { replaySim } from '../../src/test.ts';
-import { BELT, tick } from './cells.shade.ts';
+import { BELT, Cell, MACHINE, place, tick } from './cells.shade.ts';
 import { createFactory, parseLevel, render, totals } from './level.ts';
 
 const LINE = `
@@ -132,4 +132,16 @@ test('a wrong level is refused with the fact and the remedy', () => {
   expect(() => parseLevel('E?M')).toThrow(
     'parseLevel(): row 0 holds "?". A cell is one of . ^ > v < N E S W M.',
   );
+});
+
+// Verifies: Design 0103.1
+test('place writes one cell and no other', async () => {
+  const cells = parseLevel('E>M').cells;
+  cells[1].item = 1;
+  cells[1].wait = 2;
+  const before = JSON.stringify([cells[0], cells[2]]);
+  await place(cells, 1, MACHINE, 3);
+  expect(JSON.stringify([cells[0], cells[2]])).toBe(before);
+  expect(cells[1]).toMatchObject({ kind: MACHINE, dir: 3, item: 0, wait: 0, stock: 0 });
+  expect(cells[1]).toBeInstanceOf(Cell);
 });

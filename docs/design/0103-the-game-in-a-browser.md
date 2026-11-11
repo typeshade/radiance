@@ -1,7 +1,7 @@
 ---
 id: '0103'
 title: The reference game runs in a browser on WebGPU, and a harness holds its cells, its picture and its size
-status: accepted
+status: implemented
 vision: [D4, D10, D11, D12]
 touches:
   - examples/factory/
@@ -16,14 +16,14 @@ compiler: []
 
 **Document control**
 
-| Field          | Record                                                                                           |
-| -------------- | ------------------------------------------------------------------------------------------------ |
-| Identity       | Design record `0103`, `status: accepted`. The front matter holds the identity and the lifecycle. |
-| Date           | Written 2026-11-11 by the repository's coding agent, under decision D9 of `docs/vision.md`.      |
-| Baseline       | `typeshade/radiance` `main` `11fdef9`.                                                           |
-| Compiler pin   | `6d6a979`.                                                                                       |
-| Pull request   | The pull request that adds this file.                                                            |
-| What is a fact | A spike ran before this record was offered (section 5). No step is merged.                       |
+| Field          | Record                                                                                              |
+| -------------- | --------------------------------------------------------------------------------------------------- |
+| Identity       | Design record `0103`, `status: implemented`. The front matter holds the identity and the lifecycle. |
+| Date           | Written 2026-11-11 by the repository's coding agent, under decision D9 of `docs/vision.md`.         |
+| Baseline       | `typeshade/radiance` `main` `11fdef9`.                                                              |
+| Compiler pin   | `6d6a979`.                                                                                          |
+| Pull request   | The pull request that adds this file.                                                               |
+| What is a fact | The step is implemented. The Record section holds the delivered configuration.                      |
 
 ## What changes
 
@@ -171,5 +171,13 @@ The agent made these decisions under D9. The owner can change each one.
 - **Approval.** The owner's rule of 2026-11-11 approves a merge with green checks in advance
   (`CLAUDE.md`, Merging). The owner asked for this order of work in the conversation on
   2026-11-11: "네, 그 순서로 진행해주세요".
-- **Validation.** Does not yet apply: no step is merged.
+- **Validation.** The delivered configuration, 2026-11-11, compiler pin `6d6a979`, headless
+  Chromium, Playwright 1.63.0, WebGPU on SwiftShader:
+
+  | Step | Pull request | What ran                                                         |
+  | ---- | ------------ | ---------------------------------------------------------------- |
+  | 1    | this one     | `bun run check`, 81 tests. `bun run harness`, the 4 checks pass. |
+
+  The page loaded 278,406 bytes of JavaScript, and 86,653 with gzip.
+
 - **Deviations.** None.

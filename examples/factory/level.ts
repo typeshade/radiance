@@ -19,6 +19,16 @@ export interface Factory {
   readonly sim: Sim<{ cells: Cell[] }, 'cells'>;
 }
 
+/** The level of the page and of the browser check. */
+export const DEMO = `
+  E>>>v....S
+  ....v....v
+  M<<<<....v
+  ..........
+  N..M<<<<<<
+  ^.........
+`;
+
 const DIRS = '^>v<'; // north, east, south, west: a belt
 const SOURCES = 'NESW'; // a source that sends its items north, east, south or west
 

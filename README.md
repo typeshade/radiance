@@ -3,7 +3,7 @@
 A game engine written in [TypeShade](https://typeshade.dev), made for development by a coding
 agent.
 
-**Status: early.** Design records 0100, 0101 and 0102 are implemented. A scene of nodes runs as tables
+**Status: early.** Design records 0100 to 0103 are implemented. A scene of nodes runs as tables
 on the CPU tier, on a fixed tick. A test reads its dump with no device. A world takes inputs,
 records them and replays them. The engine draws nothing
 yet. [`docs/vision.md`](docs/vision.md) is the design: the claim, the owner's decisions, what an
@@ -81,6 +81,14 @@ console.log(sim.dump());
 [`examples/factory`](examples/factory) is a small automation game written this way. Its
 `README.md` lists what is still hard to write, with counts.
 
+The same game runs in a browser, with its tick on a WebGPU device, its cells drawn by one
+fragment entry and belts put by the pointer:
+
+```sh
+bun run build:factory   # the page, in examples/factory/dist
+bun run harness         # the page in headless Chromium, held to the CPU tier
+```
+
 ## The design in short
 
 - An agent makes the game. Each thing the engine does is text the agent can read.
@@ -110,6 +118,7 @@ its commits, and those commits stay reachable.
 | `docs/design/0100-*.md` | Design record 0100: the world on the CPU tier                    |
 | `docs/design/0101-*.md` | Design record 0101: inputs, the replay and the seed              |
 | `docs/design/0102-*.md` | Design record 0102: tables and a tick                            |
+| `docs/design/0103-*.md` | Design record 0103: the game in a browser                        |
 | `examples/factory/`     | The reference game, and what was hard to write in it             |
 | `src/`                  | The engine: `node`, `scene`, the world, the dump                 |
 | `scripts/`              | The prose checks and the commit gate                             |
@@ -128,6 +137,10 @@ its commits, and those commits stay reachable.
 | `check:ste`    | The structural rules of Simplified Technical English in each document             |
 | `typecheck`    | The shader files with `tshc check`, the host views, and the host files with `tsc` |
 | `test`         | The tests, with Vitest on the CPU tier. No device and no browser.                 |
+
+`bun run harness` is a second run, for the checks that need a browser with a GPU (design record
+0103). It builds the reference game's page, opens it in headless Chromium with WebGPU, and holds
+the cells the GPU computed to the CPU tier. CI runs it in the job `harness (headless WebGPU)`.
 
 `bun install` runs `tshc sync`, which writes the host view of each `.shade.ts`.
 

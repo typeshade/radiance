@@ -13,7 +13,9 @@
     "check:ste": "node scripts/check-ste.mjs",
     "typecheck": "tshc sync --check && tshc check test examples && tsc -p tsconfig.json",
     "test": "vitest run",
-    "check": "bun run format:check && bun run check:prose && bun run check:ste && bun run typecheck && bun run test"
+    "check": "bun run format:check && bun run check:prose && bun run check:ste && bun run typecheck && bun run test",
+    "build:factory": "vite build --config examples/factory/vite.config.ts",
+    "harness": "vitest run --config vitest.harness.config.ts"
   },
   "exports": {
     ".": "./src/index.ts",
@@ -24,6 +26,7 @@
   },
   "devDependencies": {
     "@types/node": "25.6.0",
+    "playwright": "1.63.0",
     "prettier": "^3.5.3",
     "typescript": "5.6.3",
     "vite": "7.3.7",

@@ -156,3 +156,21 @@ export function tick(next: array<Cell>, prev: array<Cell>, width: u32, height: u
     next[i] = c;
   }
 }
+
+/**
+ * Puts a belt, a source, a machine or nothing in one cell. It is the game's input on a GPU
+ * tier: the host cannot write one row of an array on the device, so a function writes it.
+ */
+export function place(cells: array<Cell>, at: u32, kind: u32, dir: u32) {
+  for (let i: u32 = 0; i < cells.length; i++) {
+    if (i == at) {
+      let c: Cell = cells[i];
+      c.kind = kind;
+      c.dir = dir;
+      c.item = 0;
+      c.wait = 0;
+      c.stock = 0;
+      cells[i] = c;
+    }
+  }
+}
