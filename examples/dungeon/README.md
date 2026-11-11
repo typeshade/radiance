@@ -276,7 +276,7 @@ and a test loads the project:
 
 ```ts
 const game = await load<Game>('examples/dungeon', { seed: 7, level: 'cave' });
-game.actors.input(0, { move: EAST });
+game.tables.actors.input(0, { move: EAST });
 await game.step(1);
 ```
 

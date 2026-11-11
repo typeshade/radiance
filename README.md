@@ -3,11 +3,12 @@
 A game engine written in [TypeShade](https://typeshade.dev), made for development by a coding
 agent.
 
-**Status: early.** Design records 0100 to 0107 are implemented. A scene of nodes runs as tables
-on the CPU tier, on a fixed tick. A test reads its dump with no device. A world takes inputs,
-records them and replays them. A simulation runs a game's tick on a device, in a test and in a
-page. The engine draws nothing yet. [`docs/vision.md`](docs/vision.md) is the design: the claim, the owner's decisions, what an
-agent writes and reads, the scene model, the tick, and what is not promised.
+**Status: early.** Design records 0100 to 0108 are implemented. A game is a project of a fixed
+shape. The engine reads the project, writes the game's class and runs it: it opens the device,
+owns each array and runs the loop. A test loads the same project on the CPU tier. The engine
+has no drawing layer of its own yet. [`docs/vision.md`](docs/vision.md) is the design: the
+claim, the owner's decisions, what an agent writes and reads, the tick, and what is not
+promised.
 
 ## What runs today
 
@@ -62,43 +63,13 @@ replay(factory, world.record()).dump() === world.dump(); // true
 
 A class that needs random numbers declares a field named `seed`, and the world fills it.
 
-A game can also write its whole tick as one function of a `"use typeshade"` file (`docs/vision.md`,
-D11). The simulation runs such a game from its tables and its tick, with the same dump, inputs
-and replay. Its tables live on a device of the compiler's runtime:
+A game is a project (design record 0108). A file's place says what it is. The engine reads the
+files and writes the game's class. The game opens no device, makes no array and passes no
+table to a function.
 
-```ts
-import { createDevice } from 'typeshade/runtime';
-import { createSim } from 'radiance';
-import { tick } from './cells.shade.ts';
-
-const device = await createDevice({ prefer: ['cpu'] });
-const sim = createSim(
-  { cells },
-  {
-    device,
-    seed: 1,
-    buffered: ['cells'],
-    tick: (t) => tick(t.cells.write, t.cells.read, width, height),
-  },
-);
-await sim.step(200);
-console.log(await sim.dump());
-```
-
-A test gives a device of the CPU tier. A page gives a device of a GPU tier and runs the same
-simulation in its frames:
-
-```ts
-import { frames } from 'radiance/page';
-
-frames(sim, () => draw(canvas, { cells: sim.table('cells'), view }));
-```
-
-[`examples/factory`](examples/factory) is a small automation game written this way. Its
-`README.md` lists what is still hard to write, with counts.
-[`examples/dungeon`](examples/dungeon) is a small roguelike, with rows that come and go and
-with random numbers. It is a project (design record 0108): the engine reads its files and writes
-the game's class. The game opens no device and makes no array.
+[`examples/factory`](examples/factory) is a small automation game, and
+[`examples/dungeon`](examples/dungeon) is a small roguelike with rows that come and go and with
+random numbers. The `README.md` of each lists what is still hard to write, with counts.
 
 ```text
 examples/dungeon/
@@ -118,9 +89,18 @@ await game.dispose();
 ```
 
 `bun bin/radiance.ts sync examples/dungeon` writes `.radiance/game.ts`, the class of the game.
+A table of the game is `game.tables.actors`.
 
-The same game runs in a browser, on the same simulation. Its tick runs on a WebGPU device, one
-fragment entry draws its cells, and the pointer puts belts:
+The factory also runs in a browser. `run` of `radiance/page` opens a WebGPU device, runs the
+loop, gives the pointer to the functions of the project's `input/` and calls its `draw/draw.ts`
+for each frame:
+
+```ts
+import { run } from 'radiance/page';
+import { Game } from './.radiance/game.ts';
+
+const game = await run(Game, { seed: 1, canvas, rows: level.rows, values: level.values });
+```
 
 ```sh
 bun run build:factory   # the page, in examples/factory/dist

@@ -83,7 +83,7 @@ request), and these sections:
 | [0105](0105-kinds-as-classes.md)                      | A kind of cell is a class with its own fields and rules, and an input writes a field that holds a class           | implemented |
 | [0106](0106-row-seeds-and-a-replay-from-a-builder.md) | A simulation gives each row a seed, and a record replays from the function that builds the game                   | implemented |
 | [0107](0107-a-table-with-free-slots.md)               | A table of a simulation has free slots, so rows come and go in a table of a fixed size                            | implemented |
-| [0108](0108-the-project-is-the-structure.md)          | A project is the structure of a game, and the engine builds the game from it and runs it                          | accepted    |
+| [0108](0108-the-project-is-the-structure.md)          | A project is the structure of a game, and the engine builds the game from it and runs it                          | implemented |
 
 The first model's records hold the numbers 0001 to 0011. They are on the branch `legacy`, and
 compiler proposals cite them by number. A record of this engine does not use those numbers
