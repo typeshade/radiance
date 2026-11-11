@@ -45,6 +45,12 @@ export class Actor {
   kills: u32 = 0;
 }
 
+/** What one actor wants in a turn. It is written first and read by every actor. */
+export class Want {
+  /** The index of the cell the actor goes at, or -1 when it stays or is a free slot. */
+  target: i32 = -1;
+}
+
 /** One tile of the grid. */
 export class Tile {
   kind: u32 = 0;
@@ -100,8 +106,20 @@ function hostile(a: u32, b: u32): bool {
   return (a == PLAYER) != (b == PLAYER);
 }
 
+/** The first phase of a turn: where each actor goes. */
+export function plan(wants: array<Want>, actors: array<Actor>, width: u32, height: u32) {
+  for (let i: u32 = 0; i < wants.length; i++) {
+    const a: Actor = actors[i];
+    let w: Want = wants[i];
+    w.target = -1;
+    if (a.kind != NONE) { w.target = ahead(a.x, a.y, wish(a, actors[0]), width, height); }
+    wants[i] = w;
+  }
+}
+
 /**
- * One turn of the actors. It reads `prev` and writes `next`.
+ * The second phase of a turn: what comes of what the actors want. It reads `prev` and `wants`
+ * and writes `next`.
  *
  * An actor that goes at a cell with an enemy attacks it and stays. An actor goes into a cell
  * when the cell is a floor or a potion, no actor was in it, and no actor of a lower row goes
@@ -112,16 +130,15 @@ function hostile(a: u32, b: u32): bool {
 export function turn(
   next: array<Actor>,
   prev: array<Actor>,
+  wants: array<Want>,
   tiles: array<Tile>,
   width: u32,
-  height: u32,
   tick: u32,
   sx: u32,
   sy: u32,
 ) {
   for (let i: u32 = 0; i < next.length; i++) {
     let a: Actor = prev[i];
-    const p: Actor = prev[0];
 
     if (a.kind == NONE) {
       // A free slot. Does a monster come in here?
@@ -148,8 +165,7 @@ export function turn(
       }
     } else {
       const here: i32 = i32(a.y * width + a.x);
-      const way: u32 = wish(a, p);
-      const target: i32 = ahead(a.x, a.y, way, width, height);
+      const target: i32 = wants[i].target;
 
       // One pass over the actors: who is in the target cell, who of a lower row goes at it,
       // and who attacks this actor.
@@ -160,7 +176,7 @@ export function turn(
         const b: Actor = prev[j];
         if (b.kind != NONE && j != i) {
           const at: i32 = i32(b.y * width + b.x);
-          const goes: i32 = ahead(b.x, b.y, wish(b, p), width, height);
+          const goes: i32 = wants[j].target;
           if (at == target) { occupant = i32(j); }
           if (j < i && goes == target) { beaten = true; }
           if (goes == here && hostile(a.kind, b.kind)) {
@@ -203,25 +219,12 @@ export function turn(
   }
 }
 
-/** One turn of the tiles: a potion that the player walks onto in this turn becomes a floor. */
-export function pickup(
-  next: array<Tile>,
-  prev: array<Tile>,
-  actors: array<Actor>,
-  width: u32,
-  height: u32,
-) {
+/** The last phase of a turn: a potion under the player becomes a floor. `actors` is the new table. */
+export function pickup(next: array<Tile>, prev: array<Tile>, actors: array<Actor>, width: u32) {
   for (let i: u32 = 0; i < next.length; i++) {
     let t: Tile = prev[i];
     const p: Actor = actors[0];
-    if (t.kind == POTION && p.kind == PLAYER) {
-      let taken: bool = ahead(p.x, p.y, p.move, width, height) == i32(i);
-      for (let j: u32 = 0; j < actors.length; j++) {
-        const b: Actor = actors[j];
-        if (b.kind != NONE && b.y * width + b.x == i) { taken = false; }
-      }
-      if (taken) { t.kind = FLOOR; }
-    }
+    if (t.kind == POTION && p.kind == PLAYER && p.y * width + p.x == i) { t.kind = FLOOR; }
     next[i] = t;
   }
 }
