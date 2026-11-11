@@ -6,5 +6,6 @@ import { typeshade } from 'typeshade/vite';
 // not run these files, so the tests of the engine need no browser.
 export default defineConfig({
   plugins: [typeshade()],
+  resolve: { alias: { radiance: new URL('./src/index.ts', import.meta.url).pathname } },
   test: { include: ['examples/**/*.harness.ts'], testTimeout: 120_000, hookTimeout: 180_000 },
 });

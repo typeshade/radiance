@@ -13,10 +13,15 @@ import { FLOOR, NONE, ORC, RAT, SPAWN, WALL } from '../rules.shade.ts';
 const PROJECT = 'examples/dungeon';
 const make = (text: string, seed = 1) => load<Game>(PROJECT, { seed, level: parseLevel(text) });
 const picture = async (g: Game) =>
-  render(g.values.width, g.values.height, await g.actors.read(), await g.tiles.read());
+  render(
+    g.values.width,
+    g.values.height,
+    await g.tables.actors.read(),
+    await g.tables.tiles.read(),
+  );
 async function go(g: Game, ...ways: number[]) {
   for (const way of ways) {
-    g.actors.input(0, { move: way });
+    g.tables.actors.input(0, { move: way });
     await g.step(1);
   }
 }
@@ -37,10 +42,10 @@ test('the player moves into a floor, and a wall and the spawn tile stop it', asy
 test('two enemies attack each other in the same turn, and a dead actor leaves its row', async () => {
   const g = await make('@o');
   await go(g, EAST);
-  let [player, orc] = await g.actors.read();
+  let [player, orc] = await g.tables.actors.read();
   expect([player.hp, orc.hp]).toEqual([4, 2]);
   await go(g, EAST);
-  [player, orc] = await g.actors.read();
+  [player, orc] = await g.tables.actors.read();
   // The orc had 2 hit points left, so it is removed. It attacked in the same turn.
   expect([player.hp, player.kills, orc.kind]).toEqual([3, 1, NONE]);
   expect(await picture(g)).toBe('@.\n');
@@ -57,15 +62,15 @@ test('two actors go at one cell, and the lower row gets it', async () => {
   await g.step(1);
   // The first orc attacks. The second goes at a cell that holds a monster, and stays.
   expect(await picture(g)).toBe('.oo\n.@.\n');
-  expect((await g.actors.read())[0].hp).toBe(4);
+  expect((await g.tables.actors.read())[0].hp).toBe(4);
   await g.dispose();
 });
 
 test('a potion heals the player and becomes a floor', async () => {
   const g = await make('@!.');
   await go(g, EAST);
-  expect((await g.actors.read())[0].hp).toBe(8);
-  expect((await g.tiles.read())[1].kind).toBe(FLOOR);
+  expect((await g.tables.actors.read())[0].hp).toBe(8);
+  expect((await g.tables.tiles.read())[1].kind).toBe(FLOOR);
   expect(await picture(g)).toBe('.@.\n');
   await g.dispose();
 });
@@ -73,12 +78,12 @@ test('a potion heals the player and becomes a floor', async () => {
 test('a monster comes in on the spawn tile, in the row a dead monster left', async () => {
   const g = await make('@o.S');
   await go(g, EAST, EAST);
-  expect((await g.actors.read())[1].kind).toBe(NONE);
+  expect((await g.tables.actors.read())[1].kind).toBe(NONE);
   await g.step(6);
   expect(g.tick).toBe(8);
-  expect((await g.actors.read())[1].kind).toBe(NONE);
+  expect((await g.tables.actors.read())[1].kind).toBe(NONE);
   await g.step(1);
-  const monster = (await g.actors.read())[1];
+  const monster = (await g.tables.actors.read())[1];
   expect([RAT, ORC]).toContain(monster.kind);
   expect([monster.x, monster.y]).toEqual([3, 0]);
   await g.dispose();
@@ -90,11 +95,11 @@ test('a long run keeps one actor to a cell, and a record replays to the same dum
   let word = 12345;
   for (let t = 0; t < 120; t++) {
     word = (Math.imul(word, 1664525) + 1013904223) >>> 0;
-    g.actors.input(0, { move: (word >>> 16) % 5 });
+    g.tables.actors.input(0, { move: (word >>> 16) % 5 });
     await g.step(1);
     if (t % 10 === 9) {
-      const actors = (await g.actors.read()).filter((a) => a.kind !== NONE);
-      const tiles = await g.tiles.read();
+      const actors = (await g.tables.actors.read()).filter((a) => a.kind !== NONE);
+      const tiles = await g.tables.tiles.read();
       const cells = actors.map((a) => a.y * width + a.x);
       expect(new Set(cells).size).toBe(cells.length);
       for (const a of actors) expect(tiles[a.y * width + a.x].kind).not.toBe(WALL);

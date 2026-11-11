@@ -1,7 +1,7 @@
 // Design: 0108, section 10, rules 1 and 2. The facts of a `"use typeshade"` file that the
 // engine needs and the compiler does not report yet (compiler issue typeshade/typeshade#1253).
 // This is the one module of the engine that reads source. It reads names only: the name of an
-// exported class, an exported number and the parameters of an exported function. When the pin
+// exported class, an exported number, an exported function and its parameters. When the pin
 // has the compiler's report, this module reads the report, and no other module changes.
 
 import ts from 'typescript';
@@ -80,4 +80,15 @@ export function readSystem(file: string, source: string, name: string): SystemFa
   throw new TypeError(
     `${file}: the file exports no function "${name}"${functions.length > 0 ? `. It exports ${functions.join(', ')}` : ''}. A file of a system exports one function with the file's name.`,
   );
+}
+
+/** Reads the names of the functions a host file exports, in the order of the file. */
+export function readFunctions(file: string, source: string): readonly string[] {
+  const names: string[] = [];
+  for (const node of parse(file, source).statements) {
+    if (exported(node) && ts.isFunctionDeclaration(node) && node.name !== undefined) {
+      names.push(node.name.text);
+    }
+  }
+  return names;
 }

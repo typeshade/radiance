@@ -1,23 +1,19 @@
-// The tests of the reference game. They run the tick on the CPU tier, with no device.
+// The tests of the first reference game, loaded as a project on a device of the CPU tier
+// (design record 0108).
 
-import { createDevice, type Device } from 'typeshade/runtime';
-import { afterAll, beforeAll, expect, test } from 'vitest';
-import { replaySim } from '../../src/test.ts';
-import { BELT, tick } from './cells.shade.ts';
-import { createFactory, parseLevel, putCell, render, totals, type Factory } from './level.ts';
+import { expect, test } from 'vitest';
+import { load, replayGame } from '../../../src/test.ts';
+import type { Game } from '../.radiance/game.ts';
+import { parseLevel, putCell, render, totals } from '../cells.ts';
+import { BELT } from '../kinds.shade.ts';
 
-let device: Device;
-beforeAll(async () => {
-  device = await createDevice({ prefer: ['cpu'] });
-});
-afterAll(async () => {
-  await device.dispose();
-});
+const PROJECT = 'examples/factory';
+const make = (text: string) => load<Game>(PROJECT, { seed: 1, level: parseLevel(text) });
 
-/** The factory as text, read from the device. */
-const picture = async (f: Factory) => render(f, await f.sim.read('cells'));
+const picture = async (f: Game) =>
+  render(f.values.width, f.values.height, await f.tables.cells.read());
 /** The counts, read from the device. */
-const counts = async (f: Factory) => totals(await f.sim.read('cells'));
+const counts = async (f: Game) => totals(await f.tables.cells.read());
 
 const LINE = `
   E>>>M
@@ -37,14 +33,14 @@ const MERGE = `
 
 test('a level reads as it is written', async () => {
   // A machine shows the digit of its stock.
-  expect(await picture(createFactory(LOOP, { seed: 1, device }))).toBe('E>>>v\n....v\n0<<<<\n');
+  expect(await picture(await make(LOOP))).toBe('E>>>v\n....v\n0<<<<\n');
 });
 
 test('a source makes an item, and the belts carry it to the machine', async () => {
-  const f = createFactory(LINE, { seed: 1, device });
+  const f = await make(LINE);
   const frames: string[] = [];
   for (let t = 0; t < 12; t++) {
-    await f.sim.step();
+    await f.step();
     frames.push((await picture(f)).trim());
   }
   // Read by hand against the rules: the source makes an item in tick 1, the first belt takes
@@ -66,9 +62,9 @@ test('a source makes an item, and the belts carry it to the machine', async () =
 });
 
 test('no item is lost and none is made from nothing', async () => {
-  const f = createFactory(LOOP, { seed: 1, device });
+  const f = await make(LOOP);
   for (let t = 0; t < 40; t++) {
-    await f.sim.step(5);
+    await f.step(5);
     const n = await counts(f);
     // Each good used one item. Each item made is in a source, on a belt, in stock or used.
     expect(n.made).toBe(n.inSources + n.onBelts + n.inStock + n.goods);
@@ -77,21 +73,21 @@ test('no item is lost and none is made from nothing', async () => {
 });
 
 test('two belts into one cell: the first in the order north, east, south, west gives', async () => {
-  const f = createFactory(MERGE, { seed: 1, device });
-  await f.sim.step();
+  const f = await make(MERGE);
+  await f.step();
   // Three sources hold an item each: north (S, sends south), west (E), south (N).
   expect(await picture(f)).toBe('.s.\ne>0\n.n.\n');
-  await f.sim.step();
+  await f.step();
   // The belt takes from its first ready neighbour in the order north, east, south, west.
   expect(await picture(f)).toBe('.S.\neo0\n.n.\n');
 });
 
 test('two runs of one level give the same factory', async () => {
-  const a = createFactory(LOOP, { seed: 1, device });
-  const b = createFactory(LOOP, { seed: 1, device });
-  await a.sim.step(300);
-  await b.sim.step(300);
-  expect(await a.sim.dump()).toBe(await b.sim.dump());
+  const a = await make(LOOP);
+  const b = await make(LOOP);
+  await a.step(300);
+  await b.step(300);
+  expect(await a.dump()).toBe(await b.dump());
   expect(await picture(a)).toBe(await picture(b));
 });
 
@@ -99,29 +95,28 @@ test('the player builds a belt with an input, and the run replays', async () => 
   const GAP = `
     E>.>M
   `;
-  const f = createFactory(GAP, { seed: 1, device });
-  await f.sim.step(40);
+  const f = await make(GAP);
+  await f.step(40);
   // The gap stops the items: the machine has made nothing.
   expect((await counts(f)).goods).toBe(0);
   expect(await picture(f)).toBe('eo.>0\n');
 
   // The player puts a belt in the gap. `putCell` is the call the page makes from the pointer.
   putCell(f, 2, 0, BELT, 1);
-  await f.sim.step(60);
+  await f.step(60);
   expect((await counts(f)).goods).toBeGreaterThan(0);
 
   // The record of the run is data, and it replays to the same factory.
-  const again = await replaySim(
-    (run) => createFactory(GAP, { seed: run.seed, device }).sim,
-    f.sim.record(),
-  );
-  expect(await again.dump()).toBe(await f.sim.dump());
+  const { Game: GameClass } = await import('../.radiance/game.ts');
+  const level = parseLevel(GAP);
+  const again = await replayGame(GameClass, { rows: level.rows, values: level.values }, f.record());
+  expect(await again.dump()).toBe(await f.dump());
 });
 
 test('the dump of the engine reads the cells', async () => {
-  const f = createFactory(`E>M`, { seed: 1, device });
-  await f.sim.step(2);
-  expect(await f.sim.dump()).toBe(
+  const f = await make(`E>M`);
+  await f.step(2);
+  expect(await f.dump()).toBe(
     [
       'tick 2  seed 1  hz 60',
       'cells',

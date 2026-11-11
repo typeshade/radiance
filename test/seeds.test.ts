@@ -7,9 +7,9 @@
 import { hash32 } from 'typeshade/random';
 import { createDevice, type Device } from 'typeshade/runtime';
 import { afterAll, beforeAll, expect, test } from 'vitest';
-import { createSim, type Frame, type SimRecord } from '../src/index.ts';
+import { createSim, type Frame, type SimRecord } from '../src/sim.ts';
 import { fnv1a } from '../src/seed.ts';
-import { replaySim, type ReplayRun } from '../src/test.ts';
+import { replaySim, type ReplayRun } from '../src/sim-replay.ts';
 import { Die, Row, roll } from './fixtures/sim.shade.ts';
 
 let device: Device;

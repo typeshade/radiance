@@ -31,10 +31,10 @@ const CELL = '"use typeshade";\nexport class Cell {\n  n: u32 = 0;\n}\n';
 const MARK = '"use typeshade";\nexport class Mark {\n  n: u32 = 0;\n}\n';
 const BASE = {
   'state/cells.shade.ts': CELL,
-  'state/pool.shade.ts': CELL.replace('Cell', 'Slot') + 'export const slots = 8;\n',
+  'state/spare.shade.ts': CELL.replace('Cell', 'Slot') + 'export const slots = 8;\n',
   'scratch/marks.shade.ts': MARK,
   'systems/move.shade.ts':
-    '"use typeshade";\nexport function move(cellsNext: array<Cell>, cells: array<Cell>, marks: array<Mark>, pool: array<Slot>, width: u32, tick: u32, dt: f32) {}\n',
+    '"use typeshade";\nexport function move(cellsNext: array<Cell>, cells: array<Cell>, marks: array<Mark>, spare: array<Slot>, width: u32, tick: u32, dt: f32) {}\n',
   'systems/count.shade.ts':
     '"use typeshade";\nexport function count(marks: array<Mark>, seed: u32) {}\n',
 };
@@ -51,27 +51,26 @@ test('a project gives the class of the game, as text', () => {
       '// Written by "radiance sync" from the project. Do not change this file: change the',
       '// project, and run "radiance sync" again.',
       '',
-      "import { Engine, system } from 'radiance';",
+      "import { Engine } from 'radiance';",
       "import { Cell } from '../state/cells.shade.ts';",
-      "import { Slot } from '../state/pool.shade.ts';",
+      "import { Slot } from '../state/spare.shade.ts';",
       "import { Mark } from '../scratch/marks.shade.ts';",
       "import { move } from '../systems/move.shade.ts';",
       "import { count } from '../systems/count.shade.ts';",
       '',
       'export class Game extends Engine {',
-      '  readonly cells = this.table(Cell, { buffered: true });',
-      '  readonly pool = this.pool(Slot, { size: 8 });',
-      '  readonly marks = this.scratch(Mark, { like: this.cells });',
+      '  readonly tables = {',
+      '    cells: this.table(Cell, { buffered: true }),',
+      '    spare: this.pool(Slot, { size: 8 }),',
+      "    marks: this.scratch(Mark, { like: 'cells' }),",
+      '  };',
       '',
-      '  // systems/move.shade.ts',
-      '  @system() move() {',
-      '    return move(this.cells.next, this.cells.rows, this.marks.rows, this.pool.rows, this.values.width, this.tick, this.dt);',
-      '  }',
-      '',
-      '  // systems/count.shade.ts',
-      '  @system() count() {',
-      '    return count(this.marks.rows, this.seed);',
-      '  }',
+      '  readonly systems = {',
+      '    // systems/move.shade.ts',
+      '    move: () => move(this.tables.cells.next, this.tables.cells.rows, this.tables.marks.rows, this.tables.spare.rows, this.values.width, this.tick, this.dt),',
+      '    // systems/count.shade.ts',
+      '    count: () => count(this.tables.marks.rows, this.seed),',
+      '  };',
       '}',
       '',
     ].join('\n'),
@@ -84,10 +83,10 @@ test('a table is buffered only when a system names it with Next, and the order i
   expect(read.systems.map((s) => s.name)).toEqual(['count', 'move']);
   expect(read.tables.map((t) => [t.name, t.kind, t.buffered])).toEqual([
     ['cells', 'table', true],
-    ['pool', 'pool', true],
+    ['spare', 'pool', true],
     ['marks', 'scratch', false],
   ]);
-  expect(writeGame(read)).toContain("  readonly stepOn = 'input' as const;");
+  expect(writeGame(read)).toContain("  override readonly stepOn = 'input' as const;");
   const plain = project({
     ...BASE,
     'systems/move.shade.ts': '"use typeshade";\nexport function move(cells: array<Cell>) {}\n',
@@ -117,11 +116,11 @@ test('each error of a project names the file, the fact and a remedy', () => {
   expect(bad({ 'state/cells.shade.ts': CELL + 'export class Other {}\n' })).toThrow(
     'state/cells.shade.ts: the file exports 2 classes (Cell, Other). A file of a table exports one class, the class of its rows.',
   );
-  expect(bad({ 'state/pool.shade.ts': CELL + 'export const slots = 0;\n' })).toThrow(
-    'state/pool.shade.ts: "slots" is not a whole number from 1. Write the number of rows, for example "export const slots = 16;".',
+  expect(bad({ 'state/spare.shade.ts': CELL + 'export const slots = 0;\n' })).toThrow(
+    'state/spare.shade.ts: "slots" is not a whole number from 1. Write the number of rows, for example "export const slots = 16;".',
   );
   expect(bad({}, { ...CONFIG, scratch: {} })).toThrow(
-    "scratch/marks.shade.ts: the config gives this scratch table no size. Name the state table it follows, for example { scratch: { marks: 'cells' } }. The state tables are cells, pool.",
+    "scratch/marks.shade.ts: the config gives this scratch table no size. Name the state table it follows, for example { scratch: { marks: 'cells' } }. The state tables are cells, spare.",
   );
   expect(bad({}, { ...CONFIG, tick: ['move', 'count', 'draw'] })).toThrow(
     'radiance.config.ts: "tick" names the system "draw", and systems/ has no draw.shade.ts. The systems are count, move.',
@@ -143,7 +142,7 @@ test('each error of a project names the file, the fact and a remedy', () => {
         '"use typeshade";\nexport function count(marks: array<Mark>, speed: f32) {}\n',
     }),
   ).toThrow(
-    'systems/count.shade.ts: the engine knows no value for the parameter "speed" of "count". A parameter is a table, a table with "Next", tick, seed, dt, or a value of the config. The names are cells, pool, marks, cellsNext, poolNext, tick, seed, dt, width.',
+    'systems/count.shade.ts: the engine knows no value for the parameter "speed" of "count". A parameter is a table, a table with "Next", tick, seed, dt, or a value of the config. The names are cells, spare, marks, cellsNext, spareNext, tick, seed, dt, width.',
   );
   expect(
     bad({

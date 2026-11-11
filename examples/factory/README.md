@@ -1,8 +1,10 @@
-# The reference game: a factory, written on the raw structure
+# The first reference game: a factory
 
-This game is the evidence for the engine's design. It is a small automation game, written with
-classes, one tick function of a `"use typeshade"` file and plain host TypeScript. It uses
-nothing of the engine. `docs/vision.md` (D10, D11 and D12) gives the structure.
+This game is evidence for the engine's design. It is a small automation game. It began on the
+raw structure, with nothing of the engine. It is now a project of the engine (design record
+0108): classes and one tick function in `"use typeshade"` files, a config, and plain host
+TypeScript for its drawing, its pointer, its levels and its tests. `docs/vision.md` (D11 to
+D14) gives the structure.
 
 Each engine feature that makes a game easier to write shows this game's code before and after.
 This file lists what was hard to write, with counts, so that each feature has a measured
@@ -25,14 +27,17 @@ E>>>v
 - Two belts can point at one cell. The cell takes from the first ready neighbour in the order
   north, east, south, west.
 
-| File                 | Lines | Content                                                                            |
-| -------------------- | ----- | ---------------------------------------------------------------------------------- |
-| `cells.shade.ts`     | 239   | The classes `Belt`, `Source`, `Machine` and `Cell`, one helper function and `tick` |
-| `level.ts`           | 156   | Host code: a level from text, the factory as text, an input, the counts            |
-| `factory.test.ts`    | 150   | Eight tests on a device of the CPU tier                                            |
-| `draw.shade.ts`      | 35    | The fragment entry that draws the cells                                            |
-| `main.ts`            | 82    | The page: the device, the picture, the pointer                                     |
-| `factory.harness.ts` | 117   | Four checks in a browser                                                           |
+| File                    | Lines | Content                                                                                       |
+| ----------------------- | ----- | --------------------------------------------------------------------------------------------- |
+| `kinds.shade.ts`        | 127   | The classes `Belt`, `Source` and `Machine`: the fields, the rules and the colour of each kind |
+| `state/cells.shade.ts`  | 44    | The class `Cell`, the one table of the game                                                   |
+| `systems/tick.shade.ts` | 73    | `tick(cellsNext, cells, width, height)`, the one step of a tick                               |
+| `draw/`                 | 49    | The fragment entry that draws the cells, and the host function that gives it the table        |
+| `input/pointer.ts`      | 31    | The pointer: a drag puts belts                                                                |
+| `cells.ts`, `levels/`   | 126   | Host code: a level from text, the factory as text, the input that puts a cell, the counts     |
+| `radiance.config.ts`    | 8     | The order of a tick and the values                                                            |
+| `main.ts`               | 48    | The page: one call of `run`, and a handle for the browser check                               |
+| `tests/`                | 256   | Eight tests on the CPU tier, and four checks in a browser                                     |
 
 ## What was observed
 
@@ -362,6 +367,64 @@ What is hard now:
 | P4  | Closed for the meaning of the fields. The tag and the choice by the tag stay (P15).      |
 | P8  | Part closed: the rules of a kind left the tick function, as methods. The two scans stay. |
 | P11 | Closed: the colour of a kind is a method of its class.                                   |
+
+## The game as a project (design record 0108)
+
+The game is now a project. The engine reads its files and writes the game's class. The page
+is one call of `run`.
+
+Before, `main.ts` opened the device, built the factory, wrote its listeners and started the
+loop (82 lines):
+
+```ts
+const device = await createDevice({ prefer: ['webgpu', 'webgl2'] });
+const factory = createFactory(DEMO, { seed: 1, device });
+canvas.addEventListener('pointermove', (event) => {
+  // ...
+  putCell(factory, last.x, last.y, BELT, dir);
+});
+if (options.auto) frames(sim, paint);
+```
+
+After, the pointer is a file of the project, and the page starts the game:
+
+```ts
+// input/pointer.ts
+export function pointermove(game: Game, at: PointerInput) {
+  // ...
+  putCell(game, last.x, last.y, BELT, dir);
+}
+```
+
+```ts
+// main.ts
+const game = await run(Game, { seed: 1, canvas, rows: level.rows, values: level.values });
+```
+
+What changed, measured on 2026-11-11 (compiler pin `6d6a979`, headless Chromium, Playwright
+1.63.0, WebGPU on SwiftShader):
+
+| Item                                               | Before              | After                                                |
+| -------------------------------------------------- | ------------------- | ---------------------------------------------------- |
+| The lines of `main.ts`                             | 82                  | 48, of which 25 are the handle for the browser check |
+| The device, the arrays, the loop and the listeners | Written by the game | None in the game                                     |
+| The bytes the page loads                           | 297,630             | 306,828                                              |
+| The same, with gzip                                | 91,262              | 94,420                                               |
+
+The eight tests give the pictures and the counts they gave before. The harness passed: the
+cells of the GPU device equal the cells of the CPU device.
+
+The cost against D13: the page loads 9,198 bytes more. The engine's runtime is in the page,
+with its dump, its snapshot and its record. A build that removes what a game does not use is a
+later record.
+
+| Id       | State after design record 0108                                                                                         |
+| -------- | ---------------------------------------------------------------------------------------------------------------------- |
+| P7, P10  | Closed: the engine runs the loop, in a test and in a page.                                                             |
+| P9, P13  | Closed: `putCell` is one input on each tier.                                                                           |
+| P12      | The engine gives the pointer as a place from 0 to 1. The cell of that place and the drag stay with the game, 31 lines. |
+| P11, P14 | Open. The engine has no drawing layer.                                                                                 |
+| New      | The page no longer empties a cell on a double click: the engine has no such event.                                     |
 
 ## What this game does not test
 

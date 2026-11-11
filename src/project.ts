@@ -5,7 +5,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import type { GameConfig } from './config.ts';
-import { readSystem, readTable } from './facts.ts';
+import { readFunctions, readSystem, readTable } from './facts.ts';
 
 /** A table of a project. */
 export interface ProjectTable {
@@ -30,16 +30,28 @@ export interface ProjectSystem {
   readonly args: readonly string[];
 }
 
+/** A host function of `input/` that takes an event of the page. */
+export interface ProjectInput {
+  /** The event, which is also the function's name. */
+  readonly event: string;
+  readonly file: string;
+}
+
 /** A project, read. */
 export interface Project {
   readonly dir: string;
   readonly config: GameConfig;
   readonly tables: readonly ProjectTable[];
   readonly systems: readonly ProjectSystem[];
+  /** True when the project has `draw/draw.ts`, the host function that draws a frame. */
+  readonly draws: boolean;
+  readonly inputs: readonly ProjectInput[];
 }
 
 const SUFFIX = '.shade.ts';
 const ENGINE_VALUES = ['tick', 'seed', 'dt'];
+const EVENTS = ['pointerdown', 'pointermove', 'pointerup', 'keydown', 'keyup'];
+const DRAW_FILE = join('draw', 'draw.ts');
 
 function shadeFiles(dir: string, sub: string): string[] {
   const path = join(dir, sub);
@@ -117,7 +129,7 @@ export function readProject(dir: string, config: GameConfig): Project {
     const file = join('systems', name + SUFFIX);
     const args = readSystem(file, read(file), name).params.map((param) => {
       const table = tables.find((t) => t.name === param);
-      if (table !== undefined) return `this.${param}.rows`;
+      if (table !== undefined) return `this.tables.${param}.rows`;
       const written = tables.find((t) => `${t.name}Next` === param);
       if (written !== undefined) {
         if (written.kind === 'scratch') {
@@ -126,7 +138,7 @@ export function readProject(dir: string, config: GameConfig): Project {
           );
         }
         written.buffered = true;
-        return `this.${written.name}.next`;
+        return `this.tables.${written.name}.next`;
       }
       if (ENGINE_VALUES.includes(param)) return `this.${param}`;
       if (values.includes(param)) return `this.values.${param}`;
@@ -143,7 +155,36 @@ export function readProject(dir: string, config: GameConfig): Project {
       `systems/${unused[0]}${SUFFIX}: the config's "tick" does not name this system. Add "${unused[0]}" to "tick", or remove the file.`,
     );
   }
-  return { dir, config, tables, systems };
+
+  // The drawing: one host function `draw(game)` in draw/draw.ts, when the game draws.
+  const draws = existsSync(join(dir, DRAW_FILE));
+  if (draws && !readFunctions(DRAW_FILE, read(DRAW_FILE)).includes('draw')) {
+    throw new TypeError(
+      `${DRAW_FILE}: the file exports no function "draw". Export the function that draws one frame: "export function draw(game: Game) { ... }".`,
+    );
+  }
+  // The inputs: each host file of input/ exports functions named as the events they take.
+  const inputs: ProjectInput[] = [];
+  const inputDir = join(dir, 'input');
+  for (const name of existsSync(inputDir) ? readdirSync(inputDir).sort() : []) {
+    if (!name.endsWith('.ts')) continue;
+    const file = join('input', name);
+    for (const event of readFunctions(file, read(file))) {
+      if (!EVENTS.includes(event)) {
+        throw new TypeError(
+          `${file}: the function "${event}" is named after no event. A function of input/ has the name of the event it takes: ${EVENTS.join(', ')}.`,
+        );
+      }
+      const before = inputs.find((input) => input.event === event);
+      if (before !== undefined) {
+        throw new TypeError(
+          `${file}: "${event}" is also in ${before.file}. One function takes each event.`,
+        );
+      }
+      inputs.push({ event, file });
+    }
+  }
+  return { dir, config, tables, systems, draws, inputs };
 }
 
 /** The text of `.radiance/game.ts`: the class of the game, as a person could write it. */
@@ -153,7 +194,7 @@ export function writeGame(project: Project): string {
     '// Written by "radiance sync" from the project. Do not change this file: change the',
     '// project, and run "radiance sync" again.',
     '',
-    "import { Engine, system } from 'radiance';",
+    "import { Engine } from 'radiance';",
   ];
   for (const table of project.tables) {
     lines.push(`import { ${table.className} } from '${up(table.file)}';`);
@@ -161,28 +202,60 @@ export function writeGame(project: Project): string {
   for (const sys of project.systems) {
     lines.push(`import { ${sys.name} } from '${up(sys.file)}';`);
   }
+  if (project.draws) lines.push(`import { draw } from '${up(DRAW_FILE)}';`);
+  for (const file of new Set(project.inputs.map((item) => item.file))) {
+    const events = project.inputs.filter((item) => item.file === file).map((item) => item.event);
+    lines.push(`import { ${events.join(', ')} } from '${up(file)}';`);
+  }
   lines.push('', 'export class Game extends Engine {');
   if (project.config.stepOn !== undefined) {
-    lines.push(`  readonly stepOn = '${project.config.stepOn}' as const;`);
+    lines.push(`  override readonly stepOn = '${project.config.stepOn}' as const;`, '');
   }
-  for (const table of project.tables) {
+  lines.push('  readonly tables = {');
+  const state = project.tables.filter((table) => table.kind !== 'scratch');
+  for (const table of state) {
     if (table.kind === 'pool') {
-      lines.push(
-        `  readonly ${table.name} = this.pool(${table.className}, { size: ${table.slots} });`,
-      );
-    } else if (table.kind === 'scratch') {
-      lines.push(
-        `  readonly ${table.name} = this.scratch(${table.className}, { like: this.${table.like} });`,
-      );
+      lines.push(`    ${table.name}: this.pool(${table.className}, { size: ${table.slots} }),`);
     } else {
       lines.push(
-        `  readonly ${table.name} = this.table(${table.className}${table.buffered ? ', { buffered: true }' : ''});`,
+        `    ${table.name}: this.table(${table.className}${table.buffered ? ', { buffered: true }' : ''}),`,
       );
     }
   }
+  for (const table of project.tables.filter((t) => t.kind === 'scratch')) {
+    const like = state.find((t) => t.name === table.like)!;
+    const size = like.kind === 'pool' ? `{ size: ${like.slots} }` : `{ like: '${like.name}' }`;
+    lines.push(`    ${table.name}: this.scratch(${table.className}, ${size}),`);
+  }
+  lines.push('  };', '', '  readonly systems = {');
   for (const sys of project.systems) {
-    lines.push('', `  // ${sys.file.split('\\').join('/')}`, `  @system() ${sys.name}() {`);
-    lines.push(`    return ${sys.name}(${sys.args.join(', ')});`, '  }');
+    lines.push(`    // ${sys.file.split('\\').join('/')}`);
+    lines.push(`    ${sys.name}: () => ${sys.name}(${sys.args.join(', ')}),`);
+  }
+  lines.push('  };');
+  if (project.inputs.length > 0) {
+    lines.push('', '  override readonly inputs = {');
+    for (const item of project.inputs) {
+      const data = item.event.startsWith('key') ? 'KeyInput' : 'PointerInput';
+      lines.push(`    // ${item.file.split('\\').join('/')}`);
+      lines.push(`    ${item.event}: (data: ${data}) => ${item.event}(this, data),`);
+    }
+    lines.push('  };');
+    const types = [
+      ...new Set(
+        project.inputs.map((i) => (i.event.startsWith('key') ? 'KeyInput' : 'PointerInput')),
+      ),
+    ].sort();
+    lines[3] = `import { Engine, ${types.map((t) => `type ${t}`).join(', ')} } from 'radiance';`;
+  }
+  if (project.draws) {
+    lines.push(
+      '',
+      `  // ${DRAW_FILE.split('\\').join('/')}`,
+      '  draw() {',
+      '    return draw(this);',
+      '  }',
+    );
   }
   lines.push('}', '');
   return lines.join('\n');

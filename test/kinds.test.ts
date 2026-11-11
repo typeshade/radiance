@@ -5,8 +5,10 @@
 
 import { createDevice, type Device } from 'typeshade/runtime';
 import { afterAll, beforeAll, expect, test } from 'vitest';
-import { createSim, createWorld, node, scene, type Frame } from '../src/index.ts';
-import { replay, replaySim } from '../src/test.ts';
+import { createWorld, node, scene } from '../src/index.ts';
+import { createSim, type Frame } from '../src/sim.ts';
+import { replaySim } from '../src/sim-replay.ts';
+import { replay } from '../src/test.ts';
 import { Carrier, Holder, run } from './fixtures/kinds.shade.ts';
 
 let device: Device;

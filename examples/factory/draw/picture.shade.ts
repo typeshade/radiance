@@ -1,5 +1,5 @@
 "use typeshade";
-import { Cell } from "./cells.shade.ts";
+import { Cell } from "../state/cells.shade.ts";
 
 // The picture of the factory: one fragment entry that reads the cells where they are on the
 // device. Nothing is read back to the host.
@@ -20,7 +20,7 @@ interface Color {
 
 /** The colour of one pixel: the colour its cell gives, and a thin line between cells. */
 @fragment
-export function draw(pos: builtin<"position">): Color {
+export function picture(pos: builtin<"position">): Color {
   const cell: vec2 = vec2(view.size.x / f32(view.width), view.size.y / f32(view.height));
   const gx: u32 = min(u32(pos.x / cell.x), view.width - 1);
   const gy: u32 = min(u32(pos.y / cell.y), view.height - 1);

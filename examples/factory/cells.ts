@@ -1,34 +1,15 @@
-// The host side of the reference game: a level from text and the factory as text. The engine's
-// simulation (design record 0102) runs the ticks, and gives the game its dump, its inputs and
-// its replay.
+// The host side of the factory's cells: a level from text, the factory as text, the input that
+// puts a cell and the counts of a score. A test and the page use the same functions.
 
-import type { Device } from 'typeshade/runtime';
-import { createSim, type Sim } from '../../src/index.ts';
-import { BELT, Cell, EMPTY, MACHINE, SOURCE, tick } from './cells.shade.ts';
+import type { Game } from './.radiance/game.ts';
+import { BELT, EMPTY, MACHINE, SOURCE } from './kinds.shade.ts';
+import { Cell } from './state/cells.shade.ts';
 
-/** A level: its grid size and its first cells, row by row. */
-export interface Level {
-  readonly width: number;
-  readonly height: number;
-  readonly cells: Cell[];
+/** A level of the factory: its first cells, row by row, and the size of its grid. */
+export interface FactoryLevel {
+  readonly rows: { readonly cells: Cell[] };
+  readonly values: { readonly width: number; readonly height: number };
 }
-
-/** A factory that runs: a level's size and the simulation of its cells. */
-export interface Factory {
-  readonly width: number;
-  readonly height: number;
-  readonly sim: Sim<{ cells: Cell[] }, 'cells'>;
-}
-
-/** The level of the page and of the browser check. */
-export const DEMO = `
-  E>>>v....S
-  ....v....v
-  M<<<<....v
-  ..........
-  N..M<<<<<<
-  ^.........
-`;
 
 const DIRS = '^>v<'; // north, east, south, west: a belt
 const SOURCES = 'NESW'; // a source that sends its items north, east, south or west
@@ -37,7 +18,7 @@ const SOURCES = 'NESW'; // a source that sends its items north, east, south or w
  * Reads a level. Each line is a row and each character a cell: `.` empty, `^ > v <` a belt,
  * `N E S W` a source that sends its items that way, `M` a machine.
  */
-export function parseLevel(text: string): Level {
+export function parseLevel(text: string): FactoryLevel {
   const rows = text
     .split('\n')
     .map((row) => row.trim())
@@ -69,22 +50,19 @@ export function parseLevel(text: string): Level {
       cells.push(cell);
     }
   });
-  return { width, height, cells };
+  return { rows: { cells }, values: { width, height } };
 }
 
 /**
  * The factory as text, one line for each row. A belt with an item is `o`, a source that holds
  * an item is its letter in lower case, and a machine is the digit of its stock.
  */
-export function render(
-  factory: { readonly width: number; readonly height: number },
-  cells: readonly Cell[],
-): string {
+export function render(width: number, height: number, cells: readonly Cell[]): string {
   const lines: string[] = [];
-  for (let y = 0; y < factory.height; y++) {
+  for (let y = 0; y < height; y++) {
     let line = '';
-    for (let x = 0; x < factory.width; x++) {
-      const c = cells[y * factory.width + x];
+    for (let x = 0; x < width; x++) {
+      const c = cells[y * width + x];
       if (c.kind === BELT) line += c.belt.item !== 0 ? 'o' : DIRS[c.belt.dir];
       else if (c.kind === SOURCE) {
         const letter = SOURCES[c.source.dir];
@@ -98,41 +76,20 @@ export function render(
 }
 
 /**
- * Builds the factory of a level on a device: the CPU tier in a test, a GPU tier in a page. The
- * cells are one buffered table: each tick reads the cells as the last tick left them and writes
- * the next cells, and the simulation swaps the two.
- */
-export function createFactory(
-  text: string,
-  options: { readonly seed: number; readonly device: Device },
-): Factory {
-  const { width, height, cells } = parseLevel(text);
-  const sim = createSim(
-    { cells },
-    {
-      device: options.device,
-      seed: options.seed,
-      buffered: ['cells'],
-      tick: (t) => tick(t.cells.write, t.cells.read, width, height),
-    },
-  );
-  return { width, height, sim };
-}
-
-/**
  * Puts a belt, a source, a machine or nothing in the cell (x, y). It is an input of the
  * simulation, so it is the same call in a test and in a page. A cell outside the grid is left.
  */
-export function putCell(factory: Factory, x: number, y: number, kind: number, dir: number): void {
-  if (x < 0 || y < 0 || x >= factory.width || y >= factory.height) return;
-  const index = y * factory.width + x;
+export function putCell(game: Game, x: number, y: number, kind: number, dir: number): void {
+  const { width, height } = game.values;
+  if (x < 0 || y < 0 || x >= width || y >= height) return;
+  const index = y * width + x;
   // The input writes the tag and the fields of the new kind. The other kinds keep theirs.
-  if (kind === BELT) factory.sim.input('cells', index, { kind, belt: { dir, item: 0, wait: 0 } });
+  if (kind === BELT) game.tables.cells.input(index, { kind, belt: { dir, item: 0, wait: 0 } });
   else if (kind === SOURCE)
-    factory.sim.input('cells', index, { kind, source: { dir, item: 0, wait: 0 } });
+    game.tables.cells.input(index, { kind, source: { dir, item: 0, wait: 0 } });
   else if (kind === MACHINE)
-    factory.sim.input('cells', index, { kind, machine: { stock: 0, wait: 0 } });
-  else factory.sim.input('cells', index, { kind });
+    game.tables.cells.input(index, { kind, machine: { stock: 0, wait: 0 } });
+  else game.tables.cells.input(index, { kind });
 }
 
 /** The counts a test and a score read. */

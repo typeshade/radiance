@@ -1,7 +1,7 @@
 ---
 id: '0108'
 title: A project is the structure of a game, and the engine builds the game from it and runs it
-status: accepted
+status: implemented
 vision: [D4, D11, D12, D13, D14]
 touches:
   - src/engine.ts
@@ -22,14 +22,14 @@ compiler: []
 
 **Document control**
 
-| Field          | Record                                                                                           |
-| -------------- | ------------------------------------------------------------------------------------------------ |
-| Identity       | Design record `0108`, `status: accepted`. The front matter holds the identity and the lifecycle. |
-| Date           | Written 2026-11-11 by the repository's coding agent, under decision D9 of `docs/vision.md`.      |
-| Baseline       | `typeshade/radiance` `main` `d583f83`.                                                           |
-| Compiler pin   | `6d6a979`.                                                                                       |
-| Pull request   | The pull request that adds this file.                                                            |
-| What is a fact | The probes of section 11. No step is implemented.                                                |
+| Field          | Record                                                                                              |
+| -------------- | --------------------------------------------------------------------------------------------------- |
+| Identity       | Design record `0108`, `status: implemented`. The front matter holds the identity and the lifecycle. |
+| Date           | Written 2026-11-11 by the repository's coding agent, under decision D9 of `docs/vision.md`.         |
+| Baseline       | `typeshade/radiance` `main` `d583f83`.                                                              |
+| Compiler pin   | `6d6a979`.                                                                                          |
+| Pull request   | The pull request that adds this file.                                                               |
+| What is a fact | The three steps are implemented. The Record section holds the delivered configuration.              |
 
 ## What changes
 
@@ -80,7 +80,11 @@ The rules:
 5. The engine finds the files by their place. A game writes no import that registers a file.
    A `"use typeshade"` file at the root of the project is a module that the tables and the
    systems share. The engine does not read it.
-6. A file in a place it does not fit, or a name the rules do not know, is an error of
+6. `draw/draw.ts` is a host file. It exports `draw(game)`, which draws one frame. A
+   `"use typeshade"` file of `draw/` holds the entry it calls.
+7. A host file of `input/` exports functions named after the events they take: `pointerdown`,
+   `pointermove`, `pointerup`, `keydown`, `keyup`. Each gets the game and the event's data.
+8. A file in a place it does not fit, or a name the rules do not know, is an error of
    `radiance check`. The error names the file, the fact and a remedy.
 
 ### 2. A table
@@ -147,20 +151,33 @@ writes no call of a system.
 ### 4. What the engine writes
 
 `radiance sync` reads the project and writes `.radiance/game.ts`: one class that extends
-`Engine`, with a field for each table and a method for each system. It is TypeScript that an
-agent can read. An error in it names the line of the author's file.
+`Engine`. It is TypeScript that an agent can read. An error in it names the line of the
+author's file.
 
 ```ts
 // .radiance/game.ts, written by the engine
 export class Game extends Engine {
-  readonly actors = this.pool(Actor, { size: 16 });
-  readonly tiles = this.table(Tile);
-  readonly wants = this.scratch(Want, { like: this.actors });
-  @system() turn() {
-    return turn(this.actors.next, this.actors.rows, this.wants.rows, this.tiles.rows, this.values.width, this.tick);
-  }
+  readonly tables = {
+    actors: this.pool(Actor, { size: 16 }),
+    tiles: this.table(Tile, { buffered: true }),
+    wants: this.scratch(Want, { size: 16 }),
+  };
+
+  readonly systems = {
+    // systems/plan.shade.ts
+    plan: () => plan(this.tables.wants.rows, this.tables.actors.rows, this.values.width, this.values.height),
+  };
 }
 ```
+
+The rules of the class:
+
+1. `tables` holds each table of the game by its name. `systems` holds each step of a tick by
+   its name, in the order they run. `inputs` holds the function for each event the game takes.
+   `draw()` draws a frame.
+2. The names of a game are in those three objects. So no table and no system can meet a member
+   of the engine, and a table or a system can be named `tick`, `seed` or `pool`.
+3. A test and a host file read a table as `game.tables.actors`.
 
 A test and a page load the project and get that class:
 
@@ -222,9 +239,10 @@ tick rate on the CPU tier, gives it each input at its tick and returns the game.
 2. A game whose field `stepOn` is `'input'` runs one tick for each frame that has an input in
    the queue, and no tick in any other frame. A game with turns uses it.
 3. The loop stops while the page is hidden. It does not run the ticks of that time after.
-4. A method with `@input(event)` is called for each event of that name on the canvas:
-   `pointerdown`, `pointermove`, `pointerup`, `keydown`, `keyup`. The method gets the event's
-   data: the place in the canvas from 0 to 1, or the key. The method calls `table.input`.
+4. A function of the game's `inputs` is called for each event of its name on the canvas:
+   `pointerdown`, `pointermove`, `pointerup`, `keydown`, `keyup`. It gets the event's data: the
+   place in the canvas from 0 to 1, or the key. It calls `table.input`, so the record of the
+   run holds the event.
 
 ### 8. What moves
 
@@ -245,7 +263,7 @@ Each error names the class and the field, the fact and a remedy. The tests hold 
 - A table with no first rows at the start.
 - `table.fill` after the start, and `table.fill` with more rows than a pool's size.
 - A read of `next` of a table that is not buffered.
-- A class with no system.
+- A game with no system, and a value of `tables` that is no table.
 - A call on a game after `dispose`.
 - `run` in a place with no canvas.
 
@@ -323,7 +341,7 @@ the decorators and the pin moves, an amendment of this record gives the decorate
 
 | Path                                          | Change                                                             |
 | --------------------------------------------- | ------------------------------------------------------------------ |
-| `src/engine.ts`                               | New: `Engine`, `system`, `input`, the table handles                |
+| `src/engine.ts`                               | New: `Engine`, the table handles, the types of an input            |
 | `src/project.ts`                              | New: the reader of a project and the writer of `.radiance/game.ts` |
 | `src/facts.ts`                                | New: the facts of a system. The one module that reads source.      |
 | `src/cli.ts`                                  | New: `radiance sync` and `radiance check`                          |
@@ -360,7 +378,7 @@ Each step is one pull request. Each commit carries `Design: 0108`.
 2. **The project.** Sections 1 to 4: `src/facts.ts`, the reader, the writer, `radiance sync`,
    `radiance check` and `load`. The second reference game becomes a project, and its tests use
    `load`.
-3. **The page.** Section 7 and `run`, in two pull requests. The first adds `run`, `@input` and
+3. **The page.** Section 7 and `run`, in two pull requests. The first adds `run`, the inputs and
    the loop, with a clock and a canvas that a test gives. In the second, the first reference
    game becomes a project, and its page uses `run`. The harness runs it, and the game's `README.md` records the lines and the bytes.
    `createSim`, `replaySim` and `frames` leave the public exports (section 10, rule 3). Set
@@ -376,7 +394,8 @@ The agent made these decisions under D9. The owner can change each one.
    the names for a table.
 3. A system's parameter gets its value by its name. `Next` after a table's name is the array
    the tick writes.
-4. The engine writes one class that extends `Engine`, and `Engine` is the runtime.
+4. The engine writes one class that extends `Engine`, and `Engine` is the runtime. A game's
+   names are in `tables`, `systems` and `inputs`, apart from the engine's members.
 5. `stepOn: 'input'` makes a game with turns.
 6. `createSim`, `replaySim` and `frames` leave the public exports when the games are projects.
 7. The engine reads source in one module only, and that module moves to the compiler's report
@@ -390,17 +409,24 @@ The agent made these decisions under D9. The owner can change each one.
   해서". The record was written again around the project. The agent showed the owner this shape.
   The owner answered on 2026-11-11: "보기에 코드가 깔끔하고, 장기간 처리시에도 문제가 없으면
   허가함". Section 10 holds what the agent changed in the record to meet that condition.
-- **Validation.** The delivered configuration so far, 2026-11-11, compiler pin `6d6a979`:
+- **Validation.** The delivered configuration, 2026-11-11, compiler pin `6d6a979`:
 
-  | Step | Pull request | Commit on `main` | What ran                   |
-  | ---- | ------------ | ---------------- | -------------------------- |
-  | 1    | #119         | `f6d86c6`        | `bun run check`, 113 tests |
-  | 2    | #120         | `209510f`        | `bun run check`, 118 tests |
+  | Step           | Pull request | Commit on `main` | What ran                                          |
+  | -------------- | ------------ | ---------------- | ------------------------------------------------- |
+  | 1              | #119         | `f6d86c6`        | `bun run check`, 113 tests                        |
+  | 2              | #120         | `209510f`        | `bun run check`, 118 tests                        |
+  | 3, first part  | #121         | `0118236`        | `bun run check`, 124 tests                        |
+  | 3, second part | this one     | its merge commit | `bun run check`, 118 tests. `bun run harness`, 4. |
 
-| 3, first part | this one | its merge commit | `bun run check`, 124 tests |
+  Step 2: the second reference game is a project. Its nine tests give the pictures and the
+  counts they gave before, and its long run replays to the same dump.
 
-Step 2: the second reference game is a project. Its nine tests give the pictures and the
-counts they gave before, and its long run replays to the same dump.
+  Step 3: the first reference game is a project, and its page runs on `run`. Its eight tests
+  give the pictures and the counts they gave before. The harness ran in headless Chromium
+  (Playwright 1.63.0) with WebGPU on SwiftShader: after 200 ticks with one input, the cells of
+  the GPU device equal the cells of the CPU device. The page loads one file of 306,828 bytes,
+  94,420 with gzip. The count of tests fell from 124 to 118: the five tests of `frames` and one
+  test of a `README.md` example went with what they tested.
 
 - **Deviations.**
   - Step 1 added `start(Game, options)` of `radiance/test`, which `load` is built on. Closed.
@@ -411,5 +437,12 @@ counts they gave before, and its long run replays to the same dump.
   - The runtime names no canvas, so that it reads no interface of a browser (design record
     0100, invariant 2). A game reads what it draws to as `game.surface`, and `run` of
     `radiance/page` takes the canvas. Closed.
+  - A game's names are in `tables`, `systems` and `inputs` of its class, and the decorators
+    `@system()` and `@input(event)` of the first steps are removed. A system named `tick` met
+    the engine's `tick`. The agent showed the owner the two ways on 2026-11-11, and the owner
+    answered: "대안 쪽으로 고쳐서 계속 진행해주세요". Sections 4 and 7 say so. Closed.
+  - The page of the first reference game no longer empties a cell on a double click, since the
+    engine's events have no `dblclick`. Open: a later record adds the event when a game needs
+    it.
   - A scratch table's size is in the config and not an export `like`, since a
     `"use typeshade"` file holds no string. Section 2 says so. Closed.
