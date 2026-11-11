@@ -3,7 +3,7 @@
 // never in a shipped game.
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { basename, join, relative } from 'node:path';
 import type { Blend, GameConfig } from './config.ts';
 import { readFunctions, readLayer, readSystem, readTable, unusedNames } from './facts.ts';
 
@@ -64,6 +64,11 @@ export interface Project {
   /** The layers of the picture, in the order of the config's `draw`. Empty with `draws`. */
   readonly layers: readonly ProjectLayer[];
   readonly inputs: readonly ProjectInput[];
+}
+
+/** The name of a game: the config's `name`, or the name of the project's directory. */
+export function gameName(dir: string, config: GameConfig): string {
+  return config.name ?? basename(dir);
 }
 
 const SUFFIX = '.shade.ts';

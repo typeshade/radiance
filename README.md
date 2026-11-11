@@ -162,6 +162,44 @@ tick, and 1 one tick later. A layer uses it to place what moves. A tick does not
 `load` of `radiance/test` gives 0. `game.blend` is the value of the loop.
 `game.drawLayers({ blend })` draws one frame with a given `blend`.
 
+## A save and a start from it
+
+A run gives a save, and a run starts from a save (design record 0112). A
+save is JSON. It holds each table of the game's state by the names of its fields. It holds no
+scratch table, because a tick makes a scratch table again.
+
+```ts
+import { load } from 'radiance/test';
+
+const game = await load('examples/factory', { seed: 1, level: 'demo' });
+await game.step(50);
+const save = await game.save();
+await game.dispose();
+
+const again = await load('examples/factory', { from: save });
+await again.step(50); // The dump equals the dump of one run of 100 ticks.
+```
+
+- `game.save()` waits for the tick in work. Then it reads each table once. It gives a `Save`.
+  `JSON.parse(JSON.stringify(save))` equals the save.
+- A number that JSON cannot hold is the text that a dump uses: `"NaN"`, `"Infinity"`,
+  `"-Infinity"` and `"-0"`. A start from the save reads the text as the number.
+- A save holds the `format` (1), the `game` (the name of the config, or the name of the
+  project's directory), the `version`, the `tick`, the `seed`, the `hz`, the `values` and the
+  `tables`. Until step 3, the `version` is always 1.
+- A start from a save needs no level and no seed. A save holds each one of them. `load` and `run`
+  refuse `from` together with a `seed`, a `level` (the `rows` and the `values`) or another `hz`.
+- A start from a save goes on as a run that never stopped. The check is: 50 ticks, a save, a
+  start from it and 50 ticks give the dump of 100 ticks. It runs on both reference games on the
+  CPU tier, and on the factory in the browser on WebGPU.
+- A start from a save refuses a save of another game, a `format` that the engine does not know,
+  a table or a field that the game does not have, a table or a field that the game has and the
+  save lacks, and a `version` later than the game's. Each message gives the fact and a remedy.
+- An input that waits for the next tick is not in a save. Call `game.save()` after the inputs
+  of the last tick.
+- The record of a run that started from a save has a `from`: the tick of the save. A record
+  with `from` replays only with the same save, as `replayGame(Game, { from: save }, record)`.
+
 ## The design in short
 
 - An agent makes the game. Each thing the engine does is text the agent can read.

@@ -263,6 +263,57 @@ test('the cells the GPU computes equal the cells of the CPU tier, with an input 
   await cpu.dispose();
 });
 
+// Verifies: Design 0112.2
+test('50 ticks, a save, a start from it and 50 ticks give the cells of 100 ticks, on the GPU and on the CPU tier', async () => {
+  const view = await browser.newPage({ viewport: { width: 800, height: 480 } });
+  try {
+    await view.goto('http://localhost:4317/?manual');
+    await view.evaluate(async () => void (await (globalThis as any).game));
+    // The page runs 50 ticks and saves. The save is JSON text, as the page would keep it.
+    const saved = await view.evaluate(async () => {
+      const game = await (globalThis as any).game;
+      await game.step(50);
+      return JSON.stringify(await game.save());
+    });
+    // The same page goes on with a drag of a belt and 50 ticks: the run that never stopped.
+    await view.mouse.move(3 * 80 + 40, 3 * 80 + 40);
+    await view.mouse.down();
+    await view.mouse.move(3 * 80 + 40, 2 * 80 + 40, { steps: 4 });
+    await view.mouse.up();
+    const whole = await view.evaluate(async () => {
+      const game = await (globalThis as any).game;
+      await game.step(50);
+      return JSON.stringify(await game.tables.cells.read());
+    });
+    // A second run in the same page starts from the save, and gets the same belt as an input.
+    const second = await view.evaluate(async (text) => {
+      const game = await (globalThis as any).runFrom(JSON.parse(text));
+      const start = game.tick;
+      game.tables.cells.input(3 * 10 + 3, { kind: 1, belt: { dir: 0, item: 0, wait: 0 } });
+      await game.step(50);
+      return { start, tier: game.tier, cells: JSON.stringify(await game.tables.cells.read()) };
+    }, saved);
+    expect([second.start, second.tier]).toEqual([50, 'webgpu']);
+    expect(JSON.parse(second.cells)).toEqual(JSON.parse(whole));
+
+    // The CPU tier starts from the save that the GPU wrote, and from no save at all.
+    const cpu = await load<Game>('examples/factory', { from: JSON.parse(saved) });
+    putCell(cpu, 3, 3, BELT, 0);
+    await cpu.step(50);
+    const fresh = await load<Game>('examples/factory', { seed: 1, level: 'demo' });
+    await fresh.step(50);
+    putCell(fresh, 3, 3, BELT, 0);
+    await fresh.step(50);
+    const cells = JSON.parse(JSON.stringify(await fresh.tables.cells.read()));
+    expect(JSON.parse(whole)).toEqual(cells);
+    expect(JSON.parse(JSON.stringify(await cpu.tables.cells.read()))).toEqual(cells);
+    expect(await cpu.dump()).toBe(await fresh.dump());
+    await Promise.all([cpu.dispose(), fresh.dispose()]);
+  } finally {
+    await view.close();
+  }
+});
+
 test('the picture shows the cells', async () => {
   await frame(page);
   // A screenshot of the page is what a person sees. The page decodes it to read a pixel.

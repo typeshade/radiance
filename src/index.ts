@@ -7,6 +7,7 @@ export { formatNumber, formatValue } from './dump.ts';
 export type { Snapshot, SnapshotValue } from './dump.ts';
 export type { AppliedInput, InputValue, RunRecord } from './input.ts';
 export { fnv1a, nodeSeed } from './seed.ts';
+export type { Save } from './save.ts';
 export type { SimInput, SimRecord, SimSnapshot } from './sim.ts';
 export { Engine, Rows } from './engine.ts';
 export type {

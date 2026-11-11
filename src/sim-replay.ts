@@ -45,11 +45,20 @@ export async function replaySim<T extends SimTables, B extends keyof T = never>(
       `replaySim(): the record's ticks is ${String(ticks)}. Give an integer from 0.`,
     );
   }
-  let last = 0;
+  // A record of a run from a save starts at the save's tick (design record 0112, section 5).
+  const from = record.from ?? 0;
+  if (!Number.isInteger(from) || from < 0 || from > ticks) {
+    throw new RangeError(
+      `replaySim(): the record's from is ${String(record.from)}, and the record has ${ticks} ticks. Give an integer from 0 to ${ticks}.`,
+    );
+  }
+  let last = from;
   inputs.forEach((input, index) => {
-    if (!Number.isInteger(input.tick) || input.tick < 0 || input.tick >= ticks) {
+    if (!Number.isInteger(input.tick) || input.tick < from || input.tick >= ticks) {
       throw new RangeError(
-        `replaySim(): input ${index} has the tick ${String(input.tick)}, and the record has ${ticks} ticks. An input's tick is an integer from 0 to ${ticks - 1}.`,
+        record.from === undefined
+          ? `replaySim(): input ${index} has the tick ${String(input.tick)}, and the record has ${ticks} ticks. An input's tick is an integer from 0 to ${ticks - 1}.`
+          : `replaySim(): input ${index} has the tick ${String(input.tick)}, and the record runs from tick ${from} to tick ${ticks}. An input's tick is an integer from ${from} to ${ticks - 1}.`,
       );
     }
     if (input.tick < last) {
@@ -59,6 +68,11 @@ export async function replaySim<T extends SimTables, B extends keyof T = never>(
     }
     last = input.tick;
   });
+  if (build === undefined && record.from !== undefined) {
+    throw new TypeError(
+      `replaySim(): the record is of a run that started from a save at tick ${record.from}, and this call builds the simulation at tick 0. Give the function form, and return the simulation that starts from the save.`,
+    );
+  }
   let sim: Sim<T, B>;
   if (build === undefined) {
     sim = createSim(
@@ -72,9 +86,9 @@ export async function replaySim<T extends SimTables, B extends keyof T = never>(
         `replaySim(): the function returned no simulation. Return the simulation that createSim() gives, for example (run) => createGame({ seed: run.seed }).sim.`,
       );
     }
-    if (sim.tick !== 0) {
+    if (sim.tick !== from) {
       throw new RangeError(
-        `replaySim(): the simulation is at tick ${sim.tick}. Return a simulation at tick 0.`,
+        `replaySim(): the simulation is at tick ${sim.tick}. Return a simulation at tick ${from}${record.from === undefined ? '' : ', the tick of the save that the record started from'}.`,
       );
     }
     if (sim.seed !== record.seed || sim.hz !== record.hz) {
@@ -84,7 +98,7 @@ export async function replaySim<T extends SimTables, B extends keyof T = never>(
     }
   }
   let next = 0;
-  for (let tick = 0; tick < ticks; tick++) {
+  for (let tick = from; tick < ticks; tick++) {
     while (next < inputs.length && inputs[next].tick === tick) {
       sim.input(inputs[next].table as keyof T & string, inputs[next].index, inputs[next].fields);
       next++;

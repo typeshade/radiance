@@ -51,6 +51,11 @@ export interface SimOptions<T extends SimTables, B extends keyof T = never> {
   readonly hz?: number;
   /** The tables that a tick reads and writes through two arrays. */
   readonly buffered?: readonly B[];
+  /**
+   * The tick the run starts at, an integer from 0, for a run that starts from a save (design
+   * record 0112, section 2). The record of such a run says where it started.
+   */
+  readonly startTick?: number;
   /** The tables with free slots (design record 0107). */
   readonly slots?: { readonly [K in keyof T]?: Slots<T[K][number]> };
   /** One tick. The simulation waits for the promise it returns. */
@@ -70,7 +75,10 @@ export interface SimRecord {
   readonly version: 1;
   readonly seed: number;
   readonly hz: number;
+  /** The tick at which the run stopped. It counts from tick 0, also for a run from a save. */
   readonly ticks: number;
+  /** Only in the record of a run that started from a save: the tick of the save (record 0112). */
+  readonly from?: number;
   readonly inputs: readonly SimInput[];
 }
 
@@ -98,7 +106,8 @@ function copyRow<R extends object>(row: R): R {
   return copy as R;
 }
 
-function snapshotValue(value: unknown): SnapshotValue {
+/** A value as a plain value that JSON holds: a number that JSON cannot hold is its text. */
+export function snapshotValue(value: unknown): SnapshotValue {
   if (typeof value === 'number') {
     if (!Number.isFinite(value) || Object.is(value, -0)) return formatValue(value);
     return value;
@@ -127,6 +136,10 @@ export class Sim<T extends SimTables, B extends keyof T = never> {
   readonly names: readonly string[];
 
   #tick = 0;
+  readonly #from: number | undefined;
+  /** The end of the work in hand: a tick or a read of the tables. The next one waits for it. */
+  #work: Promise<void> = Promise.resolve();
+  #queued = 0;
   readonly #options: SimOptions<T, B>;
   readonly #device: Device;
   readonly #read = new Map<string, Resident<object[]>>();
@@ -160,6 +173,14 @@ export class Sim<T extends SimTables, B extends keyof T = never> {
         'createSim(): the options hold no tick. Give the function that runs one tick, for example { tick: (t) => tick(t.cells) }.',
       );
     }
+    const { startTick } = options;
+    if (startTick !== undefined && (!Number.isInteger(startTick) || startTick < 0)) {
+      throw new RangeError(
+        `createSim(): startTick is ${String(startTick)}. Give an integer from 0, for example { startTick: 50 }.`,
+      );
+    }
+    this.#tick = startTick ?? 0;
+    this.#from = startTick;
     this.seed = seed;
     this.hz = hz;
     this.dt = Math.fround(1 / hz);
@@ -303,6 +324,26 @@ export class Sim<T extends SimTables, B extends keyof T = never> {
         `Sim.step(): n is ${String(n)}. Give the number of ticks as an integer from 0.`,
       );
     }
+    return this.#exclusive(() => this.#run(n));
+  }
+
+  /**
+   * Runs `job` when the work in hand is done. A job that finds no work in hand starts at once.
+   * A tick and a read of the tables never overlap, so a read sees the state between two ticks
+   * (design record 0112, section 2).
+   */
+  #exclusive<V>(job: () => Promise<V>): Promise<V> {
+    const idle = this.#queued === 0;
+    this.#queued++;
+    const run = idle ? job() : this.#work.then(job);
+    const done = () => {
+      this.#queued--;
+    };
+    this.#work = run.then(done, done);
+    return run;
+  }
+
+  async #run(n: number): Promise<void> {
     for (let i = 0; i < n; i++) {
       if (this.#queue.length > 0) {
         const queue = this.#queue;
@@ -367,6 +408,7 @@ export class Sim<T extends SimTables, B extends keyof T = never> {
       seed: this.seed,
       hz: this.hz,
       ticks: this.#tick,
+      ...(this.#from === undefined ? {} : { from: this.#from }),
       inputs: this.#applied.map((input) => ({ ...input, fields: structuredClone(input.fields) })),
     };
   }
@@ -393,8 +435,15 @@ export class Sim<T extends SimTables, B extends keyof T = never> {
     return lines.join('\n') + '\n';
   }
 
-  /** The simulation as a plain object that JSON holds, read from the device. */
-  async snapshot(): Promise<SimSnapshot> {
+  /**
+   * The simulation as a plain object that JSON holds, read from the device. It waits for the
+   * tick in work, so it reads the state between two ticks.
+   */
+  snapshot(): Promise<SimSnapshot> {
+    return this.#exclusive(() => this.#snapshot());
+  }
+
+  async #snapshot(): Promise<SimSnapshot> {
     const tables: { name: string; rows: { [field: string]: SnapshotValue }[] }[] = [];
     for (const name of this.names) {
       const rows = await this.#read.get(name)!.read();

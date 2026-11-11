@@ -8,7 +8,8 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createDevice } from 'typeshade/runtime';
 import { loadConfig } from './cli.ts';
-import { GAME_FILE, syncProject } from './project.ts';
+import { GAME_FILE, gameName, syncProject } from './project.ts';
+import { checkNoLevel, type Save } from './save.ts';
 import { Engine, simOf, type StartOptions } from './engine.ts';
 import { createWorld, type World, type WorldOptions } from './world.ts';
 
@@ -98,7 +99,22 @@ export async function replayGame<G extends Engine>(
   options: Omit<StartOptions, 'seed' | 'hz'>,
   record: SimRecord,
 ): Promise<G> {
-  const game = await start(Game, { ...options, seed: record?.seed, hz: record?.hz });
+  // The record of a run that started from a save needs that save (design record 0112, section 5).
+  const from = options.from;
+  if (
+    from === undefined &&
+    typeof record === 'object' &&
+    record !== null &&
+    record.from !== undefined
+  ) {
+    throw new TypeError(
+      `replayGame(): the record is of a run that started from a save at tick ${String(record.from)}. Give the same save as "from" in the options.`,
+    );
+  }
+  const game = await start(
+    Game,
+    from === undefined ? { ...options, seed: record?.seed, hz: record?.hz } : { ...options },
+  );
   try {
     await replaySim(() => simOf(game), record);
   } catch (error) {
@@ -121,7 +137,9 @@ export interface Level {
  */
 export async function load<G extends Engine = Engine>(
   project: string,
-  options: { readonly seed: number; readonly level: string | Level },
+  options:
+    | { readonly seed: number; readonly level: string | Level; readonly from?: undefined }
+    | { readonly from: Save; readonly seed?: undefined; readonly level?: undefined },
 ): Promise<G> {
   const dir = resolve(project);
   const config = await loadConfig(dir);
@@ -129,6 +147,16 @@ export async function load<G extends Engine = Engine>(
   const { Game } = (await import(pathToFileURL(join(dir, GAME_FILE)).href)) as {
     Game: new () => G;
   };
+  // What the engine writes into a save: the name of the config, and its version (record 0112).
+  const identity = { game: gameName(dir, config), version: 1 };
+  if (options.from !== undefined) {
+    // A save holds its own level and its own seed (design record 0112, section 2).
+    checkNoLevel(
+      'load()',
+      (['seed', 'level'] as const).filter((name) => options[name] !== undefined),
+    );
+    return start(Game, { from: options.from, ...identity });
+  }
   let level = options.level;
   if (typeof level === 'string') {
     const file = join(dir, 'levels', `${level}.ts`);
@@ -140,5 +168,11 @@ export async function load<G extends Engine = Engine>(
     }
     level = module.default;
   }
-  return start(Game, { seed: options.seed, hz: config.hz, rows: level.rows, values: level.values });
+  return start(Game, {
+    seed: options.seed,
+    hz: config.hz,
+    rows: level.rows,
+    values: level.values,
+    ...identity,
+  });
 }

@@ -12,5 +12,5 @@ export default defineGame({
   view: { fit: [10, 6], clear: [0.03, 0.03, 0.04] },
   // The page starts with this level. A budget holds the script that the page loads.
   start: { level: 'demo', seed: 1 },
-  budget: 310_000,
+  budget: 320_000,
 });

@@ -35,6 +35,7 @@ test('the build writes the entry of the page, with the level and the seed of the
       'const seed = 1;',
       'void run(Game, {',
       '  seed,',
+      '  game: "Factory",',
       '  canvas,',
       '  rows: level.rows,',
       '  values: level.values,',
@@ -52,6 +53,8 @@ test('a page with no seed takes one from the clock, and the hook is there only w
   const hooked = pageFiles('/games/factory', CONFIG, { hook: true }).main;
   expect(hooked).toContain('(globalThis as { game?: unknown }).game = game;');
   expect(hooked).toContain("const manual = new URLSearchParams(location.search).has('manual');");
+  expect(hooked).toContain('(globalThis as { runFrom?: unknown }).runFrom = (from: Save) =>');
+  expect(plain).not.toContain('runFrom');
 });
 
 test('the page is one canvas, with the name of the config or of the directory as its title', () => {

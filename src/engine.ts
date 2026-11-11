@@ -6,7 +6,15 @@
 import type { Device, Resident } from 'typeshade/runtime';
 import type { Drawing, Layer, Place, ViewOptions } from './draw.ts';
 import type { InputObject } from './input.ts';
-import { createSim, type Sim, type SimRecord, type SimSnapshot } from './sim.ts';
+import {
+  checkNoLevel,
+  checkSave,
+  restoreRows,
+  saveNumber,
+  type Save,
+  type SaveShape,
+} from './save.ts';
+import { createSim, snapshotValue, type Sim, type SimRecord, type SimSnapshot } from './sim.ts';
 
 /** The kinds of memory a game declares. */
 export type MemoryKind = 'table' | 'pool' | 'scratch';
@@ -145,14 +153,24 @@ export interface Inputs {
 
 /** What `start` gives a game: the run's seed, its tick rate, its first rows and its values. */
 export interface StartOptions {
-  /** The seed of the run, a `u32`. */
-  readonly seed: number;
-  /** The tick rate, an integer from 1. 60 when it is not given. */
+  /** The seed of the run, a `u32`. A start `from` a save takes none: the save holds it. */
+  readonly seed?: number;
+  /** The tick rate, an integer from 1. 60 when it is not given. A save holds its own. */
   readonly hz?: number;
   /** The first rows of each table, by the name of its field. */
   readonly rows?: { readonly [table: string]: readonly object[] };
   /** The values of the run, by name. */
   readonly values?: { readonly [name: string]: number };
+  /**
+   * A save to start from (design record 0112, section 2): the run starts with the tables, the
+   * tick, the seed, the tick rate and the values of the save. With it, `seed`, `rows` and
+   * `values` are refused, and `hz` is refused when it is not the save's.
+   */
+  readonly from?: Save;
+  /** The name of the game in its saves: the config's `name`. The name of the class when not given. */
+  readonly game?: string;
+  /** The version of the game's state in its saves, an integer from 1. 1 when not given. */
+  readonly version?: number;
   /** What the game draws to, when it runs in a page. The engine does not read it. */
   readonly surface?: unknown;
   /**
@@ -227,6 +245,8 @@ export abstract class Engine {
   #tables: { name: string; handle: Rows<unknown> }[] = [];
   #scratch = new Map<string, Resident<object[]>>();
   #values: { readonly [name: string]: number } = {};
+  #game = '';
+  #version = 1;
 
   /** Declares a table of the game's state. */
   protected table<R>(cls: new () => R, options: TableOptions = {}): Rows<R> {
@@ -370,6 +390,28 @@ export abstract class Engine {
   snapshot(): Promise<SimSnapshot> {
     return this.#live('snapshot()').snapshot();
   }
+  /**
+   * The save of the run: every table of the game's state, and no scratch table (design record
+   * 0112). It waits for the tick in work and reads each table once. An input that waits for the
+   * next tick is not in it. It is a plain value, and `JSON.stringify` holds it.
+   */
+  async save(): Promise<Save> {
+    const sim = this.#live('save()');
+    const snapshot = await sim.snapshot();
+    return {
+      format: 1,
+      game: this.#game,
+      version: this.#version,
+      tick: snapshot.tick,
+      seed: snapshot.seed,
+      hz: snapshot.hz,
+      values: Object.fromEntries(
+        Object.entries(this.#values).map(([name, value]) => [name, snapshotValue(value)]),
+      ) as { [name: string]: number },
+      tables: snapshot.tables,
+    };
+  }
+
   /** The record of the run so far. */
   record(): SimRecord {
     return this.#live('record()').record();
@@ -421,7 +463,66 @@ export abstract class Engine {
       }
       this.#tables.push({ name, handle: handle as Rows<unknown> });
     }
-    const given = options.rows ?? {};
+    this.#game = options.game ?? game;
+    const version = options.version ?? 1;
+    if (!Number.isInteger(version) || version < 1) {
+      throw new RangeError(
+        `${game}: the version is ${String(version)}. Give the version of the game's state as an integer from 1.`,
+      );
+    }
+    this.#version = version;
+    let given = options.rows ?? {};
+    let seed = options.seed;
+    let hz = options.hz;
+    let values: { readonly [name: string]: number } = options.values ?? {};
+    let startTick: number | undefined;
+    const from = options.from;
+    if (from !== undefined) {
+      checkNoLevel(
+        game,
+        (['seed', 'rows', 'values'] as const).filter((name) => options[name] !== undefined),
+      );
+      const shape: SaveShape = {
+        game: this.#game,
+        version,
+        tables: this.#tables
+          .filter((t) => t.handle.kind !== 'scratch')
+          .map((t) => ({
+            name: t.name,
+            className: t.handle.cls.name,
+            fields: Object.keys(new t.handle.cls() as object),
+          })),
+      };
+      checkSave(game, from, shape);
+      if (hz !== undefined && hz !== from.hz) {
+        throw new RangeError(
+          `${game}: the save runs at ${from.hz} hz, and the options give ${hz} hz. A run from a save keeps its tick rate. Leave "hz" out.`,
+        );
+      }
+      seed = from.seed;
+      hz = from.hz;
+      startTick = from.tick;
+      values = Object.fromEntries(
+        Object.entries(from.values).map(([name, value]) => {
+          const number = saveNumber(value);
+          if (number === undefined) {
+            throw new TypeError(
+              `${game}: the value ${JSON.stringify(name)} of the save is ${JSON.stringify(value)}. A value is a number. Start from a save that game.save() wrote.`,
+            );
+          }
+          return [name, number];
+        }),
+      );
+      given = Object.fromEntries(
+        from.tables.map((table) => {
+          const handle = this.#tables.find((t) => t.name === table.name)!.handle;
+          return [
+            table.name,
+            restoreRows(game, table.name, handle.cls as new () => object, table.rows),
+          ];
+        }),
+      );
+    }
     for (const name of Object.keys(given)) {
       if (!this.#tables.some((t) => t.name === name && t.handle.kind !== 'scratch')) {
         const names = this.#tables.filter((t) => t.handle.kind !== 'scratch').map((t) => t.name);
@@ -465,11 +566,12 @@ export abstract class Engine {
     this.#device = device;
     this.#surface = options.surface;
     this.#drawing = options.drawing;
-    this.#values = Object.freeze({ ...(options.values ?? {}) });
+    this.#values = Object.freeze({ ...values });
     const sim = createSim(tables, {
       device,
-      seed: options.seed,
-      hz: options.hz,
+      seed: seed as number,
+      hz,
+      startTick,
       buffered,
       slots,
       tick: async (frame) => {

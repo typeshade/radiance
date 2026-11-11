@@ -3,6 +3,7 @@
 // ran.
 
 import { expect, test } from 'vitest';
+import type { Save } from '../../../src/index.ts';
 import { load, replayGame } from '../../../src/test.ts';
 import type { Game } from '../.radiance/game.ts';
 import { EAST, parseLevel } from '../levels/parse.ts';
@@ -148,4 +149,37 @@ test('the dump shows the actors and no free slot, and the memory lists each tabl
     { name: 'wants', kind: 'scratch', rows: 16, arrays: 1 },
   ]);
   await g.dispose();
+});
+
+// Verifies: Design 0112.2
+test('50 ticks, a save, a start from it and 50 ticks give the dump of 100 ticks, with inputs on both sides', async () => {
+  // The same moves for both runs: one input for each tick, from a fixed word.
+  const moves: number[] = [];
+  let word = 12345;
+  for (let t = 0; t < 100; t++) {
+    word = (Math.imul(word, 1664525) + 1013904223) >>> 0;
+    moves.push((word >>> 16) % 5);
+  }
+  const play = async (g: Game, from: number, to: number) => {
+    for (let t = from; t < to; t++) {
+      g.tables.actors.input(0, { move: moves[t] });
+      await g.step(1);
+    }
+  };
+  const whole = await load<Game>(PROJECT, { seed: 7, level: 'cave' });
+  await play(whole, 0, 100);
+
+  const half = await load<Game>(PROJECT, { seed: 7, level: 'cave' });
+  await play(half, 0, 50);
+  const save = JSON.parse(JSON.stringify(await half.save())) as Save;
+  await half.dispose();
+  expect([save.game, save.tick, save.seed]).toEqual(['dungeon', 50, 7]);
+  const again = await load<Game>(PROJECT, { from: save });
+  await play(again, 50, 100);
+
+  expect(await again.dump()).toBe(await whole.dump());
+  expect(await again.snapshot()).toEqual(await whole.snapshot());
+  // The pool keeps its free slots and its row seeds: the actors of both runs are the same rows.
+  expect(await again.tables.actors.read()).toEqual(await whole.tables.actors.read());
+  await Promise.all([whole.dispose(), again.dispose()]);
 });

@@ -2,6 +2,7 @@
 // (design record 0108).
 
 import { expect, test } from 'vitest';
+import type { Save } from '../../../src/index.ts';
 import { load, replayGame } from '../../../src/test.ts';
 import type { Game } from '../.radiance/game.ts';
 import { parseLevel, putCell, render, totals } from '../cells.ts';
@@ -136,4 +137,45 @@ test('a wrong level is refused with the fact and the remedy', () => {
   expect(() => parseLevel('E?M')).toThrow(
     'parseLevel(): row 0 holds "?". A cell is one of . ^ > v < N E S W M.',
   );
+});
+
+// Verifies: Design 0112.2
+test('50 ticks, a save, a start from it and 50 ticks give the dump of 100 ticks, with a belt put on the way', async () => {
+  const whole = await load<Game>(PROJECT, { seed: 1, level: 'demo' });
+  await whole.step(50);
+  putCell(whole, 3, 3, BELT, 0);
+  await whole.step(50);
+
+  const half = await load<Game>(PROJECT, { seed: 1, level: 'demo' });
+  await half.step(50);
+  const save = JSON.parse(JSON.stringify(await half.save())) as Save;
+  await half.dispose();
+  // The save names the game as the config does, and has no version of its own yet.
+  expect([save.game, save.version, save.tick, save.seed]).toEqual(['Factory', 1, 50, 1]);
+  const again = await load<Game>(PROJECT, { from: save });
+  expect([again.tick, again.values]).toEqual([50, { width: 10, height: 6 }]);
+  putCell(again, 3, 3, BELT, 0);
+  await again.step(50);
+
+  expect(await again.dump()).toBe(await whole.dump());
+  expect(await again.snapshot()).toEqual(await whole.snapshot());
+  await Promise.all([whole.dispose(), again.dispose()]);
+});
+
+// Verifies: Design 0112.2
+test('a start from a save refuses a level and a seed, and a save of another game', async () => {
+  const f = await make(LINE);
+  const save = await f.save();
+  await expect(load<Game>(PROJECT, { from: save, seed: 1 } as never)).rejects.toThrow(
+    'load(): the options give "from" and "seed". A save holds the tables, the seed and the values of its run. Give "from" alone to go on with the save, or leave "from" out to start a new run.',
+  );
+  await expect(
+    load<Game>(PROJECT, { from: save, seed: 1, level: 'demo' } as never),
+  ).rejects.toThrow(
+    'load(): the options give "from" and "seed" and "level". A save holds the tables, the seed and the values of its run. Give "from" alone to go on with the save, or leave "from" out to start a new run.',
+  );
+  await expect(load<Game>(PROJECT, { from: { ...save, game: 'Dungeon' } })).rejects.toThrow(
+    'Game: the save is of the game "Dungeon", and this game is "Factory". Start the game from a save of its own.',
+  );
+  await f.dispose();
 });

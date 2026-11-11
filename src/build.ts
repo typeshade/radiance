@@ -4,13 +4,13 @@
 
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { typeshade } from 'typeshade/vite';
 import { build, createServer, type InlineConfig, type ViteDevServer } from 'vite';
 import type { GameConfig } from './config.ts';
-import { syncProject } from './project.ts';
+import { gameName, syncProject } from './project.ts';
 
 /** The options of a build. */
 export interface BuildOptions {
@@ -119,6 +119,7 @@ export function pageFiles(
     readout
       ? "import { readout, run, type FrameStats } from 'radiance/page';"
       : "import { run } from 'radiance/page';",
+    ...(hook ? ["import type { Save } from 'radiance';"] : []),
     `import level from '../levels/${config.start.level}.ts';`,
     "import { Game } from './game.ts';",
     '',
@@ -156,6 +157,7 @@ export function pageFiles(
       : []),
     `${hook ? 'const game = ' : readout ? 'const game = ' : 'void '}run(Game, {`,
     '  seed,',
+    `  game: ${JSON.stringify(gameName(dir, config))},`,
     '  canvas,',
     '  rows: level.rows,',
     '  values: level.values,',
@@ -163,10 +165,17 @@ export function pageFiles(
     ...(hook ? ['  ...(manual ? { schedule: () => {} } : {}),'] : []),
     '});',
     ...(readout ? ['game.catch(onError);'] : []),
-    ...(hook ? ['(globalThis as { game?: unknown }).game = game;'] : []),
+    ...(hook
+      ? [
+          '(globalThis as { game?: unknown }).game = game;',
+          '// The hook also starts a second run from a save, on a canvas of its own (design record 0112).',
+          '(globalThis as { runFrom?: unknown }).runFrom = (from: Save) =>',
+          `  run(Game, { game: ${JSON.stringify(gameName(dir, config))}, canvas: document.createElement('canvas'), from, schedule: () => {} });`,
+        ]
+      : []),
     '',
   ].join('\n');
-  const title = (config.name ?? basename(dir)).replace(/[<>&]/g, '');
+  const title = gameName(dir, config).replace(/[<>&]/g, '');
   const html = [
     '<!doctype html>',
     '<html lang="en">',
