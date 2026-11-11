@@ -1,7 +1,7 @@
 # Radiance: the design of the game engine
 
-> **Status:** draft, written 2026-11-11. Nothing in this document is implemented. The owner
-> reads this draft and decides each open item of section 3. Every claim about the compiler names
+> **Status:** design, written 2026-11-11. Nothing in this document is implemented. The owner
+> decided D1 to D8 and accepted U1 to U9 on 2026-11-11. Every claim about the compiler names
 > a section of its surface document (`docs/use-typeshade-surface.md`, "§"), a rule of its design
 > rules (`docs/language-design.md`, "Rule"), or a change proposal (`changes/`, "change NNNN").
 > The compiler was read at `typeshade/typeshade` `main` `da311c32`. The names in the sketches are
@@ -51,12 +51,13 @@ this design.
 | D7  | A game needs no server.                                                                              |
 | D8  | Rigid-body dynamics is not in the first scope. The owner named no game that needs it yet.            |
 
-## 3. What is not decided
+## 3. What the owner accepted
 
-Each row is this draft's working assumption. The rest of the document is written on these
-assumptions. The owner accepts or changes each one.
+Each row was a working assumption of the first draft. The owner accepted all nine on 2026-11-11.
+The owner's words: "U1~U9 모두 추천대로 진행해주세요". The rest of the document is written on these
+decisions. U9 fixes the kind of shell. The choice of the tool waits on M1 and M4 (section 12).
 
-| Id  | Question                 | Working assumption                                                            | Section |
+| Id  | Question                 | Decision                                                                      | Section |
 | --- | ------------------------ | ----------------------------------------------------------------------------- | ------- |
 | U1  | The scene model          | The author writes a tree of nodes. The engine stores and runs tables.         | 6       |
 | U2  | Where game logic runs    | The CPU tier is the reference. The GPU draws and computes wide effects.       | 7       |
@@ -261,7 +262,7 @@ as node classes, and contacts as a table that a system reads. A contact is not a
 | 2     | Rigid-body dynamics: stacks, joints, friction                    | Not in the first scope (D8) |
 
 Phase 1 is written in TypeShade, so its state is in the tables. A top-down roguelike and an
-automation game need phase 1 only, as far as this draft can tell. Phase 2 has two paths: write
+automation game need phase 1 only, as far as this document can tell. Phase 2 has two paths: write
 the solver in TypeShade, or integrate a WebAssembly engine. The second path keeps a second
 world outside the tables. The owner decides when a game needs phase 2, with phase 1's
 measurements.
@@ -374,10 +375,10 @@ the first model. The owner's words of 2026-11-11: "Radiance는 초기모델입�
 
 - The compiler work that the first model asked for stays in the compiler (changes 0044 to
   0050). The new engine uses it.
-- Compiler proposals cite commits of this repository by address. So this draft proposes to
-  keep this repository and its history (U8).
+- Compiler proposals cite commits of this repository by address. So the engine keeps
+  this repository and its history (U8).
 - This pull request adds this file only. It changes no code, no design record and no plan.
-- When the owner accepts the design, a later pull request moves the first model to a `legacy`
+- A later pull request moves the first model to a `legacy`
   branch and a tag. That pull request also removes the old tree from `main`. The removal waits
   for the owner's word.
 - The compiler's documents name Radiance as the reference engine and as a downstream
@@ -388,5 +389,5 @@ the first model. The owner's words of 2026-11-11: "Radiance는 초기모델입�
 - Draft written 2026-11-11 in a Claude Code session with the owner, in Korean.
 - Baselines read: `typeshade/radiance` `main` `3e4efb3f`. `typeshade/typeshade` `main`
   `da311c32`. TypeAudio's `docs/vision.md` is the model for this document's shape.
-- Decisions D1 to D8 are the owner's. Items U1 to U9 are open.
+- Decisions D1 to D8 are the owner's. The owner accepted U1 to U9 on 2026-11-11.
 - Nothing in this document is implemented. No measurement of section 12 has run.
