@@ -130,6 +130,48 @@ export function system() {
   };
 }
 
+const INPUTS = Symbol('radiance.inputs');
+
+/** The events of a page that a game can take as inputs. */
+export type InputEvent = 'pointerdown' | 'pointermove' | 'pointerup' | 'keydown' | 'keyup';
+
+/** What a method with `@input` gets for a pointer event: the place in the canvas, from 0 to 1. */
+export interface PointerInput {
+  readonly x: number;
+  readonly y: number;
+  /** True while a button is down. */
+  readonly down: boolean;
+}
+
+/** What a method with `@input` gets for a key event. */
+export interface KeyInput {
+  readonly key: string;
+}
+
+/**
+ * Marks a method of a game's class as the receiver of an event of the page. The loop of
+ * `radiance/page` calls it with the event's data. The method gives the game an input with
+ * `table.input`, so the event is in the record of the run.
+ */
+export function input(event: InputEvent) {
+  return function <This extends Engine>(
+    _method: (this: This, data: never) => unknown,
+    context: ClassMethodDecoratorContext<This>,
+  ): void {
+    context.addInitializer(function (this: This) {
+      (this as unknown as { [INPUTS]: [InputEvent, string][] })[INPUTS].push([
+        event,
+        String(context.name),
+      ]);
+    });
+  };
+}
+
+/** @internal The methods of a game that take an event, for the loop of a page. */
+export function inputsOf(game: Engine): readonly (readonly [InputEvent, string])[] {
+  return (game as unknown as { [INPUTS]: [InputEvent, string][] })[INPUTS];
+}
+
 /** What `start` gives a game: the run's seed, its tick rate, its first rows and its values. */
 export interface StartOptions {
   /** The seed of the run, a `u32`. */
@@ -140,6 +182,8 @@ export interface StartOptions {
   readonly rows?: { readonly [table: string]: readonly object[] };
   /** The values of the run, by name. */
   readonly values?: { readonly [name: string]: number };
+  /** What the game draws to, when it runs in a page. The engine does not read it. */
+  readonly surface?: unknown;
 }
 
 const SIM = Symbol('radiance.sim');
@@ -157,6 +201,12 @@ export function simOf(game: Engine): Sim<Record<string, object[]>, string> {
 export abstract class Engine {
   /** @internal The names of the systems, in the order of the class. */
   readonly [SYSTEMS]: string[] = [];
+  /** @internal The methods that take an event of the page. */
+  readonly [INPUTS]: [InputEvent, string][] = [];
+  /** `'input'` for a game with turns: the loop of a page runs one tick for each frame with an input. */
+  readonly stepOn?: 'input';
+  #surface: unknown;
+  #stops: (() => void)[] = [];
   #sim: Sim<Record<string, object[]>, string> | undefined;
   #device: Device | undefined;
   #disposed = false;
@@ -225,6 +275,20 @@ export abstract class Engine {
     return this.#values;
   }
 
+  /** What the game draws to, or `undefined` in a test. The page gives it. */
+  get surface(): unknown {
+    return this.#surface;
+  }
+  /** The number of inputs that wait for the next tick. */
+  get pending(): number {
+    return this.#live('pending').pending;
+  }
+
+  /** @internal Asks the engine to call `stop` when the game is disposed. */
+  onDispose(stop: () => void): void {
+    this.#stops.push(stop);
+  }
+
   /** Runs `n` ticks, 1 when `n` is not given. */
   step(n = 1): Promise<void> {
     return this.#live('step()').step(n);
@@ -262,6 +326,7 @@ export abstract class Engine {
     if (this.#disposed) return;
     this.#live('dispose()');
     this.#disposed = true;
+    for (const stop of this.#stops) stop();
     await this.#device!.dispose();
   }
 
@@ -329,6 +394,7 @@ export abstract class Engine {
     }
 
     this.#device = device;
+    this.#surface = options.surface;
     this.#values = Object.freeze({ ...(options.values ?? {}) });
     const sim = createSim(tables, {
       device,

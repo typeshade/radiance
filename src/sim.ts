@@ -253,6 +253,11 @@ export class Sim<T extends SimTables, B extends keyof T = never> {
     }
   }
 
+  /** The number of inputs that wait for the next tick. */
+  get pending(): number {
+    return this.#queue.length;
+  }
+
   /** The number of ticks run, an integer from 0. */
   get tick(): number {
     return this.#tick;

@@ -18,8 +18,11 @@ export type {
   SimTables,
   TickTime,
 } from './sim.ts';
-export { Engine, Rows, system } from './engine.ts';
+export { Engine, Rows, input, system } from './engine.ts';
 export type {
+  InputEvent,
+  KeyInput,
+  PointerInput,
   MemoryKind,
   MemoryLine,
   PoolOptions,
