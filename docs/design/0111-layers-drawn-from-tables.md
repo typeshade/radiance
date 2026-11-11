@@ -286,6 +286,10 @@ each one.
   the WebGL2 tier (a game with layers does not start there), a physical phone, and the check of
   a measurement against Tint for a refusal (this step adds no refusal that stands in for a Tint
   error).
+- **On a device.** The owner's picture of commit `1d9331a`, taken on 2026-11-11 on an iPhone 14
+  Pro Max with iOS 27.0.1 in Safari, upright: the cells are squares, and the grid is in the
+  middle with a bar above it and a bar below it. The readout said `webgpu`, tick 1.1 ms, frame
+  16.7 ms. A drag of a finger was not reported.
 - **Deviations.**
   - Section 3 does not name a way to turn a place of the screen into a place of the world. A
     touch at a point of a letterboxed screen must reach the cell under it. The engine gains

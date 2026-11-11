@@ -197,8 +197,8 @@ The agent made these decisions under D9. The owner can change each one.
     of its place. Disposition: closed. The owner's picture of commit `e5d2471` on the same phone shows the six
     rows, and the canvas ends above the bar.
   - The picture is stretched on an upright phone: a cell is taller than it is wide. The game's
-    own drawing fills the canvas with the grid. Disposition: open. The drawing layer gives a
-    game a view that keeps the shape of a cell.
+    own drawing fills the canvas with the grid. Disposition: closed by design record 0111, step 1. The owner's picture of commit
+    `1d9331a` on the same phone shows square cells.
   - Section 4 said that no file holds the domain, and that the workflow reads the account
     from a secret. `wrangler.jsonc` holds both, as the sibling repositories do, and the workflow
     reads one secret. The owner named the address. Disposition: made part of this record.
