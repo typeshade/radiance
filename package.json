@@ -6,13 +6,20 @@
   "license": "Apache-2.0",
   "description": "TypeShade Radiance: a game engine written in TypeShade, made for development by a coding agent.",
   "scripts": {
+    "prepare": "bun --bun tshc sync",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check:prose": "node scripts/check-prose.mjs",
     "check:ste": "node scripts/check-ste.mjs",
-    "check": "bun run format:check && bun run check:prose && bun run check:ste"
+    "typecheck": "tshc sync --check && tshc check test && tsc -p tsconfig.json",
+    "test": "vitest run",
+    "check": "bun run format:check && bun run check:prose && bun run check:ste && bun run typecheck && bun run test"
   },
   "devDependencies": {
-    "prettier": "^3.5.3"
+    "prettier": "^3.5.3",
+    "typescript": "5.6.3",
+    "typeshade": "https://github.com/typeshade/typeshade/archive/da311c32bf5f8f1f2ac35d6e12952beecde9d62e.tar.gz",
+    "vite": "7.3.7",
+    "vitest": "5.0.5"
   }
 }

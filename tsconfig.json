@@ -1,0 +1,22 @@
+{
+  // The host project (compiler surface §64): an import of `./x.shade.ts` reads the host view
+  // `x.shade.typeshade.ts` that `tshc sync` writes, and the shader sources are not part of this
+  // program. `tshc check` checks them, the way the editor does.
+  // `dom` is in `lib` because the compiler is installed as TypeScript sources, and `tsc` reads the
+  // sources of `typeshade/runtime` that the host views import. A scan, not `lib`, holds the rule
+  // that the engine reads no browser interface (design record 0100, invariant 2).
+  "compilerOptions": {
+    "target": "es2022",
+    "lib": ["es2022", "dom"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": [],
+    "moduleSuffixes": [".typeshade", ""]
+  },
+  "include": ["test/**/*.ts"],
+  "exclude": ["**/*.shade.ts"]
+}

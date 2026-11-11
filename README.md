@@ -3,7 +3,7 @@
 A game engine written in [TypeShade](https://typeshade.dev), made for development by a coding
 agent.
 
-**Status: design. Nothing is implemented.** [`docs/vision.md`](docs/vision.md) is the design:
+**Status: design. Step 1 of design record 0100 is implemented: the compiler pin and its test.** [`docs/vision.md`](docs/vision.md) is the design:
 the claim, the owner's decisions, what an agent writes and reads, the scene model, the tick, and
 what is not promised.
 
@@ -34,14 +34,28 @@ its commits, and those commits stay reachable.
 | `docs/vision.md`        | The design                                                       |
 | `docs/design/README.md` | What a design record is, and when a change needs one             |
 | `scripts/`              | The prose checks and the commit gate                             |
+| `test/`                 | The tests, and the `.shade.ts` fixtures they import              |
 | `CLAUDE.md`             | The rules for a session with a coding agent                      |
 | `.agents/`, `.claude/`  | The installed skills, pinned by `skills-lock.json`, and the hook |
 
 ## Checks
 
-`bun run check` runs the format check (`format:check`) and the two prose checks (`check:prose`,
-`check:ste`). CI runs the same three. The engine has no code yet, so there is no type check, no
-test and no harness.
+`bun run check` runs five checks, and CI runs the same five:
+
+| Script         | What it checks                                                                    |
+| -------------- | --------------------------------------------------------------------------------- |
+| `format:check` | The format, with Prettier                                                         |
+| `check:prose`  | No em dash in a document                                                          |
+| `check:ste`    | The structural rules of Simplified Technical English in each document             |
+| `typecheck`    | The shader files with `tshc check`, the host views, and the host files with `tsc` |
+| `test`         | The tests, with Vitest on the CPU tier. No device and no browser.                 |
+
+`bun install` runs `tshc sync`, which writes the host view of each `.shade.ts`.
+
+## The compiler pin
+
+The compiler is pinned as a source tarball: the `typeshade` entry of `devDependencies` in
+`package.json`. The pin is commit `da311c32`. Design record 0100 (section 1) holds the decision.
 
 ## Licence
 
