@@ -1,7 +1,7 @@
 ---
 id: '0110'
 title: A build of a game is a page that the owner opens on a phone, and the page shows its numbers
-status: accepted
+status: implemented
 vision: [D7, D12, D13, D15, D16]
 touches:
   - src/page.ts
@@ -181,7 +181,10 @@ The agent made these decisions under D9. The owner can change each one.
 - **Validation.** Step 1, on 2026-11-11, compiler pin `6d6a979`: `bun run check` passed with
   128 tests. `bun run harness` passed with 8 checks in headless Chromium, WebGPU on SwiftShader.
   The readout showed the tier `webgpu`, three numbers and the commit. A touch on the screen of
-  an emulated Pixel 7 put a belt. No phone was measured. Step 2 is not implemented.
+  an emulated Pixel 7 put a belt. Step 2, on 2026-11-11: the workflow `deploy` deployed commit `ee0425f`. A request to
+  `https://game.typeshade.dev/` with no login got a redirect to the Access login. The owner
+  opened the address on a phone and said: "잘 나오네요". The owner gave no device, system version
+  or number, so this is no measurement of `docs/vision.md` (section 12).
 - **Deviations.**
   - Section 4 said that no file holds the domain, and that the workflow reads the account
     from a secret. `wrangler.jsonc` holds both, as the sibling repositories do, and the workflow

@@ -85,7 +85,7 @@ request), and these sections:
 | [0107](0107-a-table-with-free-slots.md)               | A table of a simulation has free slots, so rows come and go in a table of a fixed size                            | implemented |
 | [0108](0108-the-project-is-the-structure.md)          | A project is the structure of a game, and the engine builds the game from it and runs it                          | implemented |
 | [0109](0109-the-build.md)                             | The engine builds a project into a page and holds its size to a budget                                            | implemented |
-| [0110](0110-a-build-the-owner-opens-on-a-phone.md)    | A build of a game is a page that the owner opens on a phone, and the page shows its numbers                       | accepted    |
+| [0110](0110-a-build-the-owner-opens-on-a-phone.md)    | A build of a game is a page that the owner opens on a phone, and the page shows its numbers                       | implemented |
 
 The first model's records hold the numbers 0001 to 0011. They are on the branch `legacy`, and
 compiler proposals cite them by number. A record of this engine does not use those numbers
