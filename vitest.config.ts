@@ -6,5 +6,5 @@ import { typeshade } from 'typeshade/vite';
 // device and no browser (design record 0100, invariant 2).
 export default defineConfig({
   plugins: [typeshade()],
-  test: { include: ['test/**/*.test.ts'] },
+  test: { include: ['test/**/*.test.ts', 'examples/**/*.test.ts'] },
 });

@@ -11,7 +11,7 @@
     "format:check": "prettier --check .",
     "check:prose": "node scripts/check-prose.mjs",
     "check:ste": "node scripts/check-ste.mjs",
-    "typecheck": "tshc sync --check && tshc check test && tsc -p tsconfig.json",
+    "typecheck": "tshc sync --check && tshc check test examples && tsc -p tsconfig.json",
     "test": "vitest run",
     "check": "bun run format:check && bun run check:prose && bun run check:ste && bun run typecheck && bun run test"
   },
