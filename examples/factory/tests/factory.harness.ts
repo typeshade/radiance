@@ -2,11 +2,11 @@
 // headless Chromium with WebGPU, drives it as a player does, and holds the cells the GPU
 // computed to the cells the CPU tier computes.
 
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { chromium, type Browser, type Page } from 'playwright';
 import { preview, type PreviewServer } from 'vite';
 import { afterAll, beforeAll, expect, test } from 'vitest';
-import { buildProject, viteConfig, type BuildResult } from '../../../src/build.ts';
+import { buildProject, devProject, viteConfig, type BuildResult } from '../../../src/build.ts';
 import { loadConfig } from '../../../src/cli.ts';
 import { load } from '../../../src/test.ts';
 import type { Game } from '../.radiance/game.ts';
@@ -125,4 +125,44 @@ test('the page loads its script within the budget, and no script of a tier it di
   const scripts = requested.filter((path) => path.endsWith('.js'));
   expect(scripts.length).toBe(1);
   expect(statSync(`${here}dist/${scripts[0].replace(/^\//, '')}`).size).toBe(bytes);
+});
+
+// Verifies: Design 0109.4
+test('the development server serves the page, and runs the sync again for a new file', async () => {
+  const dir = here.replace(/\/$/, '');
+  const dev = await devProject(dir, await loadConfig(dir));
+  const added = `${dir}/input/keys.ts`;
+  const game = () => readFileSync(`${dir}/.radiance/game.ts`, 'utf8');
+  const until = async (done: () => boolean) => {
+    for (let i = 0; i < 100 && !done(); i++) await new Promise((r) => setTimeout(r, 100));
+    return done();
+  };
+  const view = await browser.newPage({ viewport: { width: 800, height: 480 } });
+  try {
+    const errors: string[] = [];
+    view.on('pageerror', (error) => errors.push(error.message));
+    await view.goto(dev.resolvedUrls!.local[0]);
+    // The page draws the factory: the pixels at the middle of the cells are not all one colour.
+    await view.waitForFunction(() => document.querySelector('canvas')!.width === 800);
+    await view.waitForTimeout(1500);
+    const pixels = new Set<string>();
+    for (let x = 40; x < 800; x += 80) {
+      for (let y = 40; y < 480; y += 80) {
+        const pixel = await view.screenshot({ clip: { x, y, width: 1, height: 1 } });
+        pixels.add(pixel.toString('base64'));
+      }
+    }
+    expect(errors).toEqual([]);
+    expect(pixels.size).toBeGreaterThan(1);
+
+    expect(game()).not.toContain('keydown');
+    writeFileSync(added, 'export function keydown(): void {}\n');
+    expect(await until(() => game().includes('keydown'))).toBe(true);
+    rmSync(added);
+    expect(await until(() => !game().includes('keydown'))).toBe(true);
+  } finally {
+    rmSync(added, { force: true });
+    await view.close();
+    await dev.close();
+  }
 });

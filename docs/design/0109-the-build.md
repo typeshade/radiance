@@ -1,7 +1,7 @@
 ---
 id: '0109'
 title: The engine builds a project into a page and holds its size to a budget
-status: accepted
+status: implemented
 vision: [D5, D6, D12, D13, D14]
 touches:
   - src/build.ts
@@ -219,5 +219,6 @@ The agent made these decisions under D9. The owner can change each one.
 - **Validation.** Step 1, on 2026-11-11, compiler pin `6d6a979`: `bun run check` passed with
   124 tests. `bun run harness` passed with 4 checks in headless Chromium, WebGPU on SwiftShader.
   The page of the factory loads 282,641 bytes, 92,580 with gzip. It loaded 306,828 bytes before.
-  Step 2 is not implemented.
+  Step 2, on 2026-11-11, same pin: `bun run harness` passed with 5 checks. The fifth opens the
+  page of the development server, and adds and removes a file of `input/`.
 - **Deviations.** None.
