@@ -94,12 +94,19 @@ The hosting is the owner's. The owner's statement on 2026-11-11: "게임은 그 
 
 - The build output is a directory of static files with relative addresses. It needs no server
   code, so any static host serves it (D7).
-- A workflow of this repository builds the first reference game from `main` with `--readout`,
-  and it uploads the directory to the owner's Cloudflare project.
-- The workflow reads the Cloudflare account and its token from the repository's secrets. The
-  owner sets them. The workflow does nothing while they are not set, and it does not fail.
-- The owner's Cloudflare settings limit the address to the owner. No file of this repository
-  holds that limit, the domain or a credential.
+- The address is `game.typeshade.dev`. The owner named the subdomain on 2026-11-11: "game 서브
+  도메인으로". The page is a Cloudflare Worker of static assets, as the sites of the sibling
+  repositories are.
+- `wrangler.jsonc` holds the Worker's name, the account and the address. The account's id is
+  not a secret, by the convention of those repositories.
+- `.github/workflows/deploy.yml` builds the first reference game from `main` with `--readout`,
+  and it deploys the directory.
+- The workflow reads one secret, `CLOUDFLARE_API_TOKEN`. The owner sets it. Without it the
+  workflow says so, and it does not fail.
+- A Cloudflare Access application limits the address to the owner. It is a setting of the
+  owner's account, and no file of this repository holds it or a credential.
+- The Worker has no `workers.dev` address and no preview address. Access covers the one
+  address that there is. A test holds the two settings.
 - A pull request does not upload. Only a push to `main` does.
 
 ## Why
@@ -129,15 +136,15 @@ The hosting is the owner's. The owner's statement on 2026-11-11: "게임은 그 
 
 ## What it touches
 
-| Path                                     | Change                                                        |
-| ---------------------------------------- | ------------------------------------------------------------- |
-| `src/page.ts`                            | `onFrame` and `FrameStats`                                    |
-| `src/build.ts`                           | `--readout`: the entry file's readout, the commit, the reason |
-| `src/cli.ts`                             | The option `--readout`                                        |
-| `test/build.test.ts`, `test/run.test.ts` | New tests                                                     |
-| `examples/factory/tests/`                | The harness with a phone's screen and a touch                 |
-| `.github/workflows/preview.yml`          | New: the upload from `main`                                   |
-| `README.md`                              | The option and the workflow                                   |
+| Path                                             | Change                                                        |
+| ------------------------------------------------ | ------------------------------------------------------------- |
+| `src/page.ts`                                    | `onFrame` and `FrameStats`                                    |
+| `src/build.ts`                                   | `--readout`: the entry file's readout, the commit, the reason |
+| `src/cli.ts`                                     | The option `--readout`                                        |
+| `test/build.test.ts`, `test/run.test.ts`         | New tests                                                     |
+| `examples/factory/tests/`                        | The harness with a phone's screen and a touch                 |
+| `.github/workflows/deploy.yml`, `wrangler.jsonc` | New: the deploy from `main`                                   |
+| `README.md`                                      | The option and the workflow                                   |
 
 Tests owed:
 
@@ -148,6 +155,7 @@ Tests owed:
 | The harness: the readout shows `webgpu`, three numbers and the commit      | Design 0110.1 |
 | The harness: a page with no device shows the reason                        | Design 0110.1 |
 | The harness: on a phone's screen, a drag of a touch puts a belt            | Design 0110.3 |
+| The Worker has no `workers.dev` address and no preview address             | Design 0110.4 |
 
 ## Implementation, in steps
 
@@ -175,6 +183,9 @@ The agent made these decisions under D9. The owner can change each one.
   The readout showed the tier `webgpu`, three numbers and the commit. A touch on the screen of
   an emulated Pixel 7 put a belt. No phone was measured. Step 2 is not implemented.
 - **Deviations.**
+  - Section 4 said that no file holds the domain, and that the workflow reads the account
+    from a secret. `wrangler.jsonc` holds both, as the sibling repositories do, and the workflow
+    reads one secret. The owner named the address. Disposition: made part of this record.
   - `run` gains two options, not one: `onFrame` and `onError`. A browser with no WebGPU and no
     WebGL2 context still opens a device, and the first drawing fails. The reason is then the
     error of a frame, so the loop gives it to `onError`. Disposition: made part of this record.
