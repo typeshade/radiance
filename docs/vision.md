@@ -1,7 +1,7 @@
 # Radiance: the design of the game engine
 
 > **Status:** design, written 2026-11-11. Nothing in this document is implemented. The owner
-> decided D1 to D14 and accepted U1 to U9 on 2026-11-11. Every claim about the compiler names
+> decided D1 to D15 and accepted U1 to U9 on 2026-11-11. Every claim about the compiler names
 > a section of its surface document (`docs/use-typeshade-surface.md`, "§"), a rule of its design
 > rules (`docs/language-design.md`, "Rule"), or a change proposal (`changes/`, "change NNNN").
 > The compiler was read at `typeshade/typeshade` `main` `da311c32`. The names in the sketches are
@@ -59,6 +59,7 @@ this design.
 | D12 | A shipped game runs on WebGPU first, and on WebGL2 where there is no WebGPU.                         |
 | D13 | Radiance is the framework a game is implemented on. It owns memory, the runtime and the device.      |
 | D14 | The engine is a class that a game extends. The framework manages the project and its files.          |
+| D15 | The store is the main distribution, and the web is secondary. A later game also ships on Steam.      |
 
 **D9, in the owner's words (2026-11-11):** "This codebase is yours: what it's for and how it's
 built are your call, and you'll keep building on it."
@@ -167,7 +168,7 @@ What D14 means for the work:
   | Memory           | Each table, scratch buffer and texture: its size, its release, its budget |
   | Runtime          | The start, the fixed tick, the frames, a pause, the inputs as data        |
   | Drawing          | The passes, the cameras, 2D and 3D (D2)                                   |
-  | Assets and saves | Assets from code first (U4), sound, a save and a load                     |
+  | Assets and saves | Assets from code and from files (U5, D15), sound, a save and a load       |
   | Tools            | The dump, the replay, the tests, `explain`                                |
   | Project          | The shape of a project, the files it writes, the compiler, the build      |
 
@@ -176,6 +177,24 @@ What D14 means for the work:
   of a `"use typeshade"` file (D11).
 - D14 changes U1. The tree of nodes is no longer what the author writes first. Section 6 keeps
   its text and names the change.
+
+**D15, in the owner's words (2026-11-11):** "3D 에셋이 큰건 알지만, 어차피 앱스토어나 플레이스토어에
+게임 배포때 같이 배포되니까 괜찮지 않을까". Then: "네, 스토어가 주된 배포이고 웹은 부차입니다, 나중에는
+스팀과 같은곳에도 넣을 예정이예요. 다른 게임 만들어서".
+
+What D15 means for the work:
+
+- **The store package is the main product.** A game ships in the App Store and in Google Play
+  (D6). The page in a browser is secondary: a tool of development, or a small trial.
+- **A large asset is in the package.** The bytes of the package are no reason to refuse a model
+  or an image. The asset layer takes files as an ordinary path, and it builds them into the
+  package. Assets from code stay a path too.
+- **D15 changes U5.** U5 said: procedural assets first. Now neither path is first.
+- **Memory and loading stay costs.** The bytes of a download and the memory of the GPU are
+  different numbers. The framework owns both budgets (D13), and M1 to M7 still apply.
+- **A desktop store comes later.** A later game ships on a store such as Steam. No work for it
+  is in scope now. A design record must not make it impossible: the build names its target.
+- D5 and D6 keep their text. D15 says which one leads.
 
 The names in this sketch are not decided. A design record decides them.
 
@@ -199,7 +218,7 @@ decisions. U9 fixes the kind of shell. The choice of the tool waits on M1 and M4
 | U2  | Where game logic runs    | Changed by D12: on the GPU tier. The CPU tier is the reference of the tests.      | 7       |
 | U3  | The simulation clock     | A fixed tick, and a deterministic result for one seed and one input record.       | 7       |
 | U4  | Physics                  | Phase 1 is collision and queries, written in TypeShade. Phase 2 waits on D8.      | 8       |
-| U5  | Assets                   | Procedural first: shapes as distance fields, sound as TypeAudio patches.          | 9       |
+| U5  | Assets                   | Changed by D15: assets from code and assets from files, and neither is first.     | 9       |
 | U6  | The first vertical slice | A 2D top-down automation game.                                                    | 14      |
 | U7  | The first store          | Android first. iOS follows, built on a macOS runner.                              | 10      |
 | U8  | The repository           | This repository. The first model's tree stays reachable on a `legacy` branch.     | 15      |
@@ -434,8 +453,10 @@ code:
 - A texture is a function of a coordinate and a seed.
 
 A procedural asset is a few hundred bytes of source, which keeps a store package small (D6).
-The engine also imports glTF files and images. That path is supported, and it is not the first
-path.
+The engine also imports glTF files and images.
+
+> **Changed by D15 (2026-11-11).** The file path was not the first path. Now neither path is
+> first. A large asset is in the store package, and the framework holds its memory to a budget.
 
 **Text.** A game needs text on the screen. TypePlot renders text with TypeShade shaders. Whether
 Radiance shares that code is open.
@@ -546,7 +567,8 @@ are the first model. The owner's words of 2026-11-11: "Radiance는 초기모델�
 - Draft written 2026-11-11 in a Claude Code session with the owner, in Korean.
 - Baselines read: `typeshade/radiance` `main` `3e4efb3f`. `typeshade/typeshade` `main`
   `da311c32`. TypeAudio's `docs/vision.md` is the model for this document's shape.
-- Decisions D1 to D14 are the owner's. D13 changed D10 and D14 changed U1 on 2026-11-11. The owner accepted U1 to U9 on 2026-11-11. D12 changed
+- Decisions D1 to D15 are the owner's. D13 changed D10, D14 changed U1 and D15 changed U5 on
+  2026-11-11. The owner accepted U1 to U9 on 2026-11-11. D12 changed
   U2 on the same day.
 - Design records 0100 and 0101 are implemented. Their world runs on the CPU tier. Since D12 it
   is the reference and the tool of the tests, and it is not what a shipped game runs.
