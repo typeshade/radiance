@@ -31,7 +31,7 @@ compiler:
 | Baseline       | `typeshade/radiance` `main` `711de9f`.                                                           |
 | Compiler pin   | `6d6a979`.                                                                                       |
 | Pull request   | The pull request that adds this file.                                                            |
-| What is a fact | Section 1, the probes. Step 1 is implemented. The Record section holds its checks.               |
+| What is a fact | Section 1, the probes. Steps 1 and 2 are implemented. The Record section holds their checks.     |
 
 ## What changes
 
@@ -359,10 +359,48 @@ each one.
     remedy. Disposition: made part of the record by an amendment of section 2.
   - The layer of section 2 draws the colour of the cell only. The factory's layer also draws
     the thin line between cells, as the picture of the game had it before. Disposition: closed.
-  - A layer that declares a name that its entries do not use is refused at the first frame, not
-    at `radiance sync`. The text is the compiler's, for example that the entry "paint" reaches
-    no binding "tick" and binds "cells", "view" and "width". Disposition: open. The engine can
-    bind only the names that the entries reach, or the compiler can report the names at sync.
+  - A layer that declares a name that its entries do not use was refused at the first frame, not
+    at `radiance sync`. The text was the compiler's, for example that the entry "paint" reaches
+    no binding "tick" and binds "cells", "view" and "width". Step 2 closes it: `radiance sync`
+    refuses a `declare const` name that the layer's file never uses, with the fact and a remedy
+    (`unusedNames` of `src/facts.ts`). The choice is to refuse and not to bind only the reached
+    names. A refusal is simpler: no table of reached names is needed, and the author removes a
+    line. The check reads each name of the file, and a name used only in a function that no
+    entry calls still reaches the compiler's refusal at the first frame. Disposition: closed.
   - `bun run typecheck` prints the warning `TS8015` for `draw/cells.shade.ts`: the WebGL2 emit
-    of a class with a class in a field fails (compiler issue #1249). It is no error. Disposition:
-    open until that issue is closed.
+    of a class with a class in a field fails (compiler issue #1249). It is no error. Step 2 adds
+    the same warning for `draw/items.shade.ts`. Disposition: open until that issue is closed.
+- **Validation of step 2.** On 2026-11-11, on the branch `claude/game-engine-design-discussion-lvcwy2`
+  after `main` `abe066f`, compiler pin `6d6a979`, Bun with the engine's scripts, Chromium with
+  WebGPU on SwiftShader, Playwright 1.63.0. `bun run check` passed with 151 tests (143 before, 8
+  new). The new tests are in `test/project.test.ts` (4), `test/run.test.ts` (2) and
+  `test/draw.test.ts` (2). `bun run harness` passed with 15 checks (12 before, 3 new): the item of a
+  belt is at 160.0 pixels at `blend` 0 and at 173.3 pixels at `blend` 0.5, the end place of a belt
+  equals the start place of the next on a straight run and at a turn, and a pixel where the alpha
+  of the layer is 0 shows the colour of the layer `cells`. The page of the factory loads 306,357
+  bytes, 97,027 with gzip. It loaded 292,637 bytes before. The `budget` is 310,000. Not run: the
+  WebGL2 tier, a physical phone, and a check of the `add` blend on a device (no layer of the
+  game uses it, and a unit test holds its blend state).
+- **Deviations of step 2.**
+  - `Layer.bind` takes `blend` as its second parameter, and `Drawing.frame` takes `blend`. The
+    class that `radiance sync` writes names the second parameter only for a layer that declares
+    `blend`. New public members: `Engine.blend` (the value of the loop), `DrawOptions`,
+    `Blend` and `DrawEntry`. Disposition: made part of the record by an amendment of section 6.
+  - `game.drawLayers({ blend })` refuses a `blend` outside 0 to 1, with its text. Disposition:
+    made part of the record by an amendment of section 6.
+  - Section 2 lists the names of a layer. `blend` joins `view` as a name that only a layer
+    gets, so the text of the refusal of an unknown name lists `blend` too. The test of that
+    text changed with it. Disposition: made part of the record by an amendment of section 2.
+  - A game with `stepOn: 'input'` has a `blend` of 1 before its first tick and while the page is
+    hidden. Section 6 says "stays at 1" and does not say what the first frame has. Disposition:
+    made part of the record by an amendment of section 6.
+  - The item of a belt is drawn by a square around the item, not by the square of its cell, so
+    that the disc is whole at the edge of a cell. The layer still has one instance for each row
+    of `cells`, and a row with no item puts its square outside the view. Disposition: closed.
+  - The layer `items` guesses where an item came in and whether it moves on (see
+    `examples/factory/README.md`). The two guesses fail only when two belts send to one cell.
+    Disposition: open. The table of the tick before (`<table>Before`) removes the guess when a game
+    needs it.
+  - The check that the picture shows the table after a tick reads the colour of a cell near the
+    top left corner of the cell, not at its middle, since the layer `items` draws the item over
+    the middle of a belt. Disposition: closed.

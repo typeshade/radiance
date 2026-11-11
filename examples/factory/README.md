@@ -29,14 +29,15 @@ E>>>v
 
 | File                    | Lines | Content                                                                                       |
 | ----------------------- | ----- | --------------------------------------------------------------------------------------------- |
-| `kinds.shade.ts`        | 127   | The classes `Belt`, `Source` and `Machine`: the fields, the rules and the colour of each kind |
+| `kinds.shade.ts`        | 128   | The classes `Belt`, `Source` and `Machine`: the fields, the rules and the colour of each kind |
 | `state/cells.shade.ts`  | 44    | The class `Cell`, the one table of the game                                                   |
 | `systems/tick.shade.ts` | 73    | `tick(cellsNext, cells, width, height)`, the one step of a tick                               |
-| `draw/cells.shade.ts`   | 36    | The one layer: a square for each row of `cells`, coloured by `Cell.color`                     |
+| `draw/cells.shade.ts`   | 38    | The first layer: a square for each row of `cells`, coloured by `Cell.color`                   |
+| `draw/items.shade.ts`   | 123   | The second layer, with an alpha blend: the item of each belt, placed by its wait and `blend`  |
 | `input/pointer.ts`      | 33    | The pointer: a drag puts belts                                                                |
 | `cells.ts`, `levels/`   | 126   | Host code: a level from text, the factory as text, the input that puts a cell, the counts     |
-| `radiance.config.ts`    | 15    | The order of a tick, the values, the layer and the view                                       |
-| `tests/`                | 580   | Eight tests on the CPU tier, and twelve checks in a browser                                   |
+| `radiance.config.ts`    | 16    | The order of a tick, the values, the two layers and the view                                  |
+| `tests/`                | 768   | Eight tests on the CPU tier, and fifteen checks in a browser                                  |
 
 ## What was observed
 
@@ -554,3 +555,66 @@ What the layer costs:
   issues #1249 and #1263 hold the compiler work.
 - `view.fit` is `[10, 6]` in the config, and the level `demo` is 10 by 6. A level of another size
   needs another `fit`. The view does not read the level's values yet.
+
+## A layer that blends, and the time between two ticks (design record 0111, step 2)
+
+The layer `cells` drew the item of a belt as a dot in the middle of the cell. The dot jumped from
+one cell to the next at each tick. The game now has a second layer, `items`, which the config
+draws after `cells` with an alpha blend. The layer gets the name `blend`, the part of a tick that
+the loop owes. It places the item of each belt along the belt, so the item moves at one speed.
+
+```ts
+// radiance.config.ts
+draw: ['cells', { layer: 'items', blend: 'alpha' }],
+```
+
+The item of a belt takes `BELT_PERIOD + 1` ticks to cross the belt: it waits `BELT_PERIOD` ticks,
+and it leaves in the next tick. With `a` the ticks that the item has waited,
+`BELT_PERIOD - wait`, the distance it has gone is:
+
+```text
+along = (a + blend) / (BELT_PERIOD + 1)     from 0 at the edge it came in to 1 at the edge it leaves
+```
+
+- The place is on a path of two halves: from the middle of the entry edge to the middle of the
+  cell, and from there to the middle of the exit edge. Each half is half a cell long. On a
+  straight belt the path is a line.
+- At the tick in which the item moves on, `a + blend` is `BELT_PERIOD + 1`, so the item is at the
+  exit edge. The next belt gives the item `a` 0 and `blend` 0, which is the entry edge of that
+  belt. Both are the same place on the screen.
+- The belt keeps no entry edge. The layer takes the edge behind the belt, and it takes the edge of
+  the side that sends to the belt when the one behind does not. At a turn the item comes in at
+  the side.
+- An item that is ready (`wait` 0) moves on only if the cell ahead takes it. The layer asks
+  `Cell.accepts()` of the cell ahead. When the cell does not take it, the item stays at
+  `BELT_PERIOD / (BELT_PERIOD + 1)` of the belt, and it does not go back and forth.
+- A tick can still differ from that guess. When two belts send to one cell, the loser moves
+  forward as if it were taken, and it goes back at the next tick.
+
+What changed in the files:
+
+- `Belt.color` passes an item of 0 to `sender`, so the belt has no dot. The source's dot and the
+  machine's colour stay as they were. A source's item still jumps from its dot to the edge of the
+  belt that takes it.
+- `kinds.shade.ts` exports `ITEM`, the colour of the disc, so the two layers use one colour.
+- `systems/` and the eight tests on the CPU tier did not change.
+
+What the layer costs, measured on 2026-11-11 (compiler pin `6d6a979`, Chromium with WebGPU on
+SwiftShader):
+
+| Item                                      | Before  | After   |
+| ----------------------------------------- | ------- | ------- |
+| The bytes the page loads                  | 292,637 | 306,357 |
+| The same, with gzip                       | 95,816  | 97,027  |
+| The same, in the build of the harness     | 293,285 | 307,005 |
+| The `budget` of the config                | 300,000 | 310,000 |
+| The item of the belt (2, 0) at `blend` 0  |         | 160.0   |
+| The same at `blend` 0.5, in pixels of x   |         | 173.3   |
+| The end place of belt (2, 0), in pixels   |         | 240.0   |
+| The start place on belt (3, 0), in pixels |         | 240.0   |
+
+The harness measures the centre of the yellow disc in a screenshot of the first row of the grid.
+It draws one frame with `game.drawLayers({ blend })`. The centre moves from 160.0 to 173.3 pixels
+when `blend` goes from 0 to 0.5. A third of a belt (26.7 pixels) is one tick. The end place of one
+belt equals the start place of the next, on a straight run and at the turn at the cell (4, 0).
+Where the alpha of the layer is 0, the pixel is the colour of the layer `cells`.
