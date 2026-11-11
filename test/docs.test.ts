@@ -2,8 +2,8 @@
 // are written there. A document that shows code the engine does not run is a defect.
 
 import { expect, test } from 'vitest';
-import { node, scene } from '../src/index.ts';
-import { simulate } from '../src/test.ts';
+import { createWorld, node, scene } from '../src/index.ts';
+import { replay, simulate } from '../src/test.ts';
 import { Belt } from './fixtures/belt.shade.ts';
 
 const factory = scene(node('line-1', node(Belt, { speed: 2 }), node('spare', Belt, { speed: 0 })));
@@ -24,4 +24,20 @@ test('README and vision, moment 4: the dump of the factory at tick 30', () => {
       '',
     ].join('\n'),
   );
+});
+
+test('README and vision, moment 5: a record replays to the same dump', () => {
+  const world = createWorld(factory, { seed: 7 });
+  world.input('line-1/Belt#0', { speed: 4 });
+  world.step(2);
+
+  const record = world.record();
+  expect(replay(factory, record).dump() === world.dump()).toBe(true);
+  expect(record).toEqual({
+    version: 1,
+    seed: 7,
+    hz: 60,
+    ticks: 2,
+    inputs: [{ tick: 0, path: 'line-1/Belt#0', fields: { speed: 4 } }],
+  });
 });

@@ -3,8 +3,9 @@
 A game engine written in [TypeShade](https://typeshade.dev), made for development by a coding
 agent.
 
-**Status: early.** Design record 0100 is implemented: a scene of nodes runs as tables on the
-CPU tier, on a fixed tick, and a test reads its dump with no device. The engine draws nothing
+**Status: early.** Design records 0100 and 0101 are implemented. A scene of nodes runs as tables
+on the CPU tier, on a fixed tick. A test reads its dump with no device. A world takes inputs,
+records them and replays them. The engine draws nothing
 yet. [`docs/vision.md`](docs/vision.md) is the design: the claim, the owner's decisions, what an
 agent writes and reads, the scene model, the tick, and what is not promised.
 
@@ -45,6 +46,22 @@ line-1
 
 The run needs no GPU and no browser. Two runs with one seed give the same text.
 
+A game changes a running world with an input. The world records each input, and a record
+replays to the same text:
+
+```ts
+import { createWorld } from 'radiance';
+import { replay } from 'radiance/test';
+
+const world = createWorld(factory, { seed: 7 });
+world.input('line-1/Belt#0', { speed: 4 });
+world.step(2);
+
+replay(factory, world.record()).dump() === world.dump(); // true
+```
+
+A class that needs random numbers declares a field named `seed`, and the world fills it.
+
 ## The design in short
 
 - An agent makes the game. Each thing the engine does is text the agent can read.
@@ -72,6 +89,7 @@ its commits, and those commits stay reachable.
 | `docs/vision.md`        | The design                                                       |
 | `docs/design/README.md` | What a design record is, and when a change needs one             |
 | `docs/design/0100-*.md` | Design record 0100: the world on the CPU tier                    |
+| `docs/design/0101-*.md` | Design record 0101: inputs, the replay and the seed              |
 | `src/`                  | The engine: `node`, `scene`, the world, the dump                 |
 | `scripts/`              | The prose checks and the commit gate                             |
 | `test/`                 | The tests, and the `.shade.ts` fixtures they import              |
@@ -94,7 +112,7 @@ its commits, and those commits stay reachable.
 
 ## The compiler pin
 
-The compiler is pinned as a source tarball: the `typeshade` entry of `devDependencies` in
+The compiler is pinned as a source tarball: the `typeshade` entry of `dependencies` in
 `package.json`. The pin is commit `da311c32`. Design record 0100 (section 1) holds the decision.
 
 ## Licence
