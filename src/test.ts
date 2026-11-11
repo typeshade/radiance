@@ -3,6 +3,8 @@
 import type { RunRecord } from './input.ts';
 import type { Scene } from './node.ts';
 import { createSim, type Sim, type SimOptions, type SimRecord, type SimTables } from './sim.ts';
+import { createDevice } from 'typeshade/runtime';
+import { Engine, simOf, type StartOptions } from './engine.ts';
 import { createWorld, type World, type WorldOptions } from './world.ts';
 
 /** The options of `simulate`. */
@@ -152,4 +154,42 @@ export async function replaySim<T extends SimTables, B extends keyof T = never>(
     await sim.step();
   }
   return sim;
+}
+
+/**
+ * Starts a game on a device of the CPU tier and returns it: the engine opens the device, makes
+ * every array of the game and gives the tables their first rows. It runs no loop (design
+ * record 0108, section 5).
+ */
+export async function start<G extends Engine>(
+  Game: new () => G,
+  options: StartOptions,
+): Promise<G> {
+  const device = await createDevice({ prefer: ['cpu'] });
+  try {
+    return Engine.start(new Game(), device, options);
+  } catch (error) {
+    await device.dispose();
+    throw error;
+  }
+}
+
+/**
+ * Runs a record of a game again: starts the game with the record's seed and tick rate, gives it
+ * each input at the input's tick and runs the record's ticks. Its dump equals the dump of the
+ * run that made the record (design record 0108, section 6).
+ */
+export async function replayGame<G extends Engine>(
+  Game: new () => G,
+  options: Omit<StartOptions, 'seed' | 'hz'>,
+  record: SimRecord,
+): Promise<G> {
+  const game = await start(Game, { ...options, seed: record?.seed, hz: record?.hz });
+  try {
+    await replaySim(() => simOf(game), record);
+  } catch (error) {
+    await game.dispose();
+    throw error;
+  }
+  return game;
 }
