@@ -1,10 +1,5 @@
 node_modules/
 dist/
-.harness/
 *.shade.typeshade.ts
 .codebase-memory/
 test-results/
-
-# The site: the API reference starlight-typedoc generates, and Astro's cache.
-site/src/content/docs/api/
-site/.astro/

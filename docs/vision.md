@@ -8,7 +8,7 @@
 > not decided.
 
 This document proposes a new product for this repository: a game engine written in TypeShade.
-The path tracer in this tree was the first model. It tested the compiler's feedback loop, and
+The path tracer that this repository first held was the first model. It tested the compiler's feedback loop, and
 the owner does not keep it as the product (section 15).
 
 ## 1. The claim
@@ -369,18 +369,16 @@ every bar above that it can reach is in CI.
 
 ## 15. The first model and this repository
 
-The path tracer in this tree, its design records 0001 to 0011 and its plan (`docs/plan.md`) are
-the first model. The owner's words of 2026-11-11: "Radiance는 초기모델입니다", "굳이 유지할 이유는
+The path tracer that this repository first held, its design records 0001 to 0011 and its plan
+are the first model. The owner's words of 2026-11-11: "Radiance는 초기모델입니다", "굳이 유지할 이유는
 없어요", "아예 처음부터 제대로 설계해보고 싶어서요".
 
 - The compiler work that the first model asked for stays in the compiler (changes 0044 to
   0050). The new engine uses it.
 - Compiler proposals cite commits of this repository by address. So the engine keeps
   this repository and its history (U8).
-- This pull request adds this file only. It changes no code, no design record and no plan.
-- A later pull request moves the first model to a `legacy`
-  branch and a tag. That pull request also removes the old tree from `main`. The removal waits
-  for the owner's word.
+- The first model is on the branch `legacy`, at commit `3e4efb3f`. The owner approved the move
+  on 2026-11-11, and `main` no longer holds the first model's tree.
 - The compiler's documents name Radiance as the reference engine and as a downstream
   repository. They follow in their own pull request in `typeshade/typeshade`.
 
