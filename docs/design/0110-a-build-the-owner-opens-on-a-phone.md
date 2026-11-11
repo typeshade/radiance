@@ -194,7 +194,8 @@ The agent made these decisions under D9. The owner can change each one.
   - Section 3 says that the canvas fills the screen. On the owner's iPhone the canvas reached
     under the bar of Safari, and the bar hid the last row of cells and stood over the readout.
     The canvas now has the height that the browser leaves to the page, and it follows a change
-    of its place. Disposition: closed by the pull request that records this line.
+    of its place. Disposition: closed. The owner's picture of commit `e5d2471` on the same phone shows the six
+    rows, and the canvas ends above the bar.
   - The picture is stretched on an upright phone: a cell is taller than it is wide. The game's
     own drawing fills the canvas with the grid. Disposition: open. The drawing layer gives a
     game a view that keeps the shape of a cell.
