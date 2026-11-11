@@ -136,6 +136,7 @@ its commits, and those commits stay reachable.
 | `docs/design/0102-*.md` | Design record 0102: tables and a tick                            |
 | `docs/design/0103-*.md` | Design record 0103: the game in a browser                        |
 | `docs/design/0104-*.md` | Design record 0104: the simulation on a device                   |
+| `docs/design/0105-*.md` | Design record 0105: kinds as classes                             |
 | `examples/factory/`     | The reference game, and what was hard to write in it             |
 | `src/`                  | The engine: `node`, `scene`, the world, the simulation, `frames` |
 | `scripts/`              | The prose checks and the commit gate                             |
