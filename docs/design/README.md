@@ -87,6 +87,7 @@ request), and these sections:
 | [0109](0109-the-build.md)                             | The engine builds a project into a page and holds its size to a budget                                             | implemented |
 | [0110](0110-a-build-the-owner-opens-on-a-phone.md)    | A build of a game is a page that the owner opens on a phone, and the page shows its numbers                        | implemented |
 | [0111](0111-layers-drawn-from-tables.md)              | A game draws in layers, each layer draws the rows of a table as instances, and a view keeps the shape of the world | accepted    |
+| [0112](0112-a-save-of-a-run.md)                       | A run saves its state and starts again from it, on the same version of the game and on a later one                 | accepted    |
 
 The first model's records hold the numbers 0001 to 0011. They are on the branch `legacy`, and
 compiler proposals cite them by number. A record of this engine does not use those numbers
