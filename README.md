@@ -140,6 +140,7 @@ its commits, and those commits stay reachable.
 | `docs/design/0104-*.md` | Design record 0104: the simulation on a device                   |
 | `docs/design/0105-*.md` | Design record 0105: kinds as classes                             |
 | `docs/design/0106-*.md` | Design record 0106: row seeds and a replay from a builder        |
+| `docs/design/0107-*.md` | Design record 0107: a table with free slots                      |
 | `examples/factory/`     | The reference game, and what was hard to write in it             |
 | `examples/dungeon/`     | The second reference game, a roguelike, and what was hard in it  |
 | `src/`                  | The engine: `node`, `scene`, the world, the simulation, `frames` |
