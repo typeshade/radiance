@@ -338,5 +338,10 @@ The agent made these decisions under D9. The owner can change each one.
 
 - **Approval.** The owner approved the merge in the conversation on 2026-11-11: "#85 병합하고 계속
   진행해주세요". The merged text is the approved design.
-- **Validation.** Does not yet apply: no step is implemented.
+- **Validation.**
+  - Step 1, 2026-11-11, compiler pin `da311c32`: `test/probe.test.ts` passes on the CPU tier, and
+    it fails when the fixture's formula is changed. The test also observed what section 7 did not:
+    a matrix field and an array field are plain arrays, a matrix lists its components column by
+    column, and a class that extends another is an instance of both. A field whose type is a
+    class holds an instance of that class. An emulated `f64` field is still not observed.
 - **Deviations.** None.

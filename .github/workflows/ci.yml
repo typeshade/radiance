@@ -1,12 +1,11 @@
 name: ci
 
-# The gate for this repository. The engine has no code yet (docs/vision.md), so one job does
-# work: the format check and the two prose checks, which are `bun run check`. The other three
-# jobs keep the names of the first model's jobs and report that they have nothing to run. The
-# four names may be required checks of the `main` ruleset (CLAUDE.md, Merging), and a required
-# check that never reports blocks every pull request. Each of the three jobs gets its steps back
-# with the part it checks, or the owner removes it from the ruleset and from this file in the
-# same step.
+# The gate for this repository. One job does work: the format check, the two prose checks, the
+# type check and the tests, which are `bun run check`. The other three jobs keep the names of
+# the first model's jobs and report that they have nothing to run. The four names may be
+# required checks of the `main` ruleset (CLAUDE.md, Merging), and a required check that never
+# reports blocks every pull request. Each of the three jobs gets its steps back with the part it
+# checks, or the owner removes it from the ruleset and from this file in the same step.
 
 on:
   push:
@@ -35,24 +34,26 @@ jobs:
       - run: bun run format:check
       - run: bun run check:prose
       - run: bun run check:ste
+      - run: bun run typecheck
+      - run: bun run test
 
   harness:
     name: harness (headless WebGPU)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - run: echo 'The engine has no code yet, so no harness ran.'
+      - run: echo 'The engine draws nothing yet, so no harness ran.'
 
   traceability:
     name: traceability (Doorstop)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - run: echo 'The engine has no design record yet, so no traceability check ran.'
+      - run: echo 'Design record 0100 adds no Doorstop tree, so no traceability check ran.'
 
   compiler-bump:
     name: compiler bump impact
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - run: echo 'The engine has no compiler pin yet, so no impact check ran.'
+      - run: echo 'No impact check is set for the tarball pin yet, so none ran.'

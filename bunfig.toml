@@ -1,0 +1,5 @@
+[run]
+# The compiler is pinned as a source tarball (docs/design/0100-world-on-the-cpu-tier.md,
+# section 1): its package entries are TypeScript, which Node does not load from node_modules.
+# Scripts run on Bun's runtime, so `tshc` and the Vite plugin load.
+bun = true
