@@ -131,7 +131,7 @@ repository and is built only on the public program runtime. This repository is t
 ## The compiler pin
 
 The compiler is pinned as a source tarball (design record 0100, section 1). The pin is the
-`typeshade` entry of `devDependencies` in `package.json`:
+`typeshade` entry of `dependencies` in `package.json`:
 `https://github.com/typeshade/typeshade/archive/<commit>.tar.gz`. `bun.lock` holds its hash. The
 tarball holds TypeScript sources, so the scripts run on Bun's runtime (`bunfig.toml`).
 
