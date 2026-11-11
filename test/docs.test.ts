@@ -1,0 +1,27 @@
+// The examples of `README.md` and of `docs/vision.md` (section 4, moments 1 to 4), run as they
+// are written there. A document that shows code the engine does not run is a defect.
+
+import { expect, test } from 'vitest';
+import { node, scene } from '../src/index.ts';
+import { simulate } from '../src/test.ts';
+import { Belt } from './fixtures/belt.shade.ts';
+
+const factory = scene(node('line-1', node(Belt, { speed: 2 }), node('spare', Belt, { speed: 0 })));
+
+test('vision, moment 3: a belt wraps after one unit at 64 ticks in a second', () => {
+  const world = simulate(factory, { ticks: 32, seed: 7, hz: 64 });
+  expect(world.find<Belt>('line-1/Belt#0')?.offset).toBe(0);
+});
+
+test('README and vision, moment 4: the dump of the factory at tick 30', () => {
+  const world = simulate(factory, { ticks: 30, seed: 7 });
+  expect(world.dump()).toBe(
+    [
+      'tick 30  seed 7  hz 60',
+      'line-1',
+      '  Belt#0  speed 2  offset 3.5762787e-7',
+      '  spare  Belt  speed 0  offset 0',
+      '',
+    ].join('\n'),
+  );
+});

@@ -84,27 +84,24 @@ decisions. U9 fixes the kind of shell. The choice of the tool waits on M1 and M4
 
 ## 4. The moments
 
-Each moment names what the agent writes, what the agent runs and what the agent reads. The code
-is a sketch.
+Each moment names what the agent writes, what the agent runs and what the agent reads. Moments
+1 to 4 run today, as design record 0100 implements them, and their code is the engine's. The
+code of moments 5 to 8 is a sketch.
 
 **1. The first scene.** A scene is a value. A node is a call.
 
 ```ts
-import { scene, node, run } from 'radiance';
+import { node, scene } from 'radiance';
 import { Belt } from './belt.shade.ts';
 
 export const factory = scene(
-  node('line-1', { position: [0, 0] },
-    node(Belt, { speed: 2 }),
-    node(Belt, { speed: 2, position: [1, 0] }),
-  ),
+  node('line-1', node(Belt, { speed: 2 }), node('spare', Belt, { speed: 0 })),
 );
-
-run(factory, { canvas });
 ```
 
 Never written: a device, a buffer, a pipeline, a frame loop, a render pass. The setup is the
-compiler's own: the Vite plugin line, two `tsconfig` lines and `tshc sync` (§64).
+compiler's own: the Vite plugin line, two `tsconfig` lines and `tshc sync` (§64). A scene draws
+nothing yet. A later record adds the frame.
 
 **2. The first behaviour.** A behaviour is a class with typed state.
 
@@ -127,35 +124,31 @@ instances, the storage of the instances, the order of the calls.
 
 ```ts
 import { simulate } from 'radiance/test';
+import { Belt } from './belt.shade.ts';
 import { factory } from './factory.ts';
 
 test('a belt wraps after one unit', () => {
-  const world = simulate(factory, { ticks: 30, seed: 7 });
-  expect(world.find('line-1').children(Belt)[0].offset).toBeCloseTo(0);
+  const world = simulate(factory, { ticks: 32, seed: 7, hz: 64 });
+  expect(world.find<Belt>('line-1/Belt#0')?.offset).toBe(0);
 });
 ```
 
 `simulate` runs the same classes on the CPU tier. A thousand ticks of a small scene is a unit
-test, not an integration test.
+test, not an integration test. The test asks for 64 ticks in a second because `f32` holds
+`1 / 64` exactly. At 60, thirty steps of `2 * dt` do not sum to exactly 1.
 
-**4. A state is text.** One command prints the world, and one command compares two ticks.
-
-```text
-radiance dump factory --tick 30
-
-line-1            position (0, 0)
-  Belt #0         speed 2  offset 0
-  Belt #1         speed 2  offset 0  position (1, 0)
-```
+**4. A state is text.** `world.dump()` returns the world as text.
 
 ```text
-radiance diff factory --from 29 --to 30
-
-Belt #0   offset  0.9667 -> 0
-Belt #1   offset  0.9667 -> 0
+tick 30  seed 7  hz 60
+line-1
+  Belt#0  speed 2  offset 3.5762787e-7
+  spare  Belt  speed 0  offset 0
 ```
 
-The same data is available as JSON. An agent that cannot see the screen reads the dump.
+`world.snapshot()` returns the same data as an object that JSON holds. An agent that cannot see
+the screen reads the dump. A command that prints the dump and a command that compares two ticks
+are a later record.
 
 **5. A replay is a seed and an input record.** A run writes its seed and each input with its
 tick. `radiance replay bug-0041.json` gives the same world at each tick. A bug report is that

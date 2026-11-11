@@ -73,9 +73,9 @@ request), and these sections:
 
 ## The records
 
-| Id                                    | Title                                                                                                      | Status   |
-| ------------------------------------- | ---------------------------------------------------------------------------------------------------------- | -------- |
-| [0100](0100-world-on-the-cpu-tier.md) | A scene of nodes runs as tables on the CPU tier, on a fixed tick, and a test reads its dump with no device | accepted |
+| Id                                    | Title                                                                                                      | Status      |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ----------- |
+| [0100](0100-world-on-the-cpu-tier.md) | A scene of nodes runs as tables on the CPU tier, on a fixed tick, and a test reads its dump with no device | implemented |
 
 The first model's records hold the numbers 0001 to 0011. They are on the branch `legacy`, and
 compiler proposals cite them by number. A record of this engine does not use those numbers

@@ -1,7 +1,7 @@
 ---
 id: '0100'
 title: A scene of nodes runs as tables on the CPU tier, on a fixed tick, and a test reads its dump with no device
-status: accepted
+status: implemented
 vision: [D4, D9, U1, U2, U3]
 touches:
   - package.json
@@ -22,15 +22,15 @@ compiler: []
 
 **Document control**
 
-| Field          | Record                                                                                               |
-| -------------- | ---------------------------------------------------------------------------------------------------- |
-| Identity       | Design record `0100`, `status: accepted`. The front matter holds the identity and the lifecycle.     |
-| Date           | Written 2026-11-11 by the repository's coding agent, under decision D9 of `docs/vision.md`.          |
-| Baseline       | `typeshade/radiance` `main` `b3907dc`.                                                               |
-| Compiler read  | `typeshade/typeshade` `main` `da311c32`. Each claim names a section of its surface document.         |
-| Compiler pin   | None yet. Step 1 sets it.                                                                            |
-| Pull request   | The pull request that adds this file.                                                                |
-| What is a fact | The compiler's documents were read. One probe ran on 2026-11-11 (section 7). No step is implemented. |
+| Field          | Record                                                                                              |
+| -------------- | --------------------------------------------------------------------------------------------------- |
+| Identity       | Design record `0100`, `status: implemented`. The front matter holds the identity and the lifecycle. |
+| Date           | Written 2026-11-11 by the repository's coding agent, under decision D9 of `docs/vision.md`.         |
+| Baseline       | `typeshade/radiance` `main` `b3907dc`.                                                              |
+| Compiler read  | `typeshade/typeshade` `main` `da311c32`. Each claim names a section of its surface document.        |
+| Compiler pin   | `da311c32`, set by step 1.                                                                          |
+| Pull request   | The pull request that adds this file.                                                               |
+| What is a fact | The five steps are implemented. The Record section holds the delivered configuration.               |
 
 ## What changes
 
@@ -76,15 +76,19 @@ export const factory = scene(
 
 The rules:
 
-1. A node with no class is a group. It has a name and children, and no row in a table.
+1. A node with no class is a group. It has a name and children, and no row in a table. `node`
+   refuses a group with no name.
 2. A node with no name takes the name `<Class>#<n>`. `n` counts the earlier siblings of that
    class that have no name, from 0.
 3. Two siblings do not have the same name. `scene` throws an error that names both.
 4. A field in the object that the class does not declare is an error. The error names the field
    and lists the class's fields.
-5. A name does not hold `/`. The path of a node is the names from the root, joined with `/`.
+5. A name does not hold `/` and is not empty. The path of a node is the names from the root,
+   joined with `/`.
 6. `scene(root)` checks rules 3 to 5 for the whole tree and returns a `Scene`. A `Scene` is
    immutable.
+7. A node's class is built with `new` and no argument. `scene` refuses a class whose constructor
+   fails without one.
 
 ### 3. The world, the tables and the tick
 
@@ -118,6 +122,9 @@ The world's read interface:
 | ------------------------ | -------------------------------------------------------------------------- |
 | `world.tick`             | The number of ticks run, an integer from 0                                 |
 | `world.seed`, `world.hz` | The values the world was built with                                        |
+| `world.dt`               | `Math.fround(1 / hz)`                                                      |
+| `world.scene`            | The scene the world was built from                                         |
+| `world.tables`           | The tables in schedule order, each with its class and its rows             |
 | `world.table(Class)`     | The rows of the class's table, a read-only array. An unknown class throws. |
 | `world.find(path)`       | The instance at a path, or `undefined` for a group or a missing path       |
 | `world.dump()`           | The text of section 4                                                      |
@@ -338,10 +345,30 @@ The agent made these decisions under D9. The owner can change each one.
 
 - **Approval.** The owner approved the merge in the conversation on 2026-11-11: "#85 병합하고 계속
   진행해주세요". The merged text is the approved design.
-- **Validation.**
-  - Step 1, 2026-11-11, compiler pin `da311c32`: `test/probe.test.ts` passes on the CPU tier, and
-    it fails when the fixture's formula is changed. The test also observed what section 7 did not:
-    a matrix field and an array field are plain arrays, a matrix lists its components column by
-    column, and a class that extends another is an instance of both. A field whose type is a
-    class holds an instance of that class. An emulated `f64` field is still not observed.
-- **Deviations.** None.
+- **Validation.** The delivered configuration, 2026-11-11, compiler pin `da311c32`, Bun's runtime,
+  `typescript` 5.6.3, `vite` 7.3.7, `vitest` 5.0.5:
+
+  | Step | Pull request | Commit on `main` | What ran                                                       |
+  | ---- | ------------ | ---------------- | -------------------------------------------------------------- |
+  | 1    | #86          | `db8d5b8`        | `bun run check`, 5 tests. The test fails on a changed formula. |
+  | 2    | #87          | `11f2d10`        | `bun run check`, 14 tests                                      |
+  | 3    | #88          | `402535c`        | `bun run check`, 24 tests                                      |
+  | 4    | #89          | `c03c6fc`        | `bun run check`, 36 tests                                      |
+  | 5    | this one     | its merge commit | `bun run check`, 38 tests                                      |
+
+  Step 1 also observed what section 7 did not. A matrix field and an array field are plain
+  arrays. A matrix lists its components column by column. A class that extends another is an
+  instance of both, and its base class's fields come first. A field whose type is a class holds
+  an instance of that class. An emulated `f64` field is not observed.
+
+  Step 4's first golden file is the example of section 4, which this record held before the
+  code existed. The implementation gives it byte for byte.
+
+- **Deviations.**
+  - `tsconfig.json` holds `dom` in `lib`, since `tsc` reads the sources of the pinned compiler.
+    A test scans `src/` for invariants 2 and 3. Closed.
+  - `vitest.config.ts` is not in the `tsc` project. Open, small.
+  - Rules 1, 5 and 7 of section 2 and three members of the world's read interface were added to
+    this text by step 5. Made part of the record.
+  - A number that JSON cannot hold is a string in the snapshot, and no code reads it back yet.
+    Open, for the record that loads a snapshot.
