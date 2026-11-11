@@ -1,7 +1,8 @@
 // Design: 0108, section 10, rules 1 and 2. The facts of a `"use typeshade"` file that the
 // engine needs and the compiler does not report yet (compiler issue typeshade/typeshade#1253).
 // This is the one module of the engine that reads source. It reads names only: the name of an
-// exported class, an exported number, an exported function and its parameters. When the pin
+// exported class, an exported number, an exported function and its parameters, and the entries
+// and the `declare const` names of a layer (design record 0111). When the pin
 // has the compiler's report, this module reads the report, and no other module changes.
 
 import ts from 'typescript';
@@ -18,6 +19,16 @@ export interface TableFacts {
 export interface SystemFacts {
   /** The names of the function's parameters, in order. */
   readonly params: readonly string[];
+}
+
+/** The facts of a layer's file (design record 0111, section 2). */
+export interface LayerFacts {
+  /** The names of the exported functions that carry `@vertex`, in the order of the file. */
+  readonly vertex: readonly string[];
+  /** The names of the exported functions that carry `@fragment`, in the order of the file. */
+  readonly fragment: readonly string[];
+  /** Each `declare const` of the file: its name and the kind of its type, for example `storage`. */
+  readonly declares: readonly { readonly name: string; readonly kind: string }[];
 }
 
 function parse(file: string, source: string): ts.SourceFile {
@@ -80,6 +91,44 @@ export function readSystem(file: string, source: string, name: string): SystemFa
   throw new TypeError(
     `${file}: the file exports no function "${name}"${functions.length > 0 ? `. It exports ${functions.join(', ')}` : ''}. A file of a system exports one function with the file's name.`,
   );
+}
+
+/**
+ * Reads the facts of a layer's file: the exported functions with `@vertex` and with `@fragment`,
+ * and each `declare const` with the kind of its type (`storage`, `uniform`).
+ */
+export function readLayer(file: string, source: string): LayerFacts {
+  const vertex: string[] = [];
+  const fragment: string[] = [];
+  const declares: { name: string; kind: string }[] = [];
+  for (const node of parse(file, source).statements) {
+    if (ts.isFunctionDeclaration(node) && node.name !== undefined && exported(node)) {
+      for (const modifier of node.modifiers ?? []) {
+        if (!ts.isDecorator(modifier)) continue;
+        // `@vertex` and `@vertex()` both name the entry.
+        const at = ts.isCallExpression(modifier.expression)
+          ? modifier.expression.expression
+          : modifier.expression;
+        if (!ts.isIdentifier(at)) continue;
+        if (at.text === 'vertex') vertex.push(node.name.text);
+        if (at.text === 'fragment') fragment.push(node.name.text);
+      }
+    }
+    if (ts.isVariableStatement(node)) {
+      const declared = (node.modifiers ?? []).some((m) => m.kind === ts.SyntaxKind.DeclareKeyword);
+      if (!declared) continue;
+      for (const decl of node.declarationList.declarations) {
+        if (!ts.isIdentifier(decl.name)) continue;
+        const type = decl.type;
+        const kind =
+          type !== undefined && ts.isTypeReferenceNode(type) && ts.isIdentifier(type.typeName)
+            ? type.typeName.text
+            : 'other';
+        declares.push({ name: decl.name.text, kind });
+      }
+    }
+  }
+  return { vertex, fragment, declares };
 }
 
 /** Reads the names of the functions a host file exports, in the order of the file. */

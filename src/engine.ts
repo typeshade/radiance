@@ -4,6 +4,7 @@
 // give it one, and from then on the engine owns every array of the game.
 
 import type { Device, Resident } from 'typeshade/runtime';
+import type { Drawing, Layer, Place, ViewOptions } from './draw.ts';
 import type { InputObject } from './input.ts';
 import { createSim, type Sim, type SimRecord, type SimSnapshot } from './sim.ts';
 
@@ -154,6 +155,11 @@ export interface StartOptions {
   readonly values?: { readonly [name: string]: number };
   /** What the game draws to, when it runs in a page. The engine does not read it. */
   readonly surface?: unknown;
+  /**
+   * The drawing of a game with layers (design record 0111). `run` of `radiance/page` makes it, and
+   * the engine calls its `frame` and `toWorld`.
+   */
+  readonly drawing?: Drawing;
 }
 
 const SIM = Symbol('radiance.sim');
@@ -184,10 +190,20 @@ export abstract class Engine {
   readonly inputs?: Inputs;
   /** `'input'` for a game with turns: the loop of a page runs one tick for each frame with an input. */
   readonly stepOn?: 'input';
+  /**
+   * The layers of the picture, from the back to the front, when the game draws in layers
+   * (design record 0111, section 2). The class that `radiance sync` writes gives them.
+   */
+  readonly layers?: readonly Layer[];
+  /** The view of the layers: the rectangle of the world that the screen shows (record 0111, section 3). */
+  readonly view?: ViewOptions;
   #surface: unknown;
   #stops: (() => void)[] = [];
   #sim: Sim<Record<string, object[]>, string> | undefined;
   #device: Device | undefined;
+  #drawing: Drawing | undefined;
+  /** True after the engine waited for the device once, after the first tick of a run. */
+  #waited = false;
   #disposed = false;
   #inTick = false;
   #frame: Record<string, unknown> = {};
@@ -268,9 +284,47 @@ export abstract class Engine {
     this.#stops.push(stop);
   }
 
-  /** Runs `n` ticks, 1 when `n` is not given. */
+  /**
+   * Runs `n` ticks, 1 when `n` is not given. A game with layers waits for the device once, after
+   * its first tick: a draw before that wait shows an empty picture, with no error (design record
+   * 0111, section 4).
+   */
   step(n = 1): Promise<void> {
-    return this.#live('step()').step(n);
+    const sim = this.#live('step()');
+    const ran = sim.step(n);
+    if (this.#drawing === undefined) return ran;
+    return ran.then(() => {
+      if (this.#waited || !(n > 0)) return;
+      this.#waited = true;
+      return sim.wait();
+    });
+  }
+  /**
+   * Draws the layers of the game into one texture, and shows the texture on the surface (design
+   * record 0111, section 4). The loop of `radiance/page` calls it for each frame.
+   */
+  async drawLayers(): Promise<void> {
+    this.#live('drawLayers()');
+    if (this.#drawing === undefined) {
+      throw new Error(
+        `${this.constructor.name}.drawLayers(): the game has no layers on a device. Add "draw" and "view" to radiance.config.ts, and run the game with run() of radiance/page.`,
+      );
+    }
+    await this.#drawing.frame();
+  }
+  /**
+   * The place in the world of a place of the surface, through the view (design record 0111,
+   * section 3). `at.x` and `at.y` are from 0 to 1 of the surface, as the pointer gives them. A
+   * place outside the rectangle of the world gives a number below 0 or from the rectangle's size.
+   */
+  toWorld(at: Place): Place {
+    this.#live('toWorld()');
+    if (this.#drawing === undefined) {
+      throw new Error(
+        `${this.constructor.name}.toWorld(): the game has no layers on a device, so it has no view. Add "draw" and "view" to radiance.config.ts, and run the game with run() of radiance/page.`,
+      );
+    }
+    return this.#drawing.toWorld(at);
   }
   /** Resolves when the device has run the ticks. */
   wait(): Promise<void> {
@@ -307,6 +361,7 @@ export abstract class Engine {
     this.#disposed = true;
     for (const stop of this.#stops) stop();
     await this.#device!.dispose();
+    this.#drawing?.dispose();
   }
 
   /** @internal Use `start` of `radiance/test` or `run` of `radiance/page`. */
@@ -377,6 +432,7 @@ export abstract class Engine {
 
     this.#device = device;
     this.#surface = options.surface;
+    this.#drawing = options.drawing;
     this.#values = Object.freeze({ ...(options.values ?? {}) });
     const sim = createSim(tables, {
       device,

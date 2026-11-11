@@ -1,6 +1,6 @@
 // The browser check of the reference game. The engine builds the page. The check opens it in
-// headless Chromium with WebGPU, drives it as a player does, and holds the cells the GPU
-// computed to the cells the CPU tier computes.
+// headless Chromium with WebGPU, drives it as a player does, holds the cells the GPU computed to
+// the cells the CPU tier computes, and measures the picture from a screenshot (design record 0111).
 
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { chromium, devices, type Browser, type Page } from 'playwright';
@@ -11,7 +11,8 @@ import { loadConfig } from '../../../src/cli.ts';
 import { load } from '../../../src/test.ts';
 import type { Game } from '../.radiance/game.ts';
 import { putCell } from '../cells.ts';
-import { BELT } from '../kinds.shade.ts';
+import { BELT, MACHINE } from '../kinds.shade.ts';
+import { Cell } from '../state/cells.shade.ts';
 
 const here = new URL('..', import.meta.url).pathname;
 
@@ -21,6 +22,96 @@ let page: Page;
 const requested: string[] = [];
 
 let result: BuildResult;
+
+/** The screenshot of a page, decoded in the page: the colours at the points, and the size. */
+async function pixelsAt(view: Page, shot: Buffer, points: readonly (readonly [number, number])[]) {
+  return view.evaluate(
+    async ([data, at]) => {
+      const bytes = Uint8Array.from(atob(data as string), (ch) => ch.charCodeAt(0));
+      const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+      const copy = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d')!;
+      copy.drawImage(bitmap, 0, 0);
+      return (at as unknown as number[][]).map(([x, y]) =>
+        Array.from(copy.getImageData(x, y, 1, 1).data),
+      );
+    },
+    [shot.toString('base64'), points] as const,
+  );
+}
+
+/**
+ * Measures the first source of the factory, the cell (0, 0), in a screenshot: the green region
+ * that starts at the first green pixel in reading order. A source is green, and the cells next
+ * to it are not. It returns the corners of the region's box and the size of the canvas.
+ */
+async function measureCell(view: Page, shot: Buffer) {
+  return view.evaluate(async (data) => {
+    const bytes = Uint8Array.from(atob(data), (ch) => ch.charCodeAt(0));
+    const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+    const { width, height } = bitmap;
+    const copy = new OffscreenCanvas(width, height).getContext('2d')!;
+    copy.drawImage(bitmap, 0, 0);
+    const pixels = copy.getImageData(0, 0, width, height).data;
+    const green = (i: number) => {
+      const index = i * 4;
+      return pixels[index + 1] > pixels[index] + 40 && pixels[index + 1] > pixels[index + 2] + 30;
+    };
+    let start = -1;
+    for (let i = 0; i < width * height && start < 0; i++) if (green(i)) start = i;
+    if (start < 0) return undefined;
+    // The region of the green pixels that touch each other.
+    const seen = new Uint8Array(width * height);
+    const stack = [start];
+    seen[start] = 1;
+    let [left, top, right, bottom] = [width, height, 0, 0];
+    while (stack.length > 0) {
+      const i = stack.pop()!;
+      const x = i % width;
+      const y = Math.floor(i / width);
+      left = Math.min(left, x);
+      right = Math.max(right, x);
+      top = Math.min(top, y);
+      bottom = Math.max(bottom, y);
+      for (const [dx, dy] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ]) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+        const next = ny * width + nx;
+        if (!seen[next] && green(next)) {
+          seen[next] = 1;
+          stack.push(next);
+        }
+      }
+    }
+    return {
+      left,
+      top,
+      width: right - left + 1,
+      height: bottom - top + 1,
+      screen: [width, height],
+    };
+  }, shot.toString('base64'));
+}
+
+/** What the drawing must show for a screen of `screen` pixels: the cell's side and its corner. */
+const expected = (screen: number[]) => {
+  const side = Math.min(screen[0] / 10, screen[1] / 6);
+  return { side, left: (screen[0] - 10 * side) / 2, top: (screen[1] - 6 * side) / 2 };
+};
+
+/** Draws one frame of a game in a page, after `ticks` ticks, and waits for the device. */
+const frame = (view: Page, ticks = 0) =>
+  view.evaluate(async (n) => {
+    const game = await (globalThis as any).game;
+    if (n > 0) await game.step(n);
+    await game.drawLayers();
+    await game.wait();
+  }, ticks);
 
 beforeAll(async () => {
   // The engine builds the page, with the hook of a browser check (design record 0109).
@@ -69,7 +160,7 @@ test('the cells the GPU computes equal the cells of the CPU tier, with an input 
     page.evaluate(async (ticks) => {
       const game = await (globalThis as any).game;
       await game.step(ticks);
-      await game.draw();
+      await game.drawLayers();
       await game.wait();
     }, n);
   await step(50);
@@ -93,27 +184,129 @@ test('the cells the GPU computes equal the cells of the CPU tier, with an input 
 });
 
 test('the picture shows the cells', async () => {
-  await page.evaluate(async () => void (await (await (globalThis as any).game).draw()));
+  await frame(page);
   // A screenshot of the page is what a person sees. The page decodes it to read a pixel.
   const shot = await page.screenshot({ path: `${here}dist/shot.png` });
-  const pixel = (x: number, y: number) =>
-    page.evaluate(
-      async ([data, px, py]) => {
-        const bytes = Uint8Array.from(atob(data as string), (ch) => ch.charCodeAt(0));
-        const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
-        const copy = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d')!;
-        copy.drawImage(bitmap, 0, 0);
-        return Array.from(copy.getImageData(px as number, py as number, 1, 1).data);
-      },
-      [shot.toString('base64'), x, y] as const,
-    );
   // The grid is 10 by 6 on a canvas of 800 by 480, so a cell is 80 pixels. The cell (0, 0) is a
   // source, and a source is green. The cell (0, 3) is empty, and an empty cell is dark.
-  const source = await pixel(20, 20);
-  const empty = await pixel(20, 3 * 80 + 20);
+  const [source, empty] = await pixelsAt(page, shot, [
+    [20, 20],
+    [20, 3 * 80 + 20],
+  ]);
   expect(source[1]).toBeGreaterThan(source[0]);
   expect(source[1]).toBeGreaterThan(source[2]);
   expect(Math.max(empty[0], empty[1], empty[2])).toBeLessThan(40);
+});
+
+// Verifies: Design 0111.3
+test('the cells are squares on a wide screen', async () => {
+  const view = await browser.newPage({ viewport: { width: 800, height: 480 } });
+  try {
+    await view.goto('http://localhost:4317/?manual');
+    await frame(view);
+    const cell = (await measureCell(view, await view.screenshot()))!;
+    const want = expected(cell.screen);
+    console.log(
+      `factory: on ${cell.screen.join(' by ')} a cell is ${cell.width} by ${cell.height}`,
+    );
+    // The grid fills the width: 10 cells of 80 pixels. The width and the height of a cell match.
+    expect(cell.screen).toEqual([800, 480]);
+    expect(Math.abs(cell.width - cell.height)).toBeLessThanOrEqual(1);
+    expect(Math.abs(cell.width - want.side)).toBeLessThanOrEqual(1);
+    expect(Math.abs(cell.left - want.left)).toBeLessThanOrEqual(1);
+    expect(Math.abs(cell.top - want.top)).toBeLessThanOrEqual(1);
+  } finally {
+    await view.close();
+  }
+});
+
+// Verifies: Design 0111.3
+test("the cells are squares on a phone's upright screen, and the grid is in the middle", async () => {
+  const phone = await browser.newContext({ ...devices['Pixel 7'] });
+  const view = await phone.newPage();
+  try {
+    await view.goto('http://localhost:4317/?manual');
+    await frame(view);
+    const cell = (await measureCell(view, await view.screenshot()))!;
+    const want = expected(cell.screen);
+    console.log(
+      `factory: on ${cell.screen.join(' by ')} a cell is ${cell.width} by ${cell.height}`,
+    );
+    // The screen is taller than it is wide, so the grid fills the width and has a bar above it
+    // and a bar below it of the same height.
+    expect(cell.screen[1]).toBeGreaterThan(cell.screen[0]);
+    expect(Math.abs(cell.width - cell.height)).toBeLessThanOrEqual(1);
+    expect(Math.abs(cell.width - want.side)).toBeLessThanOrEqual(1);
+    expect(Math.abs(cell.left - want.left)).toBeLessThanOrEqual(1);
+    expect(Math.abs(cell.top - want.top)).toBeLessThanOrEqual(1);
+    expect(cell.top).toBeGreaterThan(cell.screen[1] / 4);
+  } finally {
+    await phone.close();
+  }
+});
+
+// Verifies: Design 0111.3
+test('the surface changes its size, and the cells stay squares in the middle', async () => {
+  const view = await browser.newPage({ viewport: { width: 800, height: 480 } });
+  try {
+    await view.goto('http://localhost:4317/?manual');
+    await frame(view);
+    await view.setViewportSize({ width: 300, height: 700 });
+    await view.waitForFunction(() => document.querySelector('canvas')!.width === 300);
+    await frame(view);
+    const cell = (await measureCell(view, await view.screenshot()))!;
+    const want = expected(cell.screen);
+    expect(cell.screen).toEqual([300, 700]);
+    expect(Math.abs(cell.width - cell.height)).toBeLessThanOrEqual(1);
+    expect(Math.abs(cell.width - want.side)).toBeLessThanOrEqual(1);
+    expect(Math.abs(cell.top - want.top)).toBeLessThanOrEqual(1);
+  } finally {
+    await view.close();
+  }
+});
+
+// Verifies: Design 0111.4
+test('the picture shows the table after a tick, and no read of the table reaches the host', async () => {
+  const view = await browser.newPage({ viewport: { width: 800, height: 480 } });
+  try {
+    await view.goto('http://localhost:4317/?manual');
+    await view.evaluate(async () => void (await (globalThis as any).game));
+    // A read of a table to the host maps a buffer. The page counts the maps from here on.
+    await view.evaluate(() => {
+      const w = globalThis as any;
+      w.maps = 0;
+      const map = w.GPUBuffer.prototype.mapAsync;
+      w.GPUBuffer.prototype.mapAsync = function (...args: unknown[]) {
+        w.maps++;
+        return map.apply(this, args);
+      };
+    });
+    const centers: [number, number][] = [];
+    for (let y = 0; y < 6; y++)
+      for (let x = 0; x < 10; x++) centers.push([x * 80 + 40, y * 80 + 40]);
+    await frame(view);
+    const before = await pixelsAt(view, await view.screenshot(), centers);
+    await frame(view, 12);
+    const after = await pixelsAt(view, await view.screenshot(), centers);
+    const maps = await view.evaluate(() => (globalThis as any).maps as number);
+    expect(maps).toBe(0);
+    expect(after).not.toEqual(before);
+
+    // The colour of each cell is what the CPU tier's `color` says of the cell after 12 ticks.
+    const cpu = await load<Game>('examples/factory', { seed: 1, level: 'demo' });
+    await cpu.step(12);
+    const rows = await cpu.tables.cells.read();
+    await cpu.dispose();
+    rows.forEach((row, i) => {
+      const cell = Object.assign(new Cell(), row);
+      const colour = cell.color([0, 0]).map((c) => Math.round(c * 255));
+      colour.forEach((c, k) =>
+        expect(Math.abs(after[i][k] - c), `cell ${i}`).toBeLessThanOrEqual(2),
+      );
+    });
+  } finally {
+    await view.close();
+  }
 });
 
 test('the page loads its script within the budget, and no script of a tier it did not open', () => {
@@ -183,6 +376,7 @@ test('the readout shows the tier, three numbers and the commit', async () => {
 });
 
 // Verifies: Design 0110.1
+// Verifies: Design 0111.5
 test('a page with no device shows the reason', async () => {
   const view = await browser.newPage({ viewport: { width: 800, height: 480 } });
   try {
@@ -197,26 +391,31 @@ test('a page with no device shows the reason', async () => {
     const text = (await line.textContent())!;
     console.log(`factory: with no device the readout says "${text}"`);
     expect(text.startsWith('webgpu')).toBe(false);
-    expect(text.length).toBeGreaterThan(20);
+    expect(text).toContain('run(): the game draws in layers (cells), and layers need WebGPU.');
+    expect(text).toContain('typeshade/typeshade#1249');
+    expect(text).toContain('typeshade/typeshade#1263');
   } finally {
     await view.close();
   }
 });
 
 // Verifies: Design 0110.3
+// Verifies: Design 0111.3
 test("on a phone's screen, a drag of a touch puts a belt", async () => {
   const phone = await browser.newContext({ ...devices['Pixel 7'] });
   const view = await phone.newPage();
   try {
     await view.goto('http://localhost:4317/?manual');
     await view.evaluate(async () => void (await (globalThis as any).game));
-    // The canvas fills the screen of the phone, and the grid is 10 by 6 cells on it.
+    // The canvas fills the screen of the phone. The grid is 10 by 6 cells in the middle of it,
+    // as large as it can be, so a cell is as long as the width of the screen divided by 10.
     const box = (await view.locator('canvas').boundingBox())!;
     const size = view.viewportSize()!;
     expect([box.width, box.height]).toEqual([size.width, size.height]);
+    const side = Math.min(box.width / 10, box.height / 6);
     const at = (x: number, y: number) => ({
-      x: ((x + 0.5) * box.width) / 10,
-      y: ((y + 0.5) * box.height) / 6,
+      x: (box.width - 10 * side) / 2 + (x + 0.5) * side,
+      y: (box.height - 6 * side) / 2 + (y + 0.5) * side,
     });
     const touch = await phone.newCDPSession(view);
     const send = (type: string, points: { x: number; y: number }[]) =>
@@ -228,12 +427,14 @@ test("on a phone's screen, a drag of a touch puts a belt", async () => {
       await send('touchMove', [{ x: from.x, y: from.y + ((to.y - from.y) * i) / 4 }]);
     }
     await send('touchEnd', []);
-    const kind = await view.evaluate(async () => {
+    const kinds = await view.evaluate(async () => {
       const game = await (globalThis as any).game;
       await game.step(1);
-      return (await game.tables.cells.read())[3 * 10 + 3].kind;
+      const cells = await game.tables.cells.read();
+      return [cells[3 * 10 + 3].kind, cells[4 * 10 + 3].kind];
     });
-    expect(kind).toBe(BELT);
+    // The belt is in the cell under the touch, and the machine in the cell below is still there.
+    expect(kinds).toEqual([BELT, MACHINE]);
   } finally {
     await phone.close();
   }

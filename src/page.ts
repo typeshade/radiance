@@ -1,15 +1,19 @@
-// Design: 0108, section 7. The loop of a page: the ticks that are due,
+// Design: 0108, section 7, and 0111, sections 4 and 5. The loop of a page: the ticks that are due,
 // then the picture. This is the one file under `src/` that reads a clock, and it is the page's
 // clock.
 
-import { createDevice, type Device } from 'typeshade/runtime';
+import { createDevice, createRuntime, type Device } from 'typeshade/runtime';
+import { createDrawing, type Drawing } from './draw.ts';
 import { Engine, type InputEvent, type StartOptions } from './engine.ts';
 
 /** The options of `run`: the start of a game, its canvas, and what a test gives in place of the page. */
 export interface RunOptions extends StartOptions {
   /** The canvas the game draws to and takes its events from. */
   readonly canvas: unknown;
-  /** A device the host already has. When not given, the engine opens WebGPU, or WebGL2 after it. */
+  /**
+   * A device the host already has. When not given, the engine opens WebGPU, or WebGL2 after it.
+   * A game with layers takes none: it opens WebGPU with its program runtime (design record 0111).
+   */
   readonly device?: Device;
   /** The most ticks one frame runs. 8 when it is not given. */
   readonly maxTicks?: number;
@@ -79,7 +83,8 @@ interface CanvasLike {
 /**
  * Runs a game in a page (design record 0108, sections 5 and 7). It opens the device, starts
  * the game, gives each event of the canvas to the function of the game's `inputs`, and
- * runs the loop: the ticks that are due, then `game.draw()`. A game with `stepOn: 'input'`
+ * runs the loop: the ticks that are due, then `game.draw()`, or the layers of a game that draws
+ * in layers (design record 0111). A game with `stepOn: 'input'`
  * runs one tick for each frame that has an input. The loop stops while the page is hidden, and
  * `game.dispose()` ends it.
  */
@@ -94,8 +99,50 @@ export async function run<G extends Engine>(Game: new () => G, options: RunOptio
   if (!Number.isInteger(maxTicks) || maxTicks < 1) {
     throw new RangeError(`run(): maxTicks is ${String(maxTicks)}. Give an integer from 1.`);
   }
-  const device = options.device ?? (await createDevice({ prefer: ['webgpu', 'webgl2'] }));
-  const game = Engine.start(new Game(), device, { ...options, surface: canvas });
+  const instance = new Game();
+  const layers = instance.layers ?? [];
+  let device: Device;
+  let drawing: Drawing | undefined;
+  if (layers.length === 0) {
+    device = options.device ?? (await createDevice({ prefer: ['webgpu', 'webgl2'] }));
+  } else {
+    // A game with layers runs on WebGPU only (design record 0111, section 5). The program
+    // runtime comes first, and the device is made from it: the other order draws nothing.
+    if (options.device !== undefined) {
+      throw new TypeError(
+        `run(): the game draws in layers (${layers.map((l) => l.name).join(', ')}), and run makes the device for them. Do not give a device.`,
+      );
+    }
+    const names = layers.map((layer) => layer.name).join(', ');
+    let runtime: Awaited<ReturnType<typeof createRuntime>>;
+    try {
+      runtime = await createRuntime({ prefer: ['webgpu'] });
+      device = await createDevice({ runtime });
+    } catch (error) {
+      const reason = (error instanceof Error ? error.message : String(error)).replace(
+        /[.\s]*$/,
+        '.',
+      );
+      throw new Error(
+        `run(): the game draws in layers (${names}), and layers need WebGPU. The page got no WebGPU device: ${reason} WebGL2 cannot draw a layer yet. A storage array of a class with a class in a field has no WebGL2 form (typeshade/typeshade#1249), and the page cannot be the target of a pass (typeshade/typeshade#1263).`,
+        { cause: error },
+      );
+    }
+    drawing = createDrawing({
+      runtime,
+      device,
+      layers,
+      view: instance.view ?? { fit: [1, 1] },
+      surface: canvas,
+    });
+  }
+  let game: G;
+  try {
+    game = Engine.start(instance, device, { ...options, surface: canvas, drawing });
+  } catch (error) {
+    drawing?.dispose();
+    throw error;
+  }
 
   // Each event becomes data, and the game's method makes it an input of the run.
   const listeners: [CanvasLike, string, (event: never) => void][] = [];
@@ -125,7 +172,9 @@ export async function run<G extends Engine>(Game: new () => G, options: RunOptio
   const now = options.now ?? (() => performance.now());
   const schedule = options.schedule ?? ((frame: () => void) => void requestAnimationFrame(frame));
   const hidden = options.hidden ?? (() => document.hidden);
-  const draw = (game as unknown as { draw?: () => unknown }).draw;
+  // A game with layers draws them. Another game may have its own `draw()`.
+  const draw =
+    drawing !== undefined ? game.drawLayers : (game as unknown as { draw?: () => unknown }).draw;
   let stopped = false;
   let before = now();
   let owed = 0;

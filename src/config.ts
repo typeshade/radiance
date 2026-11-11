@@ -20,6 +20,24 @@ export interface GameConfig {
   readonly budget?: number;
   /** True keeps the compiler's records of fusion in the page. */
   readonly fuse?: boolean;
+  /**
+   * The layers of the picture, by name, from the back to the front (design record 0111,
+   * section 3). Each name is a file of `draw/`: `draw/<name>.shade.ts`.
+   */
+  readonly draw?: readonly string[];
+  /** The view of the layers. A game with `draw` gives it. */
+  readonly view?: ViewConfig;
+}
+
+/** The view of a game's layers (design record 0111, section 3). */
+export interface ViewConfig {
+  /**
+   * A rectangle of the world, `[width, height]`, with its first corner at the origin. The x
+   * axis goes right and the y axis goes down. The whole rectangle is on every screen.
+   */
+  readonly fit: readonly [number, number];
+  /** The colour of the part of the screen that the rectangle does not cover, `[r, g, b]` from 0 to 1. */
+  readonly clear?: readonly [number, number, number];
 }
 
 /** Gives the configuration of a game. It returns what it gets, with its type checked. */
