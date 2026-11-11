@@ -1,0 +1,173 @@
+---
+id: '0110'
+title: A build of a game is a page that the owner opens on a phone, and the page shows its numbers
+status: accepted
+vision: [D7, D12, D13, D15, D16]
+touches:
+  - src/page.ts
+  - src/build.ts
+  - src/cli.ts
+  - test/
+  - examples/factory/
+  - .github/workflows/
+  - README.md
+compiler:
+  - typeshade/typeshade#1249
+---
+
+# 0110. A build the owner opens on a phone
+
+**Document control**
+
+| Field          | Record                                                                                           |
+| -------------- | ------------------------------------------------------------------------------------------------ |
+| Identity       | Design record `0110`, `status: accepted`. The front matter holds the identity and the lifecycle. |
+| Date           | Written 2026-11-11 by the repository's coding agent, under decision D9 of `docs/vision.md`.      |
+| Baseline       | `typeshade/radiance` `main` `011f294`.                                                           |
+| Compiler pin   | `6d6a979`.                                                                                       |
+| Pull request   | The pull request that adds this file.                                                            |
+| What is a fact | The state of `main` in "What changes". No step is implemented. No phone was measured.            |
+
+## What changes
+
+Decision D16 says that the first game is for a phone, and that the owner tries a build in a
+phone's browser. Today `radiance build` writes `<project>/dist`, and nothing puts it at an
+address. The page shows no number, so a try on a phone gives no record.
+
+After this record, a build of `main` is at an address that only the owner opens. The page shows
+its device tier, its times and its commit.
+
+### 1. The readout
+
+`radiance build --readout <project>` writes a page with a readout: one line of text in a corner
+of the page.
+
+```
+webgpu  tick 0.8 ms  frame 16.7 ms  1 tick/frame  011f294
+```
+
+| Part         | What it is                                                                     |
+| ------------ | ------------------------------------------------------------------------------ |
+| `webgpu`     | The tier of the device: `webgpu` or `webgl2`                                   |
+| `tick`       | The mean time of one tick over the last 60 frames, with the wait for the GPU   |
+| `frame`      | The mean time from one frame to the next over the last 60 frames               |
+| `tick/frame` | The mean count of ticks in one frame over the last 60 frames                   |
+| `011f294`    | The commit of the build, as `git rev-parse --short HEAD` gives it at the build |
+
+- A page with no device shows the reason in the same place, and it does not stay empty. A phone
+  with no WebGPU is such a page today (compiler issue #1249).
+- A build without `--readout` has no readout and none of its code. A store package has none.
+- The readout is text of the page, not a drawing of the engine. The drawing layer is a later
+  record.
+
+### 2. The numbers come from the runtime
+
+`run` of `radiance/page` gains one option.
+
+```ts
+export interface FrameStats {
+  readonly tier: string;
+  readonly tickMs: number;
+  readonly frameMs: number;
+  readonly ticks: number;
+}
+
+run(Game, { seed, canvas, rows, values, onFrame: (stats: FrameStats) => void });
+```
+
+- `run` calls `onFrame` after each frame, with the numbers of that frame.
+- The entry file that the build writes holds the means and writes the line.
+- `src/engine.ts` gains nothing. The loop of a page is `src/page.ts` (design record 0108,
+  section 10).
+
+### 3. The page fits a phone
+
+- The canvas fills the screen in either orientation, and it follows a turn of the phone.
+- A touch gives the pointer events that a mouse gives. A touch does not scroll or zoom the page.
+- The harness opens the page with a phone's screen and a touch, and it puts a belt with a drag.
+
+### 4. The address
+
+The hosting is the owner's. The owner's statement on 2026-11-11: "게임은 그 따로 도메인 판 뒤,
+클라우드플레어가 제공하는 기능 위에서 기반으로 저만 들어가서 볼 예정입니다".
+
+- The build output is a directory of static files with relative addresses. It needs no server
+  code, so any static host serves it (D7).
+- A workflow of this repository builds the first reference game from `main` with `--readout`,
+  and it uploads the directory to the owner's Cloudflare project.
+- The workflow reads the Cloudflare account and its token from the repository's secrets. The
+  owner sets them. The workflow does nothing while they are not set, and it does not fail.
+- The owner's Cloudflare settings limit the address to the owner. No file of this repository
+  holds that limit, the domain or a credential.
+- A pull request does not upload. Only a push to `main` does.
+
+## Why
+
+- **A number on the screen is a record.** `docs/vision.md` (section 12) takes a claim about a
+  phone only with the device, the commit and the number. The readout puts them in one picture.
+- **The commit is in the line.** The owner sees which build is on the phone.
+- **The runtime gives numbers, and the page shows them.** The runtime names no browser
+  interface (record 0108, section 10).
+- **The same build as CI.** The workflow uploads what the checks built. A second build on the
+  host could differ from it.
+- **A reason, not an empty page.** A phone with no WebGPU is the first case the owner can meet.
+
+## The cost
+
+- The readout line and its means are in a `--readout` build only. The budget of record 0109
+  holds for the build without it.
+- A time of a tick includes a wait for the GPU. It is higher than the work of the GPU alone.
+- The workflow needs two secrets, and the owner maintains them.
+
+## What is not in this record
+
+- A store package (D6) and a build for a desktop store (D15).
+- The WebGL2 path for a table of classes. It waits on compiler issue #1249.
+- A measurement on a phone. This record makes it possible, and the owner's first try is it.
+- The drawing layer.
+
+## What it touches
+
+| Path                                     | Change                                                        |
+| ---------------------------------------- | ------------------------------------------------------------- |
+| `src/page.ts`                            | `onFrame` and `FrameStats`                                    |
+| `src/build.ts`                           | `--readout`: the entry file's readout, the commit, the reason |
+| `src/cli.ts`                             | The option `--readout`                                        |
+| `test/build.test.ts`, `test/run.test.ts` | New tests                                                     |
+| `examples/factory/tests/`                | The harness with a phone's screen and a touch                 |
+| `.github/workflows/preview.yml`          | New: the upload from `main`                                   |
+| `README.md`                              | The option and the workflow                                   |
+
+Tests owed:
+
+| Test                                                                       | Verifies      |
+| -------------------------------------------------------------------------- | ------------- |
+| `run` calls `onFrame` once for each frame, with the tier and the count     | Design 0110.2 |
+| The entry file has the readout with `--readout`, and no word of it without | Design 0110.1 |
+| The harness: the readout shows `webgpu`, three numbers and the commit      | Design 0110.1 |
+| The harness: a page with no device shows the reason                        | Design 0110.1 |
+| The harness: on a phone's screen, a drag of a touch puts a belt            | Design 0110.3 |
+
+## Implementation, in steps
+
+Each step is one pull request. Each commit carries `Design: 0110`.
+
+1. **The readout.** Sections 1 to 3 with their tests.
+2. **The upload.** Section 4. The owner sets the secrets and the Cloudflare project. Set this
+   record to `implemented` when the owner opens the address on a phone.
+
+## Decisions for the owner
+
+The agent made these decisions under D9. The owner can change each one.
+
+1. The readout is an option of the build, and a store package has none.
+2. A workflow of this repository uploads the build. The other way is that Cloudflare reads the
+   repository and builds it. That way needs no secret here, and it is a second build.
+3. The first reference game is the page at the address, until the first game for a phone exists.
+
+## Record
+
+- **Approval.** The owner stated D16 and the hosting on 2026-11-11. The owner's rule of
+  2026-11-11 approves a merge with green checks in advance (`CLAUDE.md`, Merging).
+- **Validation.** Does not yet apply: no step is implemented.
+- **Deviations.** None.

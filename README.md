@@ -145,6 +145,7 @@ its commits, and those commits stay reachable.
 | `docs/design/0107-*.md` | Design record 0107: a table with free slots                                                        |
 | `docs/design/0108-*.md` | Design record 0108: the project is the structure                                                   |
 | `docs/design/0109-*.md` | Design record 0109: the build                                                                      |
+| `docs/design/0110-*.md` | Design record 0110: a build the owner opens on a phone                                             |
 | `examples/factory/`     | The reference game, and what was hard to write in it                                               |
 | `examples/dungeon/`     | The second reference game, a roguelike, and what was hard in it                                    |
 | `src/`                  | The engine: the runtime `Engine`, the project reader, the simulation inside it, the world of nodes |
