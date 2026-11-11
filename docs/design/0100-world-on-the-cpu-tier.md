@@ -22,15 +22,15 @@ compiler: []
 
 **Document control**
 
-| Field          | Record                                                                                           |
-| -------------- | ------------------------------------------------------------------------------------------------ |
-| Identity       | Design record `0100`, `status: draft`. The front matter holds the identity and the lifecycle.    |
-| Date           | Written 2026-11-11 by the repository's coding agent, under decision D9 of `docs/vision.md`.      |
-| Baseline       | `typeshade/radiance` `main` `b3907dc`.                                                           |
-| Compiler read  | `typeshade/typeshade` `main` `da311c32`. Each claim names a section of its surface document.     |
-| Compiler pin   | None yet. Step 1 sets it.                                                                        |
-| Pull request   | The pull request that adds this file.                                                            |
-| What is a fact | Only the compiler's documents were read. Nothing in this record was run. Step 1 proves the base. |
+| Field          | Record                                                                                               |
+| -------------- | ---------------------------------------------------------------------------------------------------- |
+| Identity       | Design record `0100`, `status: draft`. The front matter holds the identity and the lifecycle.        |
+| Date           | Written 2026-11-11 by the repository's coding agent, under decision D9 of `docs/vision.md`.          |
+| Baseline       | `typeshade/radiance` `main` `b3907dc`.                                                               |
+| Compiler read  | `typeshade/typeshade` `main` `da311c32`. Each claim names a section of its surface document.         |
+| Compiler pin   | None yet. Step 1 sets it.                                                                            |
+| Pull request   | The pull request that adds this file.                                                                |
+| What is a fact | The compiler's documents were read. One probe ran on 2026-11-11 (section 7). No step is implemented. |
 
 ## What changes
 
@@ -134,7 +134,7 @@ level. The first line is the header.
 ```text
 tick 30  seed 7  hz 60
 line-1
-  Belt#0  speed 2  offset 0
+  Belt#0  speed 2  offset 3.5762787e-7
   spare  Belt  speed 0  offset 0
 ```
 
@@ -145,17 +145,21 @@ The rules:
 3. A class node's line is its name, then the class's name when the name was given by the
    author, then each field as `<field> <value>`. Two spaces separate the parts.
 4. The fields are in the order of the instance's own enumerable properties.
-5. A number is printed as the shortest decimal text that `Math.fround` reads back to the same
-   `f32`. An integer field prints as an integer. `-0` prints as `-0`. `NaN` and the infinities
-   print as `NaN`, `Infinity` and `-Infinity`.
+5. A number that is an integer is printed in full, with no exponent. `-0` prints as `-0`. Any
+   other number is printed as the shortest decimal text that `Math.fround` reads back to the
+   same `f32`. `NaN` and the infinities print as `NaN`, `Infinity` and `-Infinity`.
 6. A boolean prints as `true` or `false`.
 7. A vector or an array of numbers prints as `(a, b, c)`.
 8. A field that holds an object prints as `{field value, field value}`, by these same rules.
 9. Lines end with `\n`, and the text ends with one `\n`. No line has a trailing space.
 
-Step 1 finds how the host module gives each kind of field to the host (surface §64 and change
-0116 list the host types). Where a host type does not fit rules 5 to 8, this record is amended
-before step 4.
+The example's `offset` is not 0. Thirty steps of `2 * dt` in `f32` do not sum to exactly 1, and
+the dump shows the value the class computed. A test that wants 0 uses a tick rate that `f32`
+holds exactly, such as 64.
+
+Rules 5 to 8 follow what the probe of section 7 observed. Rule 5 prints an integer in full
+because the host gives a `u32` and an `f32` as the same kind of number. The shortest `f32` text
+of a large `u32` is not that integer.
 
 ### 5. The snapshot
 
@@ -171,7 +175,7 @@ before step 4.
     {
       "class": "Belt",
       "rows": [
-        { "path": "line-1/Belt#0", "fields": { "speed": 2, "offset": 0 } },
+        { "path": "line-1/Belt#0", "fields": { "speed": 2, "offset": 3.5762786865234375e-7 } },
         { "path": "line-1/spare", "fields": { "speed": 0, "offset": 0 } }
       ]
     }
@@ -180,7 +184,8 @@ before step 4.
 ```
 
 - `version` is the version of this shape. This record defines version 1.
-- A number that JSON cannot hold (`NaN`, an infinity, `-0`) is the string of dump rule 5.
+- A number is the host's number, in full. A number that JSON cannot hold (`NaN`, an infinity,
+  `-0`) is the string of dump rule 5.
 - Two worlds with equal snapshots give equal dumps.
 
 The snapshot is the base of a save. Loading a snapshot into a world is not in this record.
@@ -195,6 +200,34 @@ The snapshot is the base of a save. Loading a snapshot into a world is not in th
    timer.
 4. **The class is the author's.** The world adds no property to an instance and changes no
    prototype.
+
+### 7. The probe
+
+One probe ran before this record was offered, so that the record does not rest on documents
+alone.
+
+| Item     | Value                                                                             |
+| -------- | --------------------------------------------------------------------------------- |
+| Date     | 2026-11-11                                                                        |
+| Compiler | `typeshade/typeshade` `da311c32`, installed as a source tarball                   |
+| Tools    | Bun's runtime, `typescript` 5.6.3, `vite` 7.3.7, `vitest` 5.0.5, `typeshade/vite` |
+| Place    | A scratch directory outside the repository. Step 1 adds the probe as a test.      |
+| Result   | The test passed                                                                   |
+
+The probe imported a class with six fields from a `.shade.ts`, built it with `new`, and called
+`step(dt)` thirty times. Observed:
+
+- `Object.keys(instance)` gives the fields in the order the class declares them.
+- An `f32`, an `i32` and a `u32` field are each a JavaScript number. A `bool` field is a boolean.
+- A `vec2` field is a plain array of two numbers.
+- A field whose type is another class is an object of that class's fields.
+- `step` is a method of the prototype. The call changes the instance's fields in place.
+- With `speed` 2 and `dt` `Math.fround(1 / 60)`, `offset` after thirty steps is
+  `3.5762786865234375e-7`. The same arithmetic in JavaScript with `Math.fround` gives the same
+  number.
+
+Not observed: a matrix field, an array field, a field of an emulated `f64`, and a class that
+extends another. Step 1 adds each one to the probe before step 4 relies on it.
 
 ## Why
 
@@ -265,9 +298,9 @@ Tests owed, each with its `Verifies` tag:
 Each step is one pull request. Each commit carries `Design: 0100`.
 
 1. **The pin and the instrument.** Add the pin at `da311c32`, `bunfig.toml`, `tsconfig.json`,
-   `vitest.config.ts` and the scripts. Add one fixture class and the first test of the table
-   above. Add the type check and the tests to the CI job. Record how the host module gives a
-   `f32`, an integer, a `bool`, a vector and a nested class to the host. Proof: the test passes
+   `vitest.config.ts` and the scripts. Add the probe of section 7 as the first test of the
+   table above, with a matrix field, an array field and a class that extends another. Add the
+   type check and the tests to the CI job. Proof: the test passes
    in CI, and it fails when the fixture's formula is changed.
 2. **The node and the scene.** Add `src/node.ts` and its tests. Proof: the tests of rules 1 to
    6 pass.
