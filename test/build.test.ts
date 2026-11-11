@@ -4,6 +4,7 @@
 // The build of a project (design record 0109): the page's two files and the size of a page.
 // The build itself runs in the harness, which has a browser.
 
+import { readFileSync } from 'node:fs';
 import { expect, test } from 'vitest';
 import { loadedAtStart, measure, pageFiles, type Chunk } from '../src/build.ts';
 import type { GameConfig } from '../src/config.ts';
@@ -118,4 +119,21 @@ test('the page has a readout only when asked, with the commit of the build', () 
   expect(pageFiles('/games/factory', CONFIG, { readout: true }).main).toContain(
     'const text = readout("unknown");',
   );
+});
+
+// Verifies: Design 0110.4
+test('the page of a game is at one address, the one that Access covers', () => {
+  const text = readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
+  const config = JSON.parse(
+    text
+      .split('\n')
+      .filter((line) => !line.trim().startsWith('//'))
+      .join('\n')
+      .replace(/,(\s*[}\]])/g, '$1'),
+  ) as { workers_dev: boolean; preview_urls: boolean; routes: object[]; main?: string };
+  expect(config.workers_dev).toBe(false);
+  expect(config.preview_urls).toBe(false);
+  expect(config.routes).toEqual([{ pattern: 'game.typeshade.dev', custom_domain: true }]);
+  // Static assets only: no code runs on the host (D7).
+  expect(config.main).toBeUndefined();
 });

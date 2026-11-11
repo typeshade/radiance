@@ -1,0 +1,21 @@
+// game.typeshade.dev on Cloudflare Workers (design record 0110, section 4): the page of a game,
+// built by `radiance build --readout`, served as static assets with no Worker code. It follows
+// the hosting convention of the sibling repositories: static assets and a custom domain only.
+// `.github/workflows/deploy.yml` deploys it from `main`.
+//
+// A Cloudflare Access application limits game.typeshade.dev to the owner. That limit is a
+// setting of the owner's Cloudflare account, and no file here holds it. The two settings below
+// that say "false" keep the page from a second address that Access does not cover.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "radiance-game",
+  // Not a secret: the account typeshade.dev is in. CI needs one secret, CLOUDFLARE_API_TOKEN.
+  "account_id": "7c029c2ac777ff3c45a4bcbe67918a1e",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "game.typeshade.dev", "custom_domain": true }],
+  "assets": {
+    "directory": "./examples/factory/dist",
+  },
+}
