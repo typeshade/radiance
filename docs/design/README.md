@@ -73,14 +73,15 @@ request), and these sections:
 
 ## The records
 
-| Id                                         | Title                                                                                                             | Status      |
-| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- | ----------- |
-| [0100](0100-world-on-the-cpu-tier.md)      | A scene of nodes runs as tables on the CPU tier, on a fixed tick, and a test reads its dump with no device        | implemented |
-| [0101](0101-inputs-replay-and-seed.md)     | A world takes inputs at a tick, records them, replays them, and gives each node a seed                            | implemented |
-| [0102](0102-tables-and-a-tick.md)          | The engine's tools run tables and a tick function, so a game on the raw structure has a dump, inputs and a replay | implemented |
-| [0103](0103-the-game-in-a-browser.md)      | The reference game runs in a browser on WebGPU, and a harness holds its cells, its picture and its size           | implemented |
-| [0104](0104-the-simulation-on-a-device.md) | A simulation runs on a device, so a test on the CPU tier and a page on a GPU tier run the same code               | implemented |
-| [0105](0105-kinds-as-classes.md)           | A kind of cell is a class with its own fields and rules, and an input writes a field that holds a class           | implemented |
+| Id                                                    | Title                                                                                                             | Status      |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ----------- |
+| [0100](0100-world-on-the-cpu-tier.md)                 | A scene of nodes runs as tables on the CPU tier, on a fixed tick, and a test reads its dump with no device        | implemented |
+| [0101](0101-inputs-replay-and-seed.md)                | A world takes inputs at a tick, records them, replays them, and gives each node a seed                            | implemented |
+| [0102](0102-tables-and-a-tick.md)                     | The engine's tools run tables and a tick function, so a game on the raw structure has a dump, inputs and a replay | implemented |
+| [0103](0103-the-game-in-a-browser.md)                 | The reference game runs in a browser on WebGPU, and a harness holds its cells, its picture and its size           | implemented |
+| [0104](0104-the-simulation-on-a-device.md)            | A simulation runs on a device, so a test on the CPU tier and a page on a GPU tier run the same code               | implemented |
+| [0105](0105-kinds-as-classes.md)                      | A kind of cell is a class with its own fields and rules, and an input writes a field that holds a class           | implemented |
+| [0106](0106-row-seeds-and-a-replay-from-a-builder.md) | A simulation gives each row a seed, and a record replays from the function that builds the game                   | accepted    |
 
 The first model's records hold the numbers 0001 to 0011. They are on the branch `legacy`, and
 compiler proposals cite them by number. A record of this engine does not use those numbers
