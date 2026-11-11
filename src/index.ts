@@ -27,3 +27,5 @@ export type {
   StartOptions,
   TableOptions,
 } from './engine.ts';
+export { defineGame } from './config.ts';
+export type { GameConfig } from './config.ts';

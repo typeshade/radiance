@@ -3,3 +3,4 @@ dist/
 *.shade.typeshade.ts
 .codebase-memory/
 test-results/
+.radiance/

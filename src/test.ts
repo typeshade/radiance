@@ -3,7 +3,11 @@
 import type { RunRecord } from './input.ts';
 import type { Scene } from './node.ts';
 import { createSim, type Sim, type SimOptions, type SimRecord, type SimTables } from './sim.ts';
+import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { createDevice } from 'typeshade/runtime';
+import { loadConfig } from './cli.ts';
+import { GAME_FILE, syncProject } from './project.ts';
 import { Engine, simOf, type StartOptions } from './engine.ts';
 import { createWorld, type World, type WorldOptions } from './world.ts';
 
@@ -192,4 +196,39 @@ export async function replayGame<G extends Engine>(
     throw error;
   }
   return game;
+}
+
+/** The first rows and the values of a run: what a file of `levels/` exports. */
+export interface Level {
+  readonly rows: { readonly [table: string]: readonly object[] };
+  readonly values?: { readonly [name: string]: number };
+}
+
+/**
+ * Loads a project and starts its game on a device of the CPU tier: the engine reads the
+ * project, writes the game's class, and gives the game its level. `level` is the name of a file
+ * of `levels/`, or the level itself (design record 0108, section 5).
+ */
+export async function load<G extends Engine = Engine>(
+  project: string,
+  options: { readonly seed: number; readonly level: string | Level },
+): Promise<G> {
+  const dir = resolve(project);
+  const config = await loadConfig(dir);
+  syncProject(dir, config);
+  const { Game } = (await import(pathToFileURL(join(dir, GAME_FILE)).href)) as {
+    Game: new () => G;
+  };
+  let level = options.level;
+  if (typeof level === 'string') {
+    const file = join(dir, 'levels', `${level}.ts`);
+    const module = (await import(pathToFileURL(file).href)) as { default?: Level };
+    if (module.default === undefined) {
+      throw new TypeError(
+        `${file}: the level has no default export. Export its first rows and values, for example "export default { rows: { cells }, values: { width: 8 } };".`,
+      );
+    }
+    level = module.default;
+  }
+  return start(Game, { seed: options.seed, hz: config.hz, rows: level.rows, values: level.values });
 }

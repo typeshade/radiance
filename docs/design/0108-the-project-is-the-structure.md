@@ -71,12 +71,15 @@ The rules:
 
 1. A directory's name is a layer of the framework. No name is for one kind of game (D13).
 2. A file of `state/` or `scratch/` is a `"use typeshade"` file. It exports one class. The
-   table's name is the file's name.
+   table's name is the file's name. The file can export constants and functions beside the
+   class.
 3. A file of `systems/` is a `"use typeshade"` file. It exports one kernel function with the
    file's name.
 4. `radiance.config.ts` exports `defineGame({ tick, hz, stepOn, values })`. `tick` lists the
    systems in the order they run.
 5. The engine finds the files by their place. A game writes no import that registers a file.
+   A `"use typeshade"` file at the root of the project is a module that the tables and the
+   systems share. The engine does not read it.
 6. A file in a place it does not fit, or a name the rules do not know, is an error of
    `radiance check`. The error names the file, the fact and a remedy.
 
@@ -104,7 +107,9 @@ export const slots = 16;
    `scratch/` is in none of them.
 2. A file that exports `slots` is a table with free slots of that size (design record 0107).
    Its class has a method `free(): bool`.
-3. A file that exports `like` with the name of another table has that table's number of rows.
+3. A table of `scratch/` has the number of rows of a state table. The config names that table:
+   `scratch: { wants: 'actors' }`. A `"use typeshade"` file holds no string, so the name is not
+   an export of the file.
 4. Each first row with `seed` 0 gets a seed (design record 0106).
 5. The engine decides which tables have two arrays: each table that a system writes through
    its `Next` name (section 3).
@@ -226,8 +231,8 @@ tick rate on the CPU tier, gives it each input at its tick and returns the game.
 | Before                                | After                                              |
 | ------------------------------------- | -------------------------------------------------- |
 | `createDevice` in a game              | Inside `load` and `run`                            |
-| `createSim` and its options           | The inside of `Engine`. The export ends at step 2. |
-| `frames` of `radiance/page`           | The inside of `run`. The export ends at step 2.    |
+| `createSim` and its options           | The inside of `Engine`. The export ends at step 3. |
+| `frames` of `radiance/page`           | The inside of `run`. The export ends at step 3.    |
 | `device.array` for the table of wants | `this.scratch`                                     |
 | `replaySim(build, record)`            | `replay(Game, options, record)`                    |
 
@@ -258,7 +263,7 @@ problem over a long time. These rules answer it.
    signature, and it takes `Next` in a name as "the tick writes this array". No other module
    reads source. When the pin has the report, `src/facts.ts` reads the report, the `Next` rule
    ends, and nothing else changes.
-3. **One way to write a game.** When the two reference games are projects (step 2),
+3. **One way to write a game.** When the two reference games are projects (step 3),
    `createSim`, `replaySim` and `frames` leave the public exports in the same pull request.
    They stay as the inside of `Engine`.
 4. **No second model.** The world of nodes (design records 0100 and 0101) is no longer the way
@@ -352,11 +357,13 @@ Each step is one pull request. Each commit carries `Design: 0108`.
 
 1. **The runtime.** `Engine` on the CPU tier: sections 5, 6 and 9, with a class written by hand
    in the engine's tests.
-2. **The project.** Sections 1 to 4: the reader, the writer, `radiance sync`, `radiance check`
-   and `load`. The two games become projects, and their tests use `load`. `createSim`,
-   `replaySim` and `frames` leave the public exports (section 10, rule 3).
-3. **The page.** Section 7 and `run`. The factory's page uses it. The harness runs it, and the
-   game's `README.md` records the lines and the bytes. Set this record to `implemented`.
+2. **The project.** Sections 1 to 4: `src/facts.ts`, the reader, the writer, `radiance sync`,
+   `radiance check` and `load`. The second reference game becomes a project, and its tests use
+   `load`.
+3. **The page.** Section 7 and `run`. The first reference game becomes a project, and its page
+   uses `run`. The harness runs it, and the game's `README.md` records the lines and the bytes.
+   `createSim`, `replaySim` and `frames` leave the public exports (section 10, rule 3). Set
+   this record to `implemented`.
 
 ## Decisions for the owner
 
@@ -382,5 +389,21 @@ The agent made these decisions under D9. The owner can change each one.
   해서". The record was written again around the project. The agent showed the owner this shape.
   The owner answered on 2026-11-11: "보기에 코드가 깔끔하고, 장기간 처리시에도 문제가 없으면
   허가함". Section 10 holds what the agent changed in the record to meet that condition.
-- **Validation.** Does not yet apply: no step is implemented.
-- **Deviations.** None.
+- **Validation.** The delivered configuration so far, 2026-11-11, compiler pin `6d6a979`:
+
+  | Step | Pull request | Commit on `main` | What ran                   |
+  | ---- | ------------ | ---------------- | -------------------------- |
+  | 1    | #119         | `f6d86c6`        | `bun run check`, 113 tests |
+  | 2    | this one     | its merge commit | `bun run check`, 118 tests |
+
+  Step 2: the second reference game is a project. Its nine tests give the pictures and the
+  counts they gave before, and its long run replays to the same dump.
+
+- **Deviations.**
+  - Step 1 added `start(Game, options)` of `radiance/test`, which `load` is built on. Closed.
+  - The replay of a game is `replayGame`, since `replay` is the name of the world's replay.
+    Open: the record of the world of nodes decides the one name (section 10, rule 4).
+  - The first reference game and the removal of the old exports moved from step 2 to step 3,
+    so that its page and its harness change once. The steps above say so. Closed.
+  - A scratch table's size is in the config and not an export `like`, since a
+    `"use typeshade"` file holds no string. Section 2 says so. Closed.

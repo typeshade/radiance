@@ -1,8 +1,8 @@
 # The second reference game: a roguelike, written on the raw structure
 
-This game is more evidence for the engine's design. It is a small roguelike, written with
-classes, three kernel functions of a `"use typeshade"` file and plain host TypeScript. It uses
-the engine's simulation and nothing else of the engine.
+This game is more evidence for the engine's design. It is a small roguelike. It is a project of
+the engine (design record 0108): classes and three kernel functions in `"use typeshade"` files,
+a config, and plain host TypeScript for its levels and its tests.
 
 The first reference game is [`examples/factory`](../factory). This game tests what that game
 does not: rows that come and go, random numbers, and a tick of two functions.
@@ -30,11 +30,14 @@ the same turn, from the state the last turn left.
 - A monster comes in on the spawn tile on each eighth turn.
 - A potion heals the player and becomes a floor.
 
-| File              | Lines | Content                                                                                     |
-| ----------------- | ----- | ------------------------------------------------------------------------------------------- |
-| `actors.shade.ts` | 230   | The classes `Actor`, `Want` and `Tile`, three helper functions, `plan`, `turn` and `pickup` |
-| `level.ts`        | 156   | Host code: a level from text, the dungeon as text, the simulation, a move                   |
-| `dungeon.test.ts` | 150   | Nine tests on a device of the CPU tier                                                      |
+| File                    | Lines | Content                                                                      |
+| ----------------------- | ----- | ---------------------------------------------------------------------------- |
+| `rules.shade.ts`        | 50    | The kinds, the numbers of the rules and the step on the grid                 |
+| `state/`, `scratch/`    | 67    | The classes `Actor`, `Tile` and `Want`, one file for each table              |
+| `systems/`              | 157   | `plan`, `turn` and `pickup`, one file for each step of a turn                |
+| `radiance.config.ts`    | 12    | The order of a turn, the values and the size of the scratch table            |
+| `levels/`               | 123   | Host code: a level from text, the dungeon as text, the level of the long run |
+| `tests/dungeon.test.ts` | 146   | Nine tests on a device of the CPU tier                                       |
 
 ## What was observed
 
@@ -218,6 +221,73 @@ The nine tests pass with no change to a picture or a count.
 **R11.** What the actors want is no state of the game. As a table of the simulation it is in
 the dump, the snapshot and each replay. So the game makes it on the device by hand. Nothing
 checks that it has one row for each slot.
+
+## The game as a project (design record 0108)
+
+The game is now a project. The engine reads the project and writes the game's class. The game
+opens no device, makes no array and passes no table to a function.
+
+```text
+examples/dungeon/
+  radiance.config.ts     the order of a tick, the values, the size of the scratch table
+  rules.shade.ts         what the tables and the systems share
+  state/actors.shade.ts  class Actor, with free() and slots = 16
+  state/tiles.shade.ts   class Tile
+  scratch/wants.shade.ts class Want
+  systems/plan.shade.ts  plan(wants, actors, width, height)
+  systems/turn.shade.ts  turn(actorsNext, actors, wants, tiles, width, tick, sx, sy)
+  systems/pickup.shade.ts pickup(tilesNext, tiles, actorsNext, width)
+  levels/                a level from text, and the level of the long run
+  tests/
+```
+
+Before, `level.ts` built the game by hand, 68 lines:
+
+```ts
+const wants = options.device.array(Array.from({ length: size }, () => new Want()));
+const sim = createSim(
+  { actors: level.actors, tiles: level.tiles },
+  {
+    device: options.device,
+    seed: options.seed,
+    buffered: ['actors', 'tiles'],
+    slots: { actors: { size, free: (actor) => actor.kind === NONE } },
+    tick: async (t, time) => {
+      await plan(wants, t.actors.read, width, height);
+      await turn(t.actors.write, t.actors.read, wants, t.tiles.read, width, time.tick, spawn.x, spawn.y);
+      await pickup(t.tiles.write, t.tiles.read, t.actors.write, width);
+    },
+  },
+);
+```
+
+After, the config is the whole of it:
+
+```ts
+export default defineGame({
+  tick: ['plan', 'turn', 'pickup'],
+  stepOn: 'input',
+  values: ['width', 'height', 'sx', 'sy'],
+  scratch: { wants: 'actors' },
+});
+```
+
+and a test loads the project:
+
+```ts
+const game = await load<Game>('examples/dungeon', { seed: 7, level: 'cave' });
+game.actors.input(0, { move: EAST });
+await game.step(1);
+```
+
+The nine tests give the pictures and the counts they gave before.
+
+| Id  | State after design record 0108, step 2                                                    |
+| --- | ----------------------------------------------------------------------------------------- |
+| R1  | The host's part stays closed: `slots = 16` and `free()` are in the table's file.          |
+| R7  | The config says `stepOn: 'input'`. The page that uses it is step 3.                       |
+| R10 | Open. The player is still row 0.                                                          |
+| R11 | Closed: the table of wants is a file of `scratch/`, and the engine makes it and frees it. |
 
 ## What this game does not test
 
