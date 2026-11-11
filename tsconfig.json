@@ -15,8 +15,10 @@
     "noEmit": true,
     "skipLibCheck": true,
     "types": ["node"],
+    "paths": { "radiance": ["./src/index.ts"] },
+    "experimentalDecorators": false,
     "moduleSuffixes": [".typeshade", ""]
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "examples/**/*.ts"],
+  "include": ["src/**/*.ts", "test/**/*.ts", "examples/**/*.ts", "examples/**/.radiance/*.ts"],
   "exclude": ["**/*.shade.ts"]
 }

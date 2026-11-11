@@ -64,3 +64,11 @@ test('README: a simulation of tables and a tick runs and prints its dump', async
   expect((await sim.dump()).split('\n')[0]).toBe('tick 200  seed 1  hz 60');
   await device.dispose();
 });
+
+test('README: a project loads, runs and prints its dump', async () => {
+  const { load } = await import('../src/test.ts');
+  const game = await load('examples/dungeon', { seed: 7, level: 'cave' });
+  await game.step(1);
+  expect((await game.dump()).split('\n')[0]).toBe('tick 1  seed 7  hz 60');
+  await game.dispose();
+});

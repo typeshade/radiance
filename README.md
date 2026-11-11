@@ -96,8 +96,28 @@ frames(sim, () => draw(canvas, { cells: sim.table('cells'), view }));
 
 [`examples/factory`](examples/factory) is a small automation game written this way. Its
 `README.md` lists what is still hard to write, with counts.
-[`examples/dungeon`](examples/dungeon) is a small roguelike written the same way, with rows
-that come and go and with random numbers.
+[`examples/dungeon`](examples/dungeon) is a small roguelike, with rows that come and go and
+with random numbers. It is a project (design record 0108): the engine reads its files and writes
+the game's class. The game opens no device and makes no array.
+
+```text
+examples/dungeon/
+  radiance.config.ts       defineGame({ tick: ['plan', 'turn', 'pickup'], ... })
+  state/actors.shade.ts    one file is one table
+  scratch/wants.shade.ts   a table of a tick that is no state
+  systems/plan.shade.ts    one file is one step of a tick
+```
+
+```ts
+import { load } from 'radiance/test';
+
+const game = await load('examples/dungeon', { seed: 7, level: 'cave' });
+await game.step(1);
+console.log(await game.dump());
+await game.dispose();
+```
+
+`bun bin/radiance.ts sync examples/dungeon` writes `.radiance/game.ts`, the class of the game.
 
 The same game runs in a browser, on the same simulation. Its tick runs on a WebGPU device, one
 fragment entry draws its cells, and the pointer puts belts:
@@ -131,26 +151,26 @@ its commits, and those commits stay reachable.
 
 ## Layout
 
-| Path                    | Content                                                          |
-| ----------------------- | ---------------------------------------------------------------- |
-| `docs/vision.md`        | The design                                                       |
-| `docs/design/README.md` | What a design record is, and when a change needs one             |
-| `docs/design/0100-*.md` | Design record 0100: the world on the CPU tier                    |
-| `docs/design/0101-*.md` | Design record 0101: inputs, the replay and the seed              |
-| `docs/design/0102-*.md` | Design record 0102: tables and a tick                            |
-| `docs/design/0103-*.md` | Design record 0103: the game in a browser                        |
-| `docs/design/0104-*.md` | Design record 0104: the simulation on a device                   |
-| `docs/design/0105-*.md` | Design record 0105: kinds as classes                             |
-| `docs/design/0106-*.md` | Design record 0106: row seeds and a replay from a builder        |
-| `docs/design/0107-*.md` | Design record 0107: a table with free slots                      |
-| `docs/design/0108-*.md` | Design record 0108: the project is the structure                 |
-| `examples/factory/`     | The reference game, and what was hard to write in it             |
-| `examples/dungeon/`     | The second reference game, a roguelike, and what was hard in it  |
-| `src/`                  | The engine: `node`, `scene`, the world, the simulation, `frames` |
-| `scripts/`              | The prose checks and the commit gate                             |
-| `test/`                 | The tests, and the `.shade.ts` fixtures they import              |
-| `CLAUDE.md`             | The rules for a session with a coding agent                      |
-| `.agents/`, `.claude/`  | The installed skills, pinned by `skills-lock.json`, and the hook |
+| Path                    | Content                                                                                            |
+| ----------------------- | -------------------------------------------------------------------------------------------------- |
+| `docs/vision.md`        | The design                                                                                         |
+| `docs/design/README.md` | What a design record is, and when a change needs one                                               |
+| `docs/design/0100-*.md` | Design record 0100: the world on the CPU tier                                                      |
+| `docs/design/0101-*.md` | Design record 0101: inputs, the replay and the seed                                                |
+| `docs/design/0102-*.md` | Design record 0102: tables and a tick                                                              |
+| `docs/design/0103-*.md` | Design record 0103: the game in a browser                                                          |
+| `docs/design/0104-*.md` | Design record 0104: the simulation on a device                                                     |
+| `docs/design/0105-*.md` | Design record 0105: kinds as classes                                                               |
+| `docs/design/0106-*.md` | Design record 0106: row seeds and a replay from a builder                                          |
+| `docs/design/0107-*.md` | Design record 0107: a table with free slots                                                        |
+| `docs/design/0108-*.md` | Design record 0108: the project is the structure                                                   |
+| `examples/factory/`     | The reference game, and what was hard to write in it                                               |
+| `examples/dungeon/`     | The second reference game, a roguelike, and what was hard in it                                    |
+| `src/`                  | The engine: the runtime `Engine`, the project reader, the simulation inside it, the world of nodes |
+| `scripts/`              | The prose checks and the commit gate                                                               |
+| `test/`                 | The tests, and the `.shade.ts` fixtures they import                                                |
+| `CLAUDE.md`             | The rules for a session with a coding agent                                                        |
+| `.agents/`, `.claude/`  | The installed skills, pinned by `skills-lock.json`, and the hook                                   |
 
 ## Checks
 
