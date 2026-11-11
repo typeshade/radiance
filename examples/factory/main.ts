@@ -1,19 +1,15 @@
-// The factory in a browser: the tick on a GPU device, the picture in a canvas, and a pointer
-// that puts belts. This is the thin loop of a shipped game (docs/vision.md, D10), written by
-// hand. It uses the compiler's runtime and nothing of the engine.
+// The factory in a browser. The engine's simulation runs the ticks on a GPU device, the
+// engine's frame loop runs the page, and one fragment entry draws the cells. The same
+// `createFactory` and the same `putCell` run in the tests, on a device of the CPU tier.
 
 import { createDevice } from 'typeshade/runtime';
-import { BELT, Cell, EMPTY, place, tick } from './cells.shade.ts';
+import { frames } from '../../src/page.ts';
+import { BELT, EMPTY, type Cell } from './cells.shade.ts';
 import { draw } from './draw.shade.ts';
-import { DEMO, parseLevel } from './level.ts';
-
-/** The ticks in one second. The tick is fixed, and a frame runs the ticks that are due. */
-const HZ = 30;
+import { createFactory, DEMO, putCell } from './level.ts';
 
 /** What a page or a test reads of the running game. */
 export interface Game {
-  /** The number of ticks run. */
-  readonly ticks: number;
   /** The tier the device opened: `webgpu` or `webgl2`. */
   readonly tier: string;
   /** Runs `n` ticks now, draws, and waits for the device. */
@@ -28,42 +24,16 @@ export async function start(
   canvas: HTMLCanvasElement,
   options: { readonly auto: boolean },
 ): Promise<Game> {
-  const level = parseLevel(DEMO);
-  const { width, height } = level;
   // D12: WebGPU first, WebGL2 where there is no WebGPU. The CPU tier is not a tier of a shipped
   // game.
   const device = await createDevice({ prefer: ['webgpu', 'webgl2'] });
-  let prev = device.array(level.cells);
-  let next = device.array(level.cells.map(() => new Cell()));
-  let ticks = 0;
-  const edits: { at: number; kind: number; dir: number }[] = [];
-
-  const frame = (due: number) => {
-    for (let i = 0; i < due; i++) {
-      // The input phase: each edit is a call that writes one cell on the device.
-      for (const edit of edits.splice(0)) place(prev, edit.at, edit.kind, edit.dir);
-      tick(next, prev, width, height);
-      [prev, next] = [next, prev];
-      ticks++;
-    }
-    draw(canvas, { cells: prev, view: { width, height, size: [canvas.width, canvas.height] } });
-  };
-
-  const game: Game = {
-    get ticks() {
-      return ticks;
-    },
-    tier: device.tier,
-    async step(n) {
-      frame(n);
-      await device.wait();
-    },
-    put(x, y, kind, dir) {
-      if (x < 0 || y < 0 || x >= width || y >= height) return;
-      edits.push({ at: y * width + x, kind, dir });
-    },
-    read: () => prev.read(),
-  };
+  const factory = createFactory(DEMO, { seed: 1, device });
+  const { width, height, sim } = factory;
+  const paint = () =>
+    draw(canvas, {
+      cells: sim.table('cells'),
+      view: { width, height, size: [canvas.width, canvas.height] },
+    });
 
   // A drag puts belts along its path, each pointing the way the pointer moved.
   let last: { x: number; y: number } | undefined;
@@ -83,29 +53,26 @@ export async function start(
     const at = cellOf(event);
     if (at.x === last.x && at.y === last.y) return;
     const dir = at.x > last.x ? 1 : at.x < last.x ? 3 : at.y > last.y ? 2 : 0;
-    game.put(last.x, last.y, BELT, dir);
+    putCell(factory, last.x, last.y, BELT, dir);
     last = at;
   });
   canvas.addEventListener('pointerup', () => (last = undefined));
   canvas.addEventListener('dblclick', (event) => {
     const at = cellOf(event);
-    game.put(at.x, at.y, EMPTY, 0);
+    putCell(factory, at.x, at.y, EMPTY, 0);
   });
 
-  if (options.auto) {
-    let before = performance.now();
-    let owed = 0;
-    const loop = (now: number) => {
-      owed += ((now - before) / 1000) * HZ;
-      before = now;
-      const due = Math.min(Math.floor(owed), 8);
-      owed -= Math.floor(owed);
-      frame(due);
-      requestAnimationFrame(loop);
-    };
-    requestAnimationFrame(loop);
-  }
-  return game;
+  if (options.auto) frames(sim, paint);
+  return {
+    tier: device.tier,
+    async step(n) {
+      await sim.step(n);
+      paint();
+      await sim.wait();
+    },
+    put: (x, y, kind, dir) => putCell(factory, x, y, kind, dir),
+    read: () => sim.read('cells'),
+  };
 }
 
 const canvas = document.querySelector('canvas');

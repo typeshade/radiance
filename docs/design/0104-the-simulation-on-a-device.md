@@ -1,7 +1,7 @@
 ---
 id: '0104'
 title: A simulation runs on a device, so a test on the CPU tier and a page on a GPU tier run the same code
-status: accepted
+status: implemented
 vision: [D4, D10, D11, D12]
 touches:
   - src/sim.ts
@@ -19,14 +19,14 @@ compiler: []
 
 **Document control**
 
-| Field          | Record                                                                                           |
-| -------------- | ------------------------------------------------------------------------------------------------ |
-| Identity       | Design record `0104`, `status: accepted`. The front matter holds the identity and the lifecycle. |
-| Date           | Written 2026-11-11 by the repository's coding agent, under decision D9 of `docs/vision.md`.      |
-| Baseline       | `typeshade/radiance` `main` `c7f0156`.                                                           |
-| Compiler pin   | `6d6a979`.                                                                                       |
-| Pull request   | The pull request that adds this file.                                                            |
-| What is a fact | The reference game's list of what was hard, and one probe (section 6). No step is implemented.   |
+| Field          | Record                                                                                              |
+| -------------- | --------------------------------------------------------------------------------------------------- |
+| Identity       | Design record `0104`, `status: implemented`. The front matter holds the identity and the lifecycle. |
+| Date           | Written 2026-11-11 by the repository's coding agent, under decision D9 of `docs/vision.md`.         |
+| Baseline       | `typeshade/radiance` `main` `c7f0156`.                                                              |
+| Compiler pin   | `6d6a979`.                                                                                          |
+| Pull request   | The pull request that adds this file.                                                               |
+| What is a fact | The two steps are implemented. The Record section holds the delivered configuration.                |
 
 ## What changes
 
@@ -228,5 +228,25 @@ The agent made these decisions under D9. The owner can change each one.
 - **Approval.** The owner's rule of 2026-11-11 approves a merge with green checks in advance
   (`CLAUDE.md`, Merging). The owner asked for this order of work in the conversation on
   2026-11-11: "네, 그 순서로 진행해주세요".
-- **Validation.** Does not yet apply: no step is implemented.
-- **Deviations.** None.
+- **Validation.** The delivered configuration, 2026-11-11, compiler pin `6d6a979`:
+
+  | Step | Pull request | Commit on `main` | What ran                                         |
+  | ---- | ------------ | ---------------- | ------------------------------------------------ |
+  | 1    | #105         | `89f4ec1`        | `bun run check`, 82 tests. `bun run harness`, 4. |
+  | 2    | this one     | its merge commit | `bun run check`, 87 tests. `bun run harness`, 4. |
+
+  The harness ran in headless Chromium (Playwright 1.63.0) with WebGPU on SwiftShader. After
+  200 ticks with one belt put at tick 50, the cells of the GPU device equal the cells of the
+  CPU device. One function builds the factory on each tier, and one function gives the input.
+
+  The bytes of step 2, as the section on D10 asks: the page loaded 278,406 bytes before and
+  276,081 after. With gzip it loaded 86,653 before and 87,984 after. `main.ts` went from 115
+  lines to 82. `examples/factory/README.md` holds the table.
+
+- **Deviations.**
+  - `createSim` refuses a table with no row, since a device holds no empty array. The record
+    did not say so. Closed: the refusal names the table and the remedy, and a test holds it.
+  - The reference game's kernel function `place` and its test are removed. The record said
+    only that the page uses `createFactory`. Closed: `putCell` of `level.ts` takes its place.
+  - No device was measured other than headless Chromium on SwiftShader. Open: the
+    measurements M1 to M6 of `docs/vision.md` wait for a phone.

@@ -3,8 +3,8 @@
 import { createDevice, type Device } from 'typeshade/runtime';
 import { afterAll, beforeAll, expect, test } from 'vitest';
 import { replaySim } from '../../src/test.ts';
-import { BELT, Cell, MACHINE, place, tick } from './cells.shade.ts';
-import { createFactory, parseLevel, render, totals, type Factory } from './level.ts';
+import { BELT, tick } from './cells.shade.ts';
+import { createFactory, parseLevel, putCell, render, totals, type Factory } from './level.ts';
 
 let device: Device;
 beforeAll(async () => {
@@ -105,8 +105,8 @@ test('the player builds a belt with an input, and the run replays', async () => 
   expect((await counts(f)).goods).toBe(0);
   expect(await picture(f)).toBe('eo.>0\n');
 
-  // The player puts a belt in the gap. An input is a write of field values to one row.
-  f.sim.input('cells', 2, { kind: BELT, dir: 1 });
+  // The player puts a belt in the gap. `putCell` is the call the page makes from the pointer.
+  putCell(f, 2, 0, BELT, 1);
   await f.sim.step(60);
   expect((await counts(f)).goods).toBeGreaterThan(0);
 
@@ -147,16 +147,4 @@ test('a wrong level is refused with the fact and the remedy', () => {
   expect(() => parseLevel('E?M')).toThrow(
     'parseLevel(): row 0 holds "?". A cell is one of . ^ > v < N E S W M.',
   );
-});
-
-// Verifies: Design 0103.1
-test('place writes one cell and no other', async () => {
-  const cells = parseLevel('E>M').cells;
-  cells[1].item = 1;
-  cells[1].wait = 2;
-  const before = JSON.stringify([cells[0], cells[2]]);
-  await place(cells, 1, MACHINE, 3);
-  expect(JSON.stringify([cells[0], cells[2]])).toBe(before);
-  expect(cells[1]).toMatchObject({ kind: MACHINE, dir: 3, item: 0, wait: 0, stock: 0 });
-  expect(cells[1]).toBeInstanceOf(Cell);
 });

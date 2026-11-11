@@ -3,10 +3,10 @@
 A game engine written in [TypeShade](https://typeshade.dev), made for development by a coding
 agent.
 
-**Status: early.** Design records 0100 to 0103 are implemented. A scene of nodes runs as tables
+**Status: early.** Design records 0100 to 0104 are implemented. A scene of nodes runs as tables
 on the CPU tier, on a fixed tick. A test reads its dump with no device. A world takes inputs,
-records them and replays them. The engine draws nothing
-yet. [`docs/vision.md`](docs/vision.md) is the design: the claim, the owner's decisions, what an
+records them and replays them. A simulation runs a game's tick on a device, in a test and in a
+page. The engine draws nothing yet. [`docs/vision.md`](docs/vision.md) is the design: the claim, the owner's decisions, what an
 agent writes and reads, the scene model, the tick, and what is not promised.
 
 ## What runs today
@@ -64,25 +64,41 @@ A class that needs random numbers declares a field named `seed`, and the world f
 
 A game can also write its whole tick as one function of a `"use typeshade"` file (`docs/vision.md`,
 D11). The simulation runs such a game from its tables and its tick, with the same dump, inputs
-and replay:
+and replay. Its tables live on a device of the compiler's runtime:
 
 ```ts
+import { createDevice } from 'typeshade/runtime';
 import { createSim } from 'radiance';
 import { tick } from './cells.shade.ts';
 
+const device = await createDevice({ prefer: ['cpu'] });
 const sim = createSim(
   { cells },
-  { seed: 1, buffered: ['cells'], tick: (t) => tick(t.cells.write, t.cells.read, width, height) },
+  {
+    device,
+    seed: 1,
+    buffered: ['cells'],
+    tick: (t) => tick(t.cells.write, t.cells.read, width, height),
+  },
 );
 await sim.step(200);
-console.log(sim.dump());
+console.log(await sim.dump());
+```
+
+A test gives a device of the CPU tier. A page gives a device of a GPU tier and runs the same
+simulation in its frames:
+
+```ts
+import { frames } from 'radiance/page';
+
+frames(sim, () => draw(canvas, { cells: sim.table('cells'), view }));
 ```
 
 [`examples/factory`](examples/factory) is a small automation game written this way. Its
 `README.md` lists what is still hard to write, with counts.
 
-The same game runs in a browser, with its tick on a WebGPU device, its cells drawn by one
-fragment entry and belts put by the pointer:
+The same game runs in a browser, on the same simulation. Its tick runs on a WebGPU device, one
+fragment entry draws its cells, and the pointer puts belts:
 
 ```sh
 bun run build:factory   # the page, in examples/factory/dist
@@ -119,8 +135,9 @@ its commits, and those commits stay reachable.
 | `docs/design/0101-*.md` | Design record 0101: inputs, the replay and the seed              |
 | `docs/design/0102-*.md` | Design record 0102: tables and a tick                            |
 | `docs/design/0103-*.md` | Design record 0103: the game in a browser                        |
+| `docs/design/0104-*.md` | Design record 0104: the simulation on a device                   |
 | `examples/factory/`     | The reference game, and what was hard to write in it             |
-| `src/`                  | The engine: `node`, `scene`, the world, the dump                 |
+| `src/`                  | The engine: `node`, `scene`, the world, the simulation, `frames` |
 | `scripts/`              | The prose checks and the commit gate                             |
 | `test/`                 | The tests, and the `.shade.ts` fixtures they import              |
 | `CLAUDE.md`             | The rules for a session with a coding agent                      |

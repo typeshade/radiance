@@ -7,7 +7,7 @@ import { createDevice } from 'typeshade/runtime';
 import { build, preview, type PreviewServer } from 'vite';
 import { afterAll, beforeAll, expect, test } from 'vitest';
 import { BELT } from './cells.shade.ts';
-import { createFactory, DEMO } from './level.ts';
+import { createFactory, DEMO, putCell } from './level.ts';
 
 const here = new URL('.', import.meta.url).pathname;
 const config = `${here}vite.config.ts`;
@@ -64,11 +64,11 @@ test('the cells the GPU computes equal the cells of the CPU tier, with an input 
     return JSON.stringify(await game.read());
   }, BELT);
 
-  // On the CPU tier: the same level, the same input at the same tick.
+  // On the CPU tier: the same `createFactory`, the same `putCell` at the same tick.
   const device = await createDevice({ prefer: ['cpu'] });
   const cpu = createFactory(DEMO, { seed: 1, device });
   await cpu.sim.step(50);
-  cpu.sim.input('cells', 3 * cpu.width + 3, { kind: BELT, dir: 0, item: 0, wait: 0, stock: 0 });
+  putCell(cpu, 3, 3, BELT, 0);
   await cpu.sim.step(150);
 
   expect(JSON.parse(gpu)).toEqual(JSON.parse(JSON.stringify(await cpu.sim.read('cells'))));
