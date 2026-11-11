@@ -3,6 +3,7 @@
 
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { chromium, type Browser, type Page } from 'playwright';
+import { createDevice } from 'typeshade/runtime';
 import { build, preview, type PreviewServer } from 'vite';
 import { afterAll, beforeAll, expect, test } from 'vitest';
 import { BELT } from './cells.shade.ts';
@@ -64,12 +65,14 @@ test('the cells the GPU computes equal the cells of the CPU tier, with an input 
   }, BELT);
 
   // On the CPU tier: the same level, the same input at the same tick.
-  const cpu = createFactory(DEMO, { seed: 1 });
+  const device = await createDevice({ prefer: ['cpu'] });
+  const cpu = createFactory(DEMO, { seed: 1, device });
   await cpu.sim.step(50);
   cpu.sim.input('cells', 3 * cpu.width + 3, { kind: BELT, dir: 0, item: 0, wait: 0, stock: 0 });
   await cpu.sim.step(150);
 
-  expect(JSON.parse(gpu)).toEqual(JSON.parse(JSON.stringify(cpu.sim.rows('cells'))));
+  expect(JSON.parse(gpu)).toEqual(JSON.parse(JSON.stringify(await cpu.sim.read('cells'))));
+  await device.dispose();
 });
 
 test('the picture shows the cells', async () => {

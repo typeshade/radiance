@@ -1,6 +1,9 @@
-// Design: 0102. A simulation runs a game on the raw structure of docs/vision.md (D11): named
-// tables and one tick function. It is a tool of the tests. It reads no clock, no random source
-// and no device.
+// Design: 0102 and 0104. A simulation runs a game on the raw structure of docs/vision.md (D11):
+// named tables and one tick function. Its tables live on a device of the compiler's runtime, so
+// a test on the CPU tier and a page on a GPU tier run the same code. It reads no clock and no
+// random source.
+
+import type { Device, Resident } from 'typeshade/runtime';
 
 import { formatValue, type SnapshotValue } from './dump.ts';
 import { checkFields, type InputValue } from './input.ts';
@@ -8,17 +11,17 @@ import { checkFields, type InputValue } from './input.ts';
 /** The first rows of each table, by name. A row is an instance of a class. */
 export type SimTables = Record<string, object[]>;
 
-/** The two arrays of a buffered table in one tick. */
+/** The two handles of a buffered table in one tick. */
 export interface Buffered<R> {
-  /** The rows as the last tick left them. The tick reads this array. */
-  readonly read: R;
-  /** The array the tick writes. It becomes `read` in the next tick. */
-  readonly write: R;
+  /** The rows as the last tick left them. The tick reads this handle. */
+  readonly read: Resident<R>;
+  /** The handle the tick writes. It becomes `read` in the next tick. */
+  readonly write: Resident<R>;
 }
 
-/** What a tick gets: each table by name, and `{ read, write }` for a buffered table. */
+/** What a tick gets: each table's handle by name, and `{ read, write }` for a buffered table. */
 export type Frame<T extends SimTables, B extends keyof T> = {
-  readonly [K in keyof T]: K extends B ? Buffered<T[K]> : T[K];
+  readonly [K in keyof T]: K extends B ? Buffered<T[K]> : Resident<T[K]>;
 };
 
 /** The time of one tick. */
@@ -31,6 +34,8 @@ export interface TickTime {
 
 /** The options of `createSim`. */
 export interface SimOptions<T extends SimTables, B extends keyof T = never> {
+  /** The device that holds the tables: the CPU tier in a test, a GPU tier in a page. */
+  readonly device: Device;
   /** The seed of the run, a `u32`. Required: a run always has one. */
   readonly seed: number;
   /** The tick rate, an integer from 1. 60 when it is not given. */
@@ -112,14 +117,25 @@ export class Sim<T extends SimTables, B extends keyof T = never> {
 
   #tick = 0;
   readonly #options: SimOptions<T, B>;
-  readonly #read = new Map<string, object[]>();
-  readonly #write = new Map<string, object[]>();
+  readonly #device: Device;
+  readonly #read = new Map<string, Resident<object[]>>();
+  readonly #write = new Map<string, Resident<object[]>>();
+  /** What the check of an input needs of each table: its row count, its fields, its class. */
+  readonly #shape = new Map<
+    string,
+    { length: number; fields: readonly string[]; className: string }
+  >();
   #queue: { table: string; index: number; fields: { readonly [field: string]: InputValue } }[] = [];
   readonly #applied: SimInput[] = [];
 
   /** @internal Use `createSim`. */
   constructor(tables: T, options: SimOptions<T, B>) {
-    const { seed, hz = 60 } = options ?? ({} as SimOptions<T, B>);
+    const { seed, hz = 60, device } = options ?? ({} as SimOptions<T, B>);
+    if (typeof device !== 'object' || device === null || typeof device.array !== 'function') {
+      throw new TypeError(
+        "createSim(): the options hold no device. Give a device of the compiler's runtime, for example { device: await createDevice({ prefer: ['cpu'] }) }.",
+      );
+    }
     if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) {
       throw new RangeError(
         `createSim(): the seed is ${String(seed)}. Give an integer from 0 to 4294967295, for example { seed: 1 }.`,
@@ -139,6 +155,7 @@ export class Sim<T extends SimTables, B extends keyof T = never> {
     this.hz = hz;
     this.dt = Math.fround(1 / hz);
     this.#options = options;
+    this.#device = device;
     this.names = Object.freeze(Object.keys(tables));
     for (const name of this.names) {
       const rows = tables[name];
@@ -147,16 +164,28 @@ export class Sim<T extends SimTables, B extends keyof T = never> {
           `createSim(): the table ${JSON.stringify(name)} is not an array. Give each table its first rows as an array.`,
         );
       }
-      this.#read.set(name, rows.map(copyRow));
+      if (rows.length === 0) {
+        throw new RangeError(
+          `createSim(): the table ${JSON.stringify(name)} has no row. Give each table one row or more.`,
+        );
+      }
+      const first = rows[0];
+      this.#shape.set(name, {
+        length: rows.length,
+        fields: Object.freeze(Object.keys(first)),
+        className: (first as { constructor?: { name?: string } }).constructor?.name || 'the row',
+      });
+      // The device keeps a copy, so a later change to the caller's rows does not reach it.
+      this.#read.set(name, device.array(rows.map(copyRow)) as Resident<object[]>);
     }
     for (const name of options.buffered ?? []) {
-      const rows = this.#read.get(name as string);
-      if (rows === undefined) {
+      if (!this.#read.has(name as string)) {
         throw new TypeError(
           `createSim(): buffered names ${JSON.stringify(name)}, which is no table. The tables are ${this.names.join(', ')}.`,
         );
       }
-      this.#write.set(name as string, rows.map(copyRow));
+      const rows = tables[name as string];
+      this.#write.set(name as string, device.array(rows.map(copyRow)) as Resident<object[]>);
     }
   }
 
@@ -165,25 +194,39 @@ export class Sim<T extends SimTables, B extends keyof T = never> {
     return this.#tick;
   }
 
-  #table(where: string, name: string): object[] {
-    const rows = this.#read.get(name);
-    if (rows === undefined) {
+  #handle(where: string, name: string): Resident<object[]> {
+    const handle = this.#read.get(name);
+    if (handle === undefined) {
       throw new TypeError(
         `${where}: the simulation holds no table ${JSON.stringify(name)}. Its tables are ${this.names.join(', ')}.`,
       );
     }
-    return rows;
+    return handle;
   }
 
-  /** The rows of a table as they are after the last tick. */
-  rows<K extends keyof T & string>(name: K): T[K] {
-    return this.#table('Sim.rows()', name) as T[K];
+  /**
+   * The handle of a table as it is after the last tick. A draw takes it, and reads the table
+   * where it is on the device.
+   */
+  table<K extends keyof T & string>(name: K): Resident<T[K]> {
+    return this.#handle('Sim.table()', name) as Resident<T[K]>;
+  }
+
+  /** The rows of a table, read from the device. On a GPU tier the promise waits for the device. */
+  read<K extends keyof T & string>(name: K): Promise<T[K]> {
+    return this.#handle('Sim.read()', name).read() as Promise<T[K]>;
+  }
+
+  /** Resolves when the device has run every call made so far. */
+  wait(): Promise<void> {
+    return this.#device.wait();
   }
 
   /**
    * Runs `n` ticks, 1 when `n` is not given. One tick applies the queued inputs in the order
-   * they were given, calls the tick function and waits for it, swaps the two arrays of each
-   * buffered table, then adds 1 to `tick`.
+   * they were given, calls the tick function and waits for what it returns, swaps the two
+   * handles of each buffered table, then adds 1 to `tick`. On a GPU tier the promise resolves
+   * when the ticks are queued. `wait()` resolves when the device has run them.
    */
   async step(n = 1): Promise<void> {
     if (!Number.isInteger(n) || n < 0) {
@@ -195,13 +238,22 @@ export class Sim<T extends SimTables, B extends keyof T = never> {
       if (this.#queue.length > 0) {
         const queue = this.#queue;
         this.#queue = [];
+        // One read and one whole write for each table that has an input in this tick. The
+        // compiler has no write of one row of a handle yet.
+        const rows = new Map<string, Record<string, unknown>[]>();
         for (const input of queue) {
-          const row = this.#read.get(input.table)![input.index] as Record<string, unknown>;
+          let table = rows.get(input.table);
+          if (table === undefined) {
+            table = (await this.#read.get(input.table)!.read()) as Record<string, unknown>[];
+            rows.set(input.table, table);
+          }
+          const row = table[input.index];
           for (const [field, value] of Object.entries(input.fields)) {
             row[field] = Array.isArray(value) ? structuredClone(value) : value;
           }
           this.#applied.push(Object.freeze({ tick: this.#tick, ...input }));
         }
+        for (const [name, table] of rows) this.#read.get(name)!.write(table);
       }
       const frame: Record<string, unknown> = {};
       for (const name of this.names) {
@@ -220,26 +272,26 @@ export class Sim<T extends SimTables, B extends keyof T = never> {
 
   /**
    * Gives the simulation an input: a write of field values to one row. The simulation checks it
-   * now, applies it at the start of the next tick that runs, and records it with that tick.
+   * now, applies it at the start of the next tick that runs, and records it with that tick. It
+   * is the same on each tier.
    */
   input(
     table: keyof T & string,
     index: number,
     fields: { readonly [field: string]: InputValue },
   ): void {
-    const rows = this.#table('Sim.input()', table);
-    if (!Number.isInteger(index) || index < 0 || index >= rows.length) {
+    this.#handle('Sim.input()', table);
+    const shape = this.#shape.get(table)!;
+    if (!Number.isInteger(index) || index < 0 || index >= shape.length) {
       throw new RangeError(
-        `Sim.input(): the index is ${String(index)}, and the table ${JSON.stringify(table)} has ${rows.length} rows. Give an integer from 0 to ${rows.length - 1}.`,
+        `Sim.input(): the index is ${String(index)}, and the table ${JSON.stringify(table)} has ${shape.length} rows. Give an integer from 0 to ${shape.length - 1}.`,
       );
     }
-    const row = rows[index];
-    const className = (row as { constructor?: { name?: string } }).constructor?.name || 'the row';
     const checked = checkFields(
       'Sim.input()',
       `${table}[${index}]`,
-      className,
-      Object.keys(row),
+      shape.className,
+      shape.fields,
       fields,
     );
     this.#queue.push({ table, index, fields: checked });
@@ -257,11 +309,11 @@ export class Sim<T extends SimTables, B extends keyof T = never> {
   }
 
   /** The simulation as text: a header, then each table's name and one line for each row. */
-  dump(): string {
+  async dump(): Promise<string> {
     const lines = [`tick ${this.#tick}  seed ${this.seed}  hz ${this.hz}`];
     for (const name of this.names) {
       lines.push(name);
-      this.#read.get(name)!.forEach((row, index) => {
+      (await this.#read.get(name)!.read()).forEach((row, index) => {
         const parts = [`[${index}]`];
         for (const [field, value] of Object.entries(row))
           parts.push(`${field} ${formatValue(value)}`);
@@ -271,24 +323,21 @@ export class Sim<T extends SimTables, B extends keyof T = never> {
     return lines.join('\n') + '\n';
   }
 
-  /** The simulation as a plain object: a copy, so a later tick does not change it. */
-  snapshot(): SimSnapshot {
-    return {
-      version: 1,
-      tick: this.#tick,
-      seed: this.seed,
-      hz: this.hz,
-      tables: this.names.map((name) => ({
+  /** The simulation as a plain object that JSON holds, read from the device. */
+  async snapshot(): Promise<SimSnapshot> {
+    const tables: { name: string; rows: { [field: string]: SnapshotValue }[] }[] = [];
+    for (const name of this.names) {
+      const rows = await this.#read.get(name)!.read();
+      tables.push({
         name,
-        rows: this.#read
-          .get(name)!
-          .map((row) => snapshotValue(row) as { [field: string]: SnapshotValue }),
-      })),
-    };
+        rows: rows.map((row) => snapshotValue(row) as { [field: string]: SnapshotValue }),
+      });
+    }
+    return { version: 1, tick: this.#tick, seed: this.seed, hz: this.hz, tables };
   }
 }
 
-/** Builds a simulation from the first rows of its tables. The simulation is at tick 0. */
+/** Builds a simulation from the first rows of its tables, on the device. It is at tick 0. */
 export function createSim<T extends SimTables, B extends keyof T = never>(
   tables: T,
   options: SimOptions<T, B>,

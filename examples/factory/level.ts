@@ -2,6 +2,7 @@
 // simulation (design record 0102) runs the ticks, and gives the game its dump, its inputs and
 // its replay.
 
+import type { Device } from 'typeshade/runtime';
 import { createSim, type Sim } from '../../src/index.ts';
 import { BELT, Cell, EMPTY, MACHINE, SOURCE, tick } from './cells.shade.ts';
 
@@ -75,8 +76,10 @@ export function parseLevel(text: string): Level {
  * The factory as text, one line for each row. A belt with an item is `o`, a source that holds
  * an item is its letter in lower case, and a machine is the digit of its stock.
  */
-export function render(factory: Factory): string {
-  const cells = factory.sim.rows('cells');
+export function render(
+  factory: { readonly width: number; readonly height: number },
+  cells: readonly Cell[],
+): string {
   const lines: string[] = [];
   for (let y = 0; y < factory.height; y++) {
     let line = '';
@@ -94,14 +97,19 @@ export function render(factory: Factory): string {
 }
 
 /**
- * Builds the factory of a level. The cells are one buffered table: each tick reads the cells as
- * the last tick left them and writes the next cells, and the simulation swaps the two.
+ * Builds the factory of a level on a device: the CPU tier in a test, a GPU tier in a page. The
+ * cells are one buffered table: each tick reads the cells as the last tick left them and writes
+ * the next cells, and the simulation swaps the two.
  */
-export function createFactory(text: string, options: { readonly seed: number }): Factory {
+export function createFactory(
+  text: string,
+  options: { readonly seed: number; readonly device: Device },
+): Factory {
   const { width, height, cells } = parseLevel(text);
   const sim = createSim(
     { cells },
     {
+      device: options.device,
       seed: options.seed,
       buffered: ['cells'],
       tick: (t) => tick(t.cells.write, t.cells.read, width, height),
@@ -111,13 +119,13 @@ export function createFactory(text: string, options: { readonly seed: number }):
 }
 
 /** The counts a test and a score read. */
-export function totals(factory: Factory) {
+export function totals(cells: readonly Cell[]) {
   let made = 0;
   let goods = 0;
   let onBelts = 0;
   let inSources = 0;
   let inStock = 0;
-  for (const c of factory.sim.rows('cells')) {
+  for (const c of cells) {
     if (c.kind === SOURCE) {
       made += c.made;
       inSources += c.item;

@@ -43,16 +43,24 @@ test('README and vision, moment 5: a record replays to the same dump', () => {
 });
 
 test('README: a simulation of tables and a tick runs and prints its dump', async () => {
+  const { createDevice } = await import('typeshade/runtime');
   const { createSim } = await import('../src/index.ts');
   const { Cell, tick } = await import('../examples/factory/cells.shade.ts');
   const width = 3;
   const height = 1;
   const cells = Array.from({ length: width * height }, () => new Cell());
+  const device = await createDevice({ prefer: ['cpu'] });
   const sim = createSim(
     { cells },
-    { seed: 1, buffered: ['cells'], tick: (t) => tick(t.cells.write, t.cells.read, width, height) },
+    {
+      device,
+      seed: 1,
+      buffered: ['cells'],
+      tick: (t) => tick(t.cells.write, t.cells.read, width, height),
+    },
   );
   await sim.step(200);
   expect(sim.tick).toBe(200);
-  expect(sim.dump().split('\n')[0]).toBe('tick 200  seed 1  hz 60');
+  expect((await sim.dump()).split('\n')[0]).toBe('tick 200  seed 1  hz 60');
+  await device.dispose();
 });
