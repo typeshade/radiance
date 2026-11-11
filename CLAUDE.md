@@ -164,23 +164,16 @@ pull request, a Code Owner review and the required checks (the `name:` of each j
 
 - Merge only when every check is green on the pull request's current head. A red check is fixed,
   never bypassed.
-- Bypass only the review requirement. Bypass it only in these two cases:
-  - The owner has said in the conversation to merge that pull request.
-  - The pull request is of a kind the owner approved in advance (below).
-- Approved in advance. Merge a pull request of these two kinds as soon as an independent agent
-  review approves it. Every check must be green on its current head, with no conflict and no
-  review thread open:
-  - a pull request that implements an accepted design record, within what the record declares
-    (its commits carry the record's `Design` line)
-  - a bug fix that needs no design record
-- Everything else waits for the owner to say "merge" in the conversation:
-  - a new or amended design record
-  - a change to the design (`docs/vision.md`)
-  - a change to a public export
-  - a layout or a contract that no accepted design record covers
-  - a move of the compiler pin
+- Approved in advance. The owner's rule, given on 2026-11-11: "초록이면 병합해도 됩니다". Merge a
+  pull request of this repository when every check is green on its current head, with no conflict
+  and no review thread open. Do not wait for the owner's review.
+- A merged design record is accepted. Set its `status` to `accepted` before the merge.
+- These three kinds still wait for the owner to say "merge" in the conversation:
   - a change to `CLAUDE.md` itself
-- After a merge, report it to the owner.
+  - a change to a decision D1 to D9 of `docs/vision.md`
+  - a pull request that deletes work that a revert does not restore
+- After a merge, report it to the owner: the pull request, the commit, what changed and what was
+  verified.
 - Never push to `main` directly, and never force-push it.
 - The ruleset, the secrets and every other repository setting are the owner's to change. When one
   must change, write the owner a script for the GitHub CLI (`gh auth login`, then `gh api`), in
