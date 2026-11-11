@@ -16,7 +16,9 @@ import {
   SPAWN,
   Tile,
   WALL,
+  Want,
   pickup,
+  plan,
   turn,
 } from './actors.shade.ts';
 
@@ -124,6 +126,10 @@ export function createDungeon(
 ): Dungeon {
   const level = parseLevel(text);
   const { width, height, spawn } = level;
+  const size = options.slots ?? 16;
+  // What the actors want in a turn. It is no state of the game, so it is no table of the
+  // simulation. It has one row for each slot.
+  const wants = options.device.array(Array.from({ length: size }, () => new Want()));
   const sim = createSim(
     { actors: level.actors, tiles: level.tiles },
     {
@@ -131,20 +137,22 @@ export function createDungeon(
       seed: options.seed,
       buffered: ['actors', 'tiles'],
       // The simulation adds the free rows. A monster comes in on a free row.
-      slots: { actors: { size: options.slots ?? 16, free: (actor) => actor.kind === NONE } },
-      // Two functions make one turn. Both read the tables as the last turn left them.
+      slots: { actors: { size, free: (actor) => actor.kind === NONE } },
+      // Three functions make one turn. `plan` writes what each actor wants, `turn` reads it
+      // for every actor, and `pickup` reads the actors that `turn` wrote.
       tick: async (t, time) => {
+        await plan(wants, t.actors.read, width, height);
         await turn(
           t.actors.write,
           t.actors.read,
+          wants,
           t.tiles.read,
           width,
-          height,
           time.tick,
           spawn.x,
           spawn.y,
         );
-        await pickup(t.tiles.write, t.tiles.read, t.actors.read, width, height);
+        await pickup(t.tiles.write, t.tiles.read, t.actors.write, width);
       },
     },
   );

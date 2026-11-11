@@ -1,7 +1,7 @@
 # The second reference game: a roguelike, written on the raw structure
 
 This game is more evidence for the engine's design. It is a small roguelike, written with
-classes, two kernel functions of a `"use typeshade"` file and plain host TypeScript. It uses
+classes, three kernel functions of a `"use typeshade"` file and plain host TypeScript. It uses
 the engine's simulation and nothing else of the engine.
 
 The first reference game is [`examples/factory`](../factory). This game tests what that game
@@ -30,11 +30,11 @@ the same turn, from the state the last turn left.
 - A monster comes in on the spawn tile on each eighth turn.
 - A potion heals the player and becomes a floor.
 
-| File              | Lines | Content                                                                     |
-| ----------------- | ----- | --------------------------------------------------------------------------- |
-| `actors.shade.ts` | 227   | The classes `Actor` and `Tile`, three helper functions, `turn` and `pickup` |
-| `level.ts`        | 166   | Host code: a level from text, the dungeon as text, the simulation, a move   |
-| `dungeon.test.ts` | 147   | Eight tests on a device of the CPU tier                                     |
+| File              | Lines | Content                                                                                     |
+| ----------------- | ----- | ------------------------------------------------------------------------------------------- |
+| `actors.shade.ts` | 230   | The classes `Actor`, `Want` and `Tile`, three helper functions, `plan`, `turn` and `pickup` |
+| `level.ts`        | 156   | Host code: a level from text, the dungeon as text, the simulation, a move                   |
+| `dungeon.test.ts` | 150   | Nine tests on a device of the CPU tier                                                      |
 
 ## What was observed
 
@@ -166,6 +166,59 @@ The dump of 1 actor in 8 slots, before and after:
 | R1  | The host's part is closed. The scan for the first free slot stays in `turn`, 6 lines. It waits on compiler issue typeshade/typeshade#1244. |
 | R5  | Closed: each slot has a seed, and a new monster takes its random numbers from it.                                                          |
 
+## A turn of three phases (written by the game)
+
+The game now writes what each actor wants into a table first. The engine did not change: a
+tick of the simulation already runs several kernel functions.
+
+Before, `turn` found the way of each other actor again, for each actor:
+
+```ts
+const goes: i32 = ahead(b.x, b.y, wish(b, p), width, height);
+```
+
+and `pickup` found again if the player walks onto the tile, with a scan of every actor.
+
+After, `plan` runs first and writes one row for each actor:
+
+```ts
+export function plan(wants: array<Want>, actors: array<Actor>, width: u32, height: u32) {
+  for (let i: u32 = 0; i < wants.length; i++) {
+    const a: Actor = actors[i];
+    let w: Want = wants[i];
+    w.target = -1;
+    if (a.kind != NONE) { w.target = ahead(a.x, a.y, wish(a, actors[0]), width, height); }
+    wants[i] = w;
+  }
+}
+```
+
+`turn` reads `wants[j].target`. `pickup` runs last and reads the actors that `turn` wrote:
+
+```ts
+if (t.kind == POTION && p.kind == PLAYER && p.y * width + p.x == i) { t.kind = FLOOR; }
+```
+
+| Item                                       | Before | After                                     |
+| ------------------------------------------ | ------ | ----------------------------------------- |
+| The calls of `wish` in a turn of 12 actors | 144    | 12                                        |
+| The places that find where an actor goes   | 2      | 1                                         |
+| The places with the rule of the potion     | 2      | 1 rule, and 1 read of where the player is |
+| The lines of `pickup`                      | 22     | 8                                         |
+| The scans of every actor                   | 3      | 2                                         |
+
+The nine tests pass with no change to a picture or a count.
+
+| Id  | State                                                                                                   |
+| --- | ------------------------------------------------------------------------------------------------------- |
+| R2  | Closed by the game: `plan` writes the table of wants.                                                   |
+| R4  | Closed by the game: `pickup` reads the new actors.                                                      |
+| R11 | New. The table of wants is no table of the simulation: 3 host lines, and its size must equal the slots. |
+
+**R11.** What the actors want is no state of the game. As a table of the simulation it is in
+the dump, the snapshot and each replay. So the game makes it on the device by hand. Nothing
+checks that it has one row for each slot.
+
 ## What this game does not test
 
 - **A page.** Nothing draws the dungeon, and no GPU tier ran it.
@@ -177,12 +230,12 @@ The dump of 1 actor in 8 slots, before and after:
 
 This is a list of candidates, in the order of the cost above. None is designed.
 
-| Candidate                                                     | Takes away | Where it lives                                      |
-| ------------------------------------------------------------- | ---------- | --------------------------------------------------- |
-| A table with free slots: a row comes in, a row goes           | R1, R10    | A library in TypeShade, and the engine's simulation |
-| A tick of phases: one writes what each row wants, one decides | R2, R4     | The engine's simulation                             |
-| A table from a cell to its row                                | R3         | A library in TypeShade                              |
-| A seed for each row of a simulation                           | R5         | The engine's simulation                             |
-| A replay from the function that builds the game               | R8         | The engine's tools                                  |
-| A step for each input                                         | R7         | `radiance/page`                                     |
-| A grid with neighbour reads                                   | R9, P1, P2 | A library in TypeShade, or the compiler             |
+| Candidate                                           | Takes away | Where it lives                                      |
+| --------------------------------------------------- | ---------- | --------------------------------------------------- |
+| A table with free slots: a row comes in, a row goes | R1, R10    | A library in TypeShade, and the engine's simulation |
+| A table of a tick that is no state of the game      | R11        | The engine's simulation                             |
+| A table from a cell to its row                      | R3         | A library in TypeShade                              |
+| A seed for each row of a simulation                 | R5         | The engine's simulation                             |
+| A replay from the function that builds the game     | R8         | The engine's tools                                  |
+| A step for each input                               | R7         | `radiance/page`                                     |
+| A grid with neighbour reads                         | R9, P1, P2 | A library in TypeShade, or the compiler             |
