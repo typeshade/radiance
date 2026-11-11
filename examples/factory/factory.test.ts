@@ -1,7 +1,9 @@
 // The tests of the reference game. They run the tick on the CPU tier, with no device.
 
 import { expect, test } from 'vitest';
-import { parseLevel, render, run, totals } from './level.ts';
+import { replaySim } from '../../src/test.ts';
+import { BELT, tick } from './cells.shade.ts';
+import { createFactory, parseLevel, render, totals } from './level.ts';
 
 const LINE = `
   E>>>M
@@ -21,14 +23,14 @@ const MERGE = `
 
 test('a level reads as it is written', () => {
   // A machine shows the digit of its stock.
-  expect(render(parseLevel(LOOP))).toBe('E>>>v\n....v\n0<<<<\n');
+  expect(render(createFactory(LOOP, { seed: 1 }))).toBe('E>>>v\n....v\n0<<<<\n');
 });
 
 test('a source makes an item, and the belts carry it to the machine', async () => {
-  const f = parseLevel(LINE);
+  const f = createFactory(LINE, { seed: 1 });
   const frames: string[] = [];
   for (let t = 0; t < 12; t++) {
-    await run(f, 1);
+    await f.sim.step();
     frames.push(render(f).trim());
   }
   // Read by hand against the rules: the source makes an item in tick 1, the first belt takes
@@ -50,9 +52,9 @@ test('a source makes an item, and the belts carry it to the machine', async () =
 });
 
 test('no item is lost and none is made from nothing', async () => {
-  const f = parseLevel(LOOP);
+  const f = createFactory(LOOP, { seed: 1 });
   for (let t = 0; t < 40; t++) {
-    await run(f, 5);
+    await f.sim.step(5);
     const n = totals(f);
     // Each good used one item. Each item made is in a source, on a belt, in stock or used.
     expect(n.made).toBe(n.inSources + n.onBelts + n.inStock + n.goods);
@@ -61,22 +63,66 @@ test('no item is lost and none is made from nothing', async () => {
 });
 
 test('two belts into one cell: the first in the order north, east, south, west gives', async () => {
-  const f = parseLevel(MERGE);
-  await run(f, 1);
+  const f = createFactory(MERGE, { seed: 1 });
+  await f.sim.step();
   // Three sources hold an item each: north (S, sends south), west (E), south (N).
   expect(render(f)).toBe('.s.\ne>0\n.n.\n');
-  await run(f, 1);
+  await f.sim.step();
   // The belt takes from its first ready neighbour in the order north, east, south, west.
   expect(render(f)).toBe('.S.\neo0\n.n.\n');
 });
 
 test('two runs of one level give the same factory', async () => {
-  const a = parseLevel(LOOP);
-  const b = parseLevel(LOOP);
-  await run(a, 300);
-  await run(b, 300);
-  expect(JSON.stringify(a.cells)).toBe(JSON.stringify(b.cells));
+  const a = createFactory(LOOP, { seed: 1 });
+  const b = createFactory(LOOP, { seed: 1 });
+  await a.sim.step(300);
+  await b.sim.step(300);
+  expect(a.sim.dump()).toBe(b.sim.dump());
   expect(render(a)).toBe(render(b));
+});
+
+test('the player builds a belt with an input, and the run replays', async () => {
+  const GAP = `
+    E>.>M
+  `;
+  const f = createFactory(GAP, { seed: 1 });
+  await f.sim.step(40);
+  // The gap stops the items: the machine has made nothing.
+  expect(totals(f).goods).toBe(0);
+  expect(render(f)).toBe('eo.>0\n');
+
+  // The player puts a belt in the gap. An input is a write of field values to one row.
+  f.sim.input('cells', 2, { kind: BELT, dir: 1 });
+  await f.sim.step(60);
+  expect(totals(f).goods).toBeGreaterThan(0);
+
+  // The record of the run is data, and it replays to the same factory.
+  const level = parseLevel(GAP);
+  const again = await replaySim(
+    { cells: level.cells },
+    {
+      buffered: ['cells'],
+      tick: (t) => tick(t.cells.write, t.cells.read, level.width, level.height),
+    },
+    f.sim.record(),
+  );
+  expect(again.dump()).toBe(f.sim.dump());
+});
+
+test('the dump of the engine reads the cells', async () => {
+  const f = createFactory(`E>M`, { seed: 1 });
+  await f.sim.step(2);
+  expect(f.sim.dump()).toBe(
+    [
+      'tick 2  seed 1  hz 60',
+      'cells',
+      // The source gave its item in tick 2 and began the count to its next item in the same tick.
+      '  [0]  kind 2  dir 1  item 0  wait 5  stock 0  made 1',
+      '  [1]  kind 1  dir 1  item 1  wait 2  stock 0  made 0',
+      '  [2]  kind 3  dir 0  item 0  wait 0  stock 0  made 0',
+      '',
+    ].join('\n'),
+  );
 });
 
 test('a wrong level is refused with the fact and the remedy', () => {
