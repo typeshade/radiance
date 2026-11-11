@@ -261,6 +261,15 @@ export function readProject(dir: string, config: GameConfig): Project {
       `radiance.config.ts: "tick" lists no system. Give the systems in the order they run, for example { tick: ['move', 'draw'] }.`,
     );
   }
+  // Design: 0112, section 3. The version of the game's state in its saves.
+  if (config.save !== undefined) {
+    const version = (config.save as { version?: unknown } | null)?.version;
+    if (typeof version !== 'number' || !Number.isInteger(version) || version < 1) {
+      throw new TypeError(
+        `radiance.config.ts: "save.version" is ${JSON.stringify(version) ?? 'missing'}. Give the version of the game's state as an integer from 1, for example { save: { version: 1 } }.`,
+      );
+    }
+  }
   const read = (file: string) => readFileSync(join(dir, file), 'utf8');
   const tables: { -readonly [K in keyof ProjectTable]: ProjectTable[K] }[] = [];
   for (const name of shadeFiles(dir, 'state')) {

@@ -112,13 +112,13 @@ export function pageFiles(
       : `const seed = ${config.start.seed};`;
   const hook = options.hook === true;
   const readout = options.readout === true;
+  // Design: 0112, section 3. A game with `save` in its config keeps its save in the browser.
+  const save = config.save;
   const main = [
     '// Written by "radiance build" from the project. Do not change this file: change the',
     '// project, and build again.',
     '',
-    readout
-      ? "import { readout, run, type FrameStats } from 'radiance/page';"
-      : "import { run } from 'radiance/page';",
+    `import { ${[...(save === undefined ? [] : ['browserStore']), ...(readout ? ['readout'] : []), 'run', ...(readout ? ['type FrameStats'] : [])].join(', ')} } from 'radiance/page';`,
     ...(hook ? ["import type { Save } from 'radiance';"] : []),
     `import level from '../levels/${config.start.level}.ts';`,
     "import { Game } from './game.ts';",
@@ -140,9 +140,23 @@ export function pageFiles(
           '// The readout: the tier of the device, the times and the commit of this build.',
           "const line = document.querySelector('#readout')!;",
           `const text = readout(${JSON.stringify(options.commit ?? 'unknown')});`,
-          'const onFrame = (stats: FrameStats) => {',
-          '  line.textContent = text(stats);',
-          '};',
+          ...(save === undefined
+            ? [
+                'const onFrame = (stats: FrameStats) => {',
+                '  line.textContent = text(stats);',
+                '};',
+              ]
+            : [
+                '// What the page says about its save comes before the numbers.',
+                "let notice = '';",
+                'const onNotice = (message: string) => {',
+                '  notice = message;',
+                '  line.textContent = message;',
+                '};',
+                'const onFrame = (stats: FrameStats) => {',
+                "  line.textContent = notice === '' ? text(stats) : `${notice}  ${text(stats)}`;",
+                '};',
+              ]),
           '// A page that cannot run shows the reason, and does not stay empty.',
           'const onError = (error: unknown) => {',
           '  line.textContent = error instanceof Error ? error.message : String(error);',
@@ -161,6 +175,13 @@ export function pageFiles(
     '  canvas,',
     '  rows: level.rows,',
     '  values: level.values,',
+    ...(save === undefined
+      ? []
+      : [
+          `  version: ${save.version},`,
+          '  store: browserStore(),',
+          readout ? '  onNotice,' : '  onNotice: (message: string) => console.warn(message),',
+        ]),
     ...(readout ? ['  onFrame,', '  onError,'] : []),
     ...(hook ? ['  ...(manual ? { schedule: () => {} } : {}),'] : []),
     '});',

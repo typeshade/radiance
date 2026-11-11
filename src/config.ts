@@ -16,6 +16,11 @@ export interface GameConfig {
   readonly name?: string;
   /** The level the page starts with, a file of `levels/`, and the seed of the run. */
   readonly start?: { readonly level: string; readonly seed?: number };
+  /**
+   * A game with `save` keeps one save of its run on the device (design record 0112, section 3).
+   * `version` is the version of the game's state in the save, an integer from 1.
+   */
+  readonly save?: { readonly version: number };
   /** The most bytes of script that the page loads at its start, before gzip. */
   readonly budget?: number;
   /** True keeps the compiler's records of fusion in the page. */

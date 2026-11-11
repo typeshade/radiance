@@ -4,7 +4,16 @@
 
 import { createDevice, createRuntime, type Device } from 'typeshade/runtime';
 import { createDrawing, type Drawing } from './draw.ts';
-import { Engine, setLoopBlend, type InputEvent, type StartOptions } from './engine.ts';
+import {
+  checkStartFrom,
+  Engine,
+  setLoopBlend,
+  type InputEvent,
+  type StartOptions,
+} from './engine.ts';
+import { readStore, saveWriter, type SaveStore } from './save.ts';
+
+export type { Save, SaveStore } from './save.ts';
 
 /** The options of `run`: the start of a game, its canvas, and what a test gives in place of the page. */
 export interface RunOptions extends StartOptions {
@@ -33,6 +42,73 @@ export interface RunOptions extends StartOptions {
    * of the frame is not caught.
    */
   readonly onError?: (error: unknown) => void;
+  /**
+   * The store that keeps the save (design record 0112, section 3). With it, `run` starts from the
+   * save in the store, and `game.save()` also writes to it. It needs `game`, the name of the game,
+   * as the key of the save. Without it, the page keeps no save.
+   */
+  readonly store?: SaveStore;
+  /**
+   * Called with a sentence when the page has something to say about the store: a save that
+   * could not be read, or a write that failed on its own. The loop goes on.
+   */
+  readonly onNotice?: (message: string) => void;
+  /**
+   * Calls `leave` when the page goes out of view, and gives the function that stops it. The page
+   * saves then. When it is not given, `leave` is called when `visibilitychange` makes the document
+   * hidden, and on `pagehide`.
+   */
+  readonly leaving?: (leave: () => void) => () => void;
+}
+
+/** The events of a browser that take a page out of view. */
+function pageLeaving(leave: () => void): () => void {
+  const hide = () => {
+    if (document.hidden) leave();
+  };
+  document.addEventListener('visibilitychange', hide);
+  window.addEventListener('pagehide', leave);
+  return () => {
+    document.removeEventListener('visibilitychange', hide);
+    window.removeEventListener('pagehide', leave);
+  };
+}
+
+/**
+ * The store of a browser: the IndexedDB database `database` of the page's address, with one
+ * object store. A write is one transaction, so it is whole or it fails (design record 0112,
+ * section 3).
+ */
+export function browserStore(database = 'radiance'): SaveStore {
+  let opened: Promise<IDBDatabase> | undefined;
+  const open = () =>
+    (opened ??= new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open(database, 1);
+      request.onupgradeneeded = () => request.result.createObjectStore('saves');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error ?? new Error('the database did not open'));
+      request.onblocked = () => reject(new Error('the database is blocked by another page'));
+    }));
+  const finish = (transaction: IDBTransaction) =>
+    new Promise<void>((resolve, reject) => {
+      transaction.oncomplete = () => resolve();
+      transaction.onabort = () =>
+        reject(transaction.error ?? new Error('the transaction was aborted'));
+      transaction.onerror = () => reject(transaction.error ?? new Error('the transaction failed'));
+    });
+  return {
+    async read(key) {
+      const transaction = (await open()).transaction('saves', 'readonly');
+      const request = transaction.objectStore('saves').get(key);
+      await finish(transaction);
+      return typeof request.result === 'string' ? request.result : undefined;
+    },
+    async write(key, text) {
+      const transaction = (await open()).transaction('saves', 'readwrite');
+      transaction.objectStore('saves').put(text, key);
+      await finish(transaction);
+    },
+  };
 }
 
 /** The numbers of one frame of `run`. */
@@ -45,10 +121,13 @@ export interface FrameStats {
   readonly frameMs: number;
   /** The ticks the frame ran. */
   readonly ticks: number;
+  /** The number of ticks the game has run after the frame, counted from tick 0 (also after a save). */
+  readonly at: number;
 }
 
 /**
- * The line of a readout (design record 0110, section 1): the tier, the mean time of a tick,
+ * The line of a readout (design record 0110, section 1): the tier, the tick the game is at (record
+ * 0112), the mean time of a tick,
  * the mean time of a frame, the mean count of ticks in a frame and the commit of the build.
  * The means are over the last 60 frames. The function it gives takes a frame and gives the line.
  */
@@ -64,6 +143,7 @@ export function readout(commit: string): (stats: FrameStats) => string {
     const perFrame = ticks / frames.length;
     return [
       stats.tier,
+      `at tick ${stats.at}`,
       `tick ${fixed(ticks === 0 ? 0 : tickMs / ticks)} ms`,
       `frame ${fixed(frameMs / frames.length)} ms`,
       `${Number.isInteger(perFrame) ? String(perFrame) : fixed(perFrame)} tick/frame`,
@@ -98,6 +178,42 @@ export async function run<G extends Engine>(Game: new () => G, options: RunOptio
   const maxTicks = options.maxTicks ?? 8;
   if (!Number.isInteger(maxTicks) || maxTicks < 1) {
     throw new RangeError(`run(): maxTicks is ${String(maxTicks)}. Give an integer from 1.`);
+  }
+  // Design: 0112, section 3. The save in the store, when the page has a store.
+  const store = options.store;
+  let begin: StartOptions = { ...options };
+  let fresh: StartOptions | undefined;
+  let kept: { lastGood: string | undefined; writable: boolean } = {
+    lastGood: undefined,
+    writable: true,
+  };
+  let notice: string | undefined;
+  if (store !== undefined) {
+    const name = options.game;
+    if (typeof name !== 'string' || name === '') {
+      throw new TypeError(
+        'run(): the options give a store and no game name. The key of the save is the name of the game, so give it, for example { game: "Factory", store: browserStore() }.',
+      );
+    }
+    // The start the page makes with no save, and the start that `restart()` goes back to.
+    fresh = {
+      seed: options.seed,
+      hz: options.hz,
+      rows: options.rows,
+      values: options.values,
+      game: name,
+      version: options.version,
+    };
+    if (options.from === undefined) {
+      const found = await readStore(store, name, (save) =>
+        checkStartFrom(new Game(), { game: name, version: options.version, from: save as never }),
+      );
+      kept = { lastGood: found.text, writable: found.writable };
+      notice = found.notice;
+      if (found.save !== undefined) {
+        begin = { game: name, version: options.version, from: found.save };
+      }
+    }
   }
   const instance = new Game();
   const layers = instance.layers ?? [];
@@ -138,11 +254,27 @@ export async function run<G extends Engine>(Game: new () => G, options: RunOptio
   }
   let game: G;
   try {
-    game = Engine.start(instance, device, { ...options, surface: canvas, drawing });
+    game = Engine.start(instance, device, { ...begin, surface: canvas, drawing }, fresh);
   } catch (error) {
     drawing?.dispose();
     throw error;
   }
+  if (store !== undefined) {
+    // From now on `game.save()` also writes, and a page that goes out of view saves.
+    const name = options.game!;
+    Engine.setSaver(game, saveWriter(store, name, kept));
+    const stop = (options.leaving ?? pageLeaving)(() => {
+      game.save().catch((error: unknown) => {
+        const reason = (error instanceof Error ? error.message : String(error)).replace(
+          /[.\s]*$/,
+          '',
+        );
+        options.onNotice?.(`The page could not write the save (${reason}). The run goes on.`);
+      });
+    });
+    game.onDispose(stop);
+  }
+  if (notice !== undefined) options.onNotice?.(notice);
 
   // Each event becomes data, and the game's method makes it an input of the run.
   const listeners: [CanvasLike, string, (event: never) => void][] = [];
@@ -217,7 +349,7 @@ export async function run<G extends Engine>(Game: new () => G, options: RunOptio
       }
       if (stopped) return;
       if (typeof draw === 'function') await draw.call(game);
-      options.onFrame?.({ tier: game.tier, tickMs, frameMs, ticks });
+      options.onFrame?.({ tier: game.tier, tickMs, frameMs, ticks, at: game.tick });
     }
     schedule(() => void turn());
   };

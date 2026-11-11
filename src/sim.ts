@@ -312,6 +312,11 @@ export class Sim<T extends SimTables, B extends keyof T = never> {
     return this.#device.wait();
   }
 
+  /** Resolves when the tick in work, and each tick or read that was asked for before it, is done. */
+  idle(): Promise<void> {
+    return this.#exclusive(async () => {});
+  }
+
   /**
    * Runs `n` ticks, 1 when `n` is not given. One tick applies the queued inputs in the order
    * they were given, calls the tick function and waits for what it returns, swaps the two

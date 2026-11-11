@@ -166,31 +166,32 @@ test('run calls onFrame once for each frame, with the tier, the ticks and the ti
   await page.frame(250); // 2.5 ticks at 10 hz
   await page.frame(50);
   expect(seen).toEqual([
-    { tier: 'cpu', tickMs: 0, frameMs: 250, ticks: 2 },
-    { tier: 'cpu', tickMs: 0, frameMs: 50, ticks: 1 },
+    { tier: 'cpu', tickMs: 0, frameMs: 250, ticks: 2, at: 2 },
+    { tier: 'cpu', tickMs: 0, frameMs: 50, ticks: 1, at: 3 },
   ]);
   await game.dispose();
 });
 
 // Verifies: Design 0110.1
-test('the line of a readout holds the tier, the means of the last 60 frames and the commit', () => {
+test('the line of a readout holds the tier, the tick, the means of the last 60 frames and the commit', () => {
   const line = readout('011f294');
-  expect(line({ tier: 'webgpu', tickMs: 1.6, frameMs: 16.7, ticks: 2 })).toBe(
-    'webgpu  tick 0.8 ms  frame 16.7 ms  2 tick/frame  011f294',
+  expect(line({ tier: 'webgpu', tickMs: 1.6, frameMs: 16.7, ticks: 2, at: 480 })).toBe(
+    'webgpu  at tick 480  tick 0.8 ms  frame 16.7 ms  2 tick/frame  011f294',
   );
-  expect(line({ tier: 'webgpu', tickMs: 0, frameMs: 16.7, ticks: 0 })).toBe(
-    'webgpu  tick 0.8 ms  frame 16.7 ms  1 tick/frame  011f294',
+  expect(line({ tier: 'webgpu', tickMs: 0, frameMs: 16.7, ticks: 0, at: 480 })).toBe(
+    'webgpu  at tick 480  tick 0.8 ms  frame 16.7 ms  1 tick/frame  011f294',
   );
   // A frame with no tick yet gives no time of a tick.
-  expect(readout('abc')({ tier: 'webgl2', tickMs: 0, frameMs: 20, ticks: 0 })).toBe(
-    'webgl2  tick 0.0 ms  frame 20.0 ms  0 tick/frame  abc',
+  expect(readout('abc')({ tier: 'webgl2', tickMs: 0, frameMs: 20, ticks: 0, at: 0 })).toBe(
+    'webgl2  at tick 0  tick 0.0 ms  frame 20.0 ms  0 tick/frame  abc',
   );
   // The 61st frame pushes the first one out of the means.
   const long = readout('abc');
-  long({ tier: 'webgpu', tickMs: 600, frameMs: 600, ticks: 1 });
+  long({ tier: 'webgpu', tickMs: 600, frameMs: 600, ticks: 1, at: 1 });
   let last = '';
-  for (let i = 0; i < 60; i++) last = long({ tier: 'webgpu', tickMs: 1, frameMs: 10, ticks: 1 });
-  expect(last).toBe('webgpu  tick 1.0 ms  frame 10.0 ms  1 tick/frame  abc');
+  for (let i = 0; i < 60; i++)
+    last = long({ tier: 'webgpu', tickMs: 1, frameMs: 10, ticks: 1, at: 61 });
+  expect(last).toBe('webgpu  at tick 61  tick 1.0 ms  frame 10.0 ms  1 tick/frame  abc');
 });
 
 // Verifies: Design 0110.1

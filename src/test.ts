@@ -147,8 +147,8 @@ export async function load<G extends Engine = Engine>(
   const { Game } = (await import(pathToFileURL(join(dir, GAME_FILE)).href)) as {
     Game: new () => G;
   };
-  // What the engine writes into a save: the name of the config, and its version (record 0112).
-  const identity = { game: gameName(dir, config), version: 1 };
+  // What the engine writes into a save: the name of the config and the version of its state.
+  const identity = { game: gameName(dir, config), version: config.save?.version ?? 1 };
   if (options.from !== undefined) {
     // A save holds its own level and its own seed (design record 0112, section 2).
     checkNoLevel(

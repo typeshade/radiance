@@ -36,8 +36,8 @@ E>>>v
 | `draw/items.shade.ts`   | 123   | The second layer, with an alpha blend: the item of each belt, placed by its wait and `blend`  |
 | `input/pointer.ts`      | 33    | The pointer: a drag puts belts                                                                |
 | `cells.ts`, `levels/`   | 126   | Host code: a level from text, the factory as text, the input that puts a cell, the counts     |
-| `radiance.config.ts`    | 16    | The order of a tick, the values, the two layers and the view                                  |
-| `tests/`                | 768   | Eight tests on the CPU tier, and fifteen checks in a browser                                  |
+| `radiance.config.ts`    | 19    | The order of a tick, the values, the two layers, the view and the version of the save         |
+| `tests/`                | 1,012 | Ten tests on the CPU tier, and nineteen checks in a browser                                   |
 
 ## What was observed
 
@@ -618,3 +618,45 @@ It draws one frame with `game.drawLayers({ blend })`. The centre moves from 160.
 when `blend` goes from 0 to 0.5. A third of a belt (26.7 pixels) is one tick. The end place of one
 belt equals the start place of the next, on a straight run and at the turn at the cell (4, 0).
 Where the alpha of the layer is 0, the pixel is the colour of the layer `cells`.
+
+## A save of the run (design record 0112, steps 1 and 2)
+
+The factory keeps one save of its run on the device. Its config says so:
+
+```ts
+// radiance.config.ts
+save: { version: 1 },
+```
+
+Nothing else of the project changed: `state/`, `systems/`, `draw/` and `input/` are the same files.
+The engine reads the tables of `state/` and writes the save by the names of their fields.
+
+What the step needed:
+
+- The page of the factory starts from its save when it has one. A person can close the page and
+  open it again, and the factory goes on from its tick. The readout shows `at tick N`.
+- A belt that a drag put is an input that waits for the next tick. A save does not hold it. The
+  page saves between two ticks, so the belt is in the cells of the save when one tick ran after
+  the drag.
+- The cells of a save are the cells that the CPU tier computes. The check "50 ticks, a save, a
+  start from it and 50 ticks give the dump of 100 ticks" holds on the CPU tier and on WebGPU,
+  with a belt put after the start.
+
+What the step cost, measured on 2026-11-11 (compiler pin `6d6a979`, Chromium with WebGPU on
+SwiftShader):
+
+| Item                                  | Before  | After   |
+| ------------------------------------- | ------- | ------- |
+| The bytes the page loads              | 306,357 | 318,007 |
+| The same, with gzip                   | 97,027  | 100,573 |
+| The same, in the build of the harness | 307,005 | 318,838 |
+| The `budget` of the config            | 310,000 | 320,000 |
+
+The page grew by 6,969 bytes in step 1 (the save and the start from it, with the text of each
+refusal) and by 4,681 bytes in step 2 (the store, the order of the writes and the notices).
+
+The harness checks that a page that is opened again goes on from its tick, with the same cells,
+and that a fresh browser context starts from the level. It also checks that a save that cannot
+be read starts the page from the level, shows the reason on the readout and stays in the store.
+Each of these checks makes a browser context of its own, so no check depends on a save that an
+earlier check left. No phone was measured.
