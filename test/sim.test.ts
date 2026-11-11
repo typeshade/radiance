@@ -13,8 +13,8 @@
 
 import { createDevice, type Device } from 'typeshade/runtime';
 import { afterAll, beforeAll, expect, test, vi } from 'vitest';
-import { createSim, type Frame, type SimRecord, type TickTime } from '../src/index.ts';
-import { replaySim } from '../src/test.ts';
+import { createSim, type Frame, type SimRecord, type TickTime } from '../src/sim.ts';
+import { replaySim } from '../src/sim-replay.ts';
 import { Row, bump, shift } from './fixtures/sim.shade.ts';
 
 let device: Device;

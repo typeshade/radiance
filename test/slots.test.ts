@@ -6,7 +6,7 @@
 
 import { createDevice, type Device } from 'typeshade/runtime';
 import { afterAll, beforeAll, expect, test } from 'vitest';
-import { createSim } from '../src/index.ts';
+import { createSim } from '../src/sim.ts';
 import { Die, Row } from './fixtures/sim.shade.ts';
 
 let device: Device;
