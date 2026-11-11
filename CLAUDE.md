@@ -128,8 +128,22 @@ repository and is built only on the public program runtime. This repository is t
   `typeshade/typeshade`, without asking first. Search the open and closed issues first. Tell the
   owner what was filed.
 
-The engine has no compiler pin yet. The first design record decides how the engine pins the
-compiler, and this file then gains the procedure to move the pin.
+## The compiler pin
+
+The compiler is pinned as a source tarball (design record 0100, section 1). The pin is the
+`typeshade` entry of `devDependencies` in `package.json`:
+`https://github.com/typeshade/typeshade/archive/<commit>.tar.gz`. `bun.lock` holds its hash. The
+tarball holds TypeScript sources, so the scripts run on Bun's runtime (`bunfig.toml`).
+
+To move the pin:
+
+1. Change the commit in the `typeshade` URL in `package.json`.
+2. Run `bun install`.
+3. Run `bun run check`.
+4. Read each compiler proposal between the two commits that names `radiance` under `downstream`.
+5. Do the work each one lists, and name each proposal in the pull request.
+6. Commit `package.json` and `bun.lock` in one pull request that moves the pin and does nothing
+   else.
 
 ## A contract changes in a design record first
 
@@ -152,9 +166,12 @@ version, the commit, the date and the number. Without a record, label it an infe
 
 ## Before pushing
 
-Run `bun run check`. It is CI's working job: the format check and the two prose checks.
-`.claude/settings.json` runs the same checks before every `git commit` and blocks the commit
-while one fails. The first code adds its type check and its tests to `bun run check`.
+Run `bun run check`. It is CI's working job: the format check, the two prose checks, the type
+check and the tests. `.claude/settings.json` runs the format check and the prose checks before
+every `git commit` and blocks the commit while one fails.
+
+A test of something an author writes reads both halves: what the engine does, and the text of
+the error when it refuses. A document's example runs in `test/docs.test.ts`.
 
 ## Merging
 
@@ -164,23 +181,16 @@ pull request, a Code Owner review and the required checks (the `name:` of each j
 
 - Merge only when every check is green on the pull request's current head. A red check is fixed,
   never bypassed.
-- Bypass only the review requirement. Bypass it only in these two cases:
-  - The owner has said in the conversation to merge that pull request.
-  - The pull request is of a kind the owner approved in advance (below).
-- Approved in advance. Merge a pull request of these two kinds as soon as an independent agent
-  review approves it. Every check must be green on its current head, with no conflict and no
-  review thread open:
-  - a pull request that implements an accepted design record, within what the record declares
-    (its commits carry the record's `Design` line)
-  - a bug fix that needs no design record
-- Everything else waits for the owner to say "merge" in the conversation:
-  - a new or amended design record
-  - a change to the design (`docs/vision.md`)
-  - a change to a public export
-  - a layout or a contract that no accepted design record covers
-  - a move of the compiler pin
+- Approved in advance. The owner's rule, given on 2026-11-11: "초록이면 병합해도 됩니다". Merge a
+  pull request of this repository when every check is green on its current head, with no conflict
+  and no review thread open. Do not wait for the owner's review.
+- A merged design record is accepted. Set its `status` to `accepted` before the merge.
+- These three kinds still wait for the owner to say "merge" in the conversation:
   - a change to `CLAUDE.md` itself
-- After a merge, report it to the owner.
+  - a change to a decision D1 to D9 of `docs/vision.md`
+  - a pull request that deletes work that a revert does not restore
+- After a merge, report it to the owner: the pull request, the commit, what changed and what was
+  verified.
 - Never push to `main` directly, and never force-push it.
 - The ruleset, the secrets and every other repository setting are the owner's to change. When one
   must change, write the owner a script for the GitHub CLI (`gh auth login`, then `gh api`), in
