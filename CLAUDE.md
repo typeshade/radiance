@@ -128,8 +128,22 @@ repository and is built only on the public program runtime. This repository is t
   `typeshade/typeshade`, without asking first. Search the open and closed issues first. Tell the
   owner what was filed.
 
-The engine has no compiler pin yet. The first design record decides how the engine pins the
-compiler, and this file then gains the procedure to move the pin.
+## The compiler pin
+
+The compiler is pinned as a source tarball (design record 0100, section 1). The pin is the
+`typeshade` entry of `devDependencies` in `package.json`:
+`https://github.com/typeshade/typeshade/archive/<commit>.tar.gz`. `bun.lock` holds its hash. The
+tarball holds TypeScript sources, so the scripts run on Bun's runtime (`bunfig.toml`).
+
+To move the pin:
+
+1. Change the commit in the `typeshade` URL in `package.json`.
+2. Run `bun install`.
+3. Run `bun run check`.
+4. Read each compiler proposal between the two commits that names `radiance` under `downstream`.
+5. Do the work each one lists, and name each proposal in the pull request.
+6. Commit `package.json` and `bun.lock` in one pull request that moves the pin and does nothing
+   else.
 
 ## A contract changes in a design record first
 
@@ -152,9 +166,12 @@ version, the commit, the date and the number. Without a record, label it an infe
 
 ## Before pushing
 
-Run `bun run check`. It is CI's working job: the format check and the two prose checks.
-`.claude/settings.json` runs the same checks before every `git commit` and blocks the commit
-while one fails. The first code adds its type check and its tests to `bun run check`.
+Run `bun run check`. It is CI's working job: the format check, the two prose checks, the type
+check and the tests. `.claude/settings.json` runs the format check and the prose checks before
+every `git commit` and blocks the commit while one fails.
+
+A test of something an author writes reads both halves: what the engine does, and the text of
+the error when it refuses. A document's example runs in `test/docs.test.ts`.
 
 ## Merging
 
