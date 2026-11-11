@@ -1,7 +1,7 @@
 ---
 id: '0100'
 title: A scene of nodes runs as tables on the CPU tier, on a fixed tick, and a test reads its dump with no device
-status: draft
+status: accepted
 vision: [D4, D9, U1, U2, U3]
 touches:
   - package.json
@@ -24,7 +24,7 @@ compiler: []
 
 | Field          | Record                                                                                               |
 | -------------- | ---------------------------------------------------------------------------------------------------- |
-| Identity       | Design record `0100`, `status: draft`. The front matter holds the identity and the lifecycle.        |
+| Identity       | Design record `0100`, `status: accepted`. The front matter holds the identity and the lifecycle.     |
 | Date           | Written 2026-11-11 by the repository's coding agent, under decision D9 of `docs/vision.md`.          |
 | Baseline       | `typeshade/radiance` `main` `b3907dc`.                                                               |
 | Compiler read  | `typeshade/typeshade` `main` `da311c32`. Each claim names a section of its surface document.         |
@@ -336,6 +336,7 @@ The agent made these decisions under D9. The owner can change each one.
 
 ## Record
 
-- **Approval.** Does not yet apply: the record is a draft.
+- **Approval.** The owner approved the merge in the conversation on 2026-11-11: "#85 병합하고 계속
+  진행해주세요". The merged text is the approved design.
 - **Validation.** Does not yet apply: no step is implemented.
 - **Deviations.** None.
