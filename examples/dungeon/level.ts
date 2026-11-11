@@ -34,7 +34,7 @@ export interface Level {
   readonly width: number;
   readonly height: number;
   readonly tiles: Tile[];
-  /** The player is row 0. The other rows are the monsters in reading order, then free slots. */
+  /** The player is row 0. The other rows are the monsters in reading order. */
   readonly actors: Actor[];
   /** The spawn tile. `x` is `width` when the level has none, and no monster comes in. */
   readonly spawn: { readonly x: number; readonly y: number };
@@ -49,10 +49,9 @@ export interface Dungeon {
 
 /**
  * Reads a level. Each line is a row and each character a cell: `#` a wall, `.` a floor, `!` a
- * potion, `S` the spawn tile, `@` the player, `r` a rat, `o` an orc. `slots` is the number of
- * rows of the actor table. A level has one player.
+ * potion, `S` the spawn tile, `@` the player, `r` a rat, `o` an orc. A level has one player.
  */
-export function parseLevel(text: string, options: { slots: number }): Level {
+export function parseLevel(text: string): Level {
   const rows = text
     .split('\n')
     .map((row) => row.trim())
@@ -98,12 +97,6 @@ export function parseLevel(text: string, options: { slots: number }): Level {
     throw new TypeError(`parseLevel(): the level has no player. Give one @.`);
   }
   const actors = [player, ...monsters];
-  if (actors.length > options.slots) {
-    throw new RangeError(
-      `parseLevel(): the level has ${actors.length} actors, and the table has ${options.slots} slots. Give more slots.`,
-    );
-  }
-  while (actors.length < options.slots) actors.push(new Actor());
   return { width, height, tiles, actors, spawn: spawn ?? { x: width, y: 0 } };
 }
 
@@ -129,7 +122,7 @@ export function createDungeon(
   text: string,
   options: { readonly seed: number; readonly device: Device; readonly slots?: number },
 ): Dungeon {
-  const level = parseLevel(text, { slots: options.slots ?? 16 });
+  const level = parseLevel(text);
   const { width, height, spawn } = level;
   const sim = createSim(
     { actors: level.actors, tiles: level.tiles },
@@ -137,6 +130,8 @@ export function createDungeon(
       device: options.device,
       seed: options.seed,
       buffered: ['actors', 'tiles'],
+      // The simulation adds the free rows. A monster comes in on a free row.
+      slots: { actors: { size: options.slots ?? 16, free: (actor) => actor.kind === NONE } },
       // Two functions make one turn. Both read the tables as the last turn left them.
       tick: async (t, time) => {
         await turn(
@@ -146,7 +141,6 @@ export function createDungeon(
           width,
           height,
           time.tick,
-          options.seed,
           spawn.x,
           spawn.y,
         );

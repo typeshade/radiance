@@ -86,7 +86,7 @@ What each one cost:
   player walks onto the tile. When the two differ, a potion heals and stays, or goes and does
   not heal. One test stands between the author and that error.
 - **R5.** The engine's world gives each node a seed (design record 0101). The simulation gives
-  a row none. The game imports `nodeSeed` from `src/seed.ts`, which is no public name.
+  a row none. The game fills each actor's seed by hand, with the engine's `nodeSeed`.
 - **R6.** `move` and `kills` are the player's, and `seed` is the rat's. This is P4 of the first
   game. The kinds as classes of design record 0105 fit, and the fields in common stay in
   `Actor`.
@@ -130,6 +130,41 @@ const again = await replaySim(
 | --- | ------------------------------------------------------------------------------------------- |
 | R5  | The first seeds are closed. The seed of a monster that comes in is still a formula by hand. |
 | R8  | Closed: 4 lines, and 7 before. The first game's test went from 9 lines to 4.                |
+
+## A table with free slots (design record 0107)
+
+The simulation now knows that the actors have free slots.
+
+Before, in `level.ts`, with the option and the refusal written by the game:
+
+```ts
+if (actors.length > options.slots) {
+  throw new RangeError(
+    `parseLevel(): the level has ${actors.length} actors, and the table has ${options.slots} slots. Give more slots.`,
+  );
+}
+while (actors.length < options.slots) actors.push(new Actor());
+```
+
+After, the game says what a free row is:
+
+```ts
+slots: { actors: { size: options.slots ?? 16, free: (actor) => actor.kind === NONE } },
+```
+
+The dump of 1 actor in 8 slots, before and after:
+
+| Item                         | Before                                   | After                             |
+| ---------------------------- | ---------------------------------------- | --------------------------------- |
+| The lines of the actor table | 9                                        | 2: `actors  1 of 8` and the actor |
+| The lines of `level.ts`      | 166                                      | 157                               |
+| The seed of a new monster    | `hash32(seed ^ (tick * 2654435761) ^ i)` | `hash32(a.seed ^ tick)`           |
+| The parameters of `turn`     | 9                                        | 8                                 |
+
+| Id  | State after design record 0107                                                                                                             |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| R1  | The host's part is closed. The scan for the first free slot stays in `turn`, 6 lines. It waits on compiler issue typeshade/typeshade#1244. |
+| R5  | Closed: each slot has a seed, and a new monster takes its random numbers from it.                                                          |
 
 ## What this game does not test
 
