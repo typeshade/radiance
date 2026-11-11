@@ -5,7 +5,7 @@
     "": {
       "name": "radiance",
       "dependencies": {
-        "typeshade": "https://github.com/typeshade/typeshade/archive/da311c32bf5f8f1f2ac35d6e12952beecde9d62e.tar.gz",
+        "typeshade": "https://github.com/typeshade/typeshade/archive/6d6a979bbf9859c364d483f002a688401796021c.tar.gz",
       },
       "devDependencies": {
         "@types/node": "25.6.0",
@@ -183,7 +183,7 @@
 
     "typescript": ["typescript@5.6.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-hjcS1mhfuyi4WW8IWtjP7brDrG2cuDZukyrYrSauoXGNgx0S7zceP07adYkJycEr56BOUTNPzbInooiN3fn1qw=="],
 
-    "typeshade": ["typeshade@https://github.com/typeshade/typeshade/archive/da311c32bf5f8f1f2ac35d6e12952beecde9d62e.tar.gz", { "peerDependencies": { "typescript": ">=5.0.0 <7" }, "bin": { "tshc": "./src/cli/bin.ts" } }, "sha512-jJGC+yK5WF3ZGng5HvtcWE+5+JB9F6+1KGm/ebgcUIaMbrrGVCQ1KTtE2AMPEykx2w9CByoWt8AvtM3MWdbEdA=="],
+    "typeshade": ["typeshade@https://github.com/typeshade/typeshade/archive/6d6a979bbf9859c364d483f002a688401796021c.tar.gz", { "peerDependencies": { "typescript": ">=5.0.0 <7" }, "bin": { "tshc": "./src/cli/bin.ts" } }, "sha512-1NOaAauVOOJdI+gL+eptgxziL+gLNEfwHhDBPiqrcFp3uD9jGWqIrdEf0B5DB4SO3PoJw0I/l+KiKY079+7v+w=="],
 
     "undici-types": ["undici-types@7.19.2", "", {}, "sha512-qYVnV5OEm2AW8cJMCpdV20CDyaN3g0AjDlOGf1OW4iaDEx8MwdtChUp4zu4H0VP3nDRF/8RKWH+IPp9uW0YGZg=="],
 

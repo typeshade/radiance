@@ -20,7 +20,7 @@
     "./test": "./src/test.ts"
   },
   "dependencies": {
-    "typeshade": "https://github.com/typeshade/typeshade/archive/da311c32bf5f8f1f2ac35d6e12952beecde9d62e.tar.gz"
+    "typeshade": "https://github.com/typeshade/typeshade/archive/6d6a979bbf9859c364d483f002a688401796021c.tar.gz"
   },
   "devDependencies": {
     "@types/node": "25.6.0",
