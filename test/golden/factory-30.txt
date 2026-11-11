@@ -1,0 +1,4 @@
+tick 30  seed 7  hz 60
+line-1
+  Belt#0  speed 2  offset 3.5762787e-7
+  spare  Belt  speed 0  offset 0

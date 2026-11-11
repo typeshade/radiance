@@ -14,7 +14,7 @@
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "types": [],
+    "types": ["node"],
     "moduleSuffixes": [".typeshade", ""]
   },
   "include": ["src/**/*.ts", "test/**/*.ts"],

@@ -16,6 +16,7 @@
     "check": "bun run format:check && bun run check:prose && bun run check:ste && bun run typecheck && bun run test"
   },
   "devDependencies": {
+    "@types/node": "25.6.0",
     "prettier": "^3.5.3",
     "typescript": "5.6.3",
     "typeshade": "https://github.com/typeshade/typeshade/archive/da311c32bf5f8f1f2ac35d6e12952beecde9d62e.tar.gz",

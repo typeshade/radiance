@@ -9,3 +9,5 @@ dist/
 .claude/skills/
 .claude/agents/impeccable-*.md
 skills-lock.json
+# Golden files are compared byte for byte with what the engine writes.
+test/golden/
