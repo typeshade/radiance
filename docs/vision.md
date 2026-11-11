@@ -532,12 +532,15 @@ build of D11 and D13, which holds no CPU runtime and no planner. That build is n
 **Device records.** Each row is one look at a build on a device, with what the page's readout
 said (design record 0110).
 
-| Date       | Device and system                      | Browser | Commit    | Level   | Readout                                            |
-| ---------- | -------------------------------------- | ------- | --------- | ------- | -------------------------------------------------- |
-| 2026-11-11 | iPhone 14 Pro Max, iOS 27.0.1, upright | Safari  | `ee0425f` | 10 by 6 | `webgpu`, tick 4.1 ms, frame 16.6 ms, 1 tick/frame |
+| Date       | Device and system                       | Browser | Commit    | Level   | Readout                                              |
+| ---------- | --------------------------------------- | ------- | --------- | ------- | ---------------------------------------------------- |
+| 2026-11-11 | iPhone 14 Pro Max, iOS 27.0.1, upright  | Safari  | `ee0425f` | 10 by 6 | `webgpu`, tick 4.1 ms, frame 16.6 ms, 1 tick/frame   |
+| 2026-11-11 | The same phone, upright, on its charger | Safari  | `e5d2471` | 10 by 6 | `webgpu`, tick 2.9 ms, frame 19.1 ms, 1.1 tick/frame |
 
 - The first record answers a part of M1: WebGPU runs in Safari on that phone. Safari is not
   `WKWebView` in an application, so M1 stays open. That the two agree is an inference.
+- The second record has a longer frame, 19.1 ms against 16.6 ms. The picture shows a navigation
+  application at work on the phone at that time. The cause is not known.
 - The time of a tick includes the wait for the GPU. For 60 cells it is not a time of the work.
   M2 needs the same number for a large level.
 
