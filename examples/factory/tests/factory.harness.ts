@@ -3,7 +3,7 @@
 // computed to the cells the CPU tier computes.
 
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { chromium, type Browser, type Page } from 'playwright';
+import { chromium, devices, type Browser, type Page } from 'playwright';
 import { preview, type PreviewServer } from 'vite';
 import { afterAll, beforeAll, expect, test } from 'vitest';
 import { buildProject, devProject, viteConfig, type BuildResult } from '../../../src/build.ts';
@@ -26,7 +26,7 @@ beforeAll(async () => {
   // The engine builds the page, with the hook of a browser check (design record 0109).
   const dir = here.replace(/\/$/, '');
   const config = await loadConfig(dir);
-  result = await buildProject(dir, config, { hook: true });
+  result = await buildProject(dir, config, { hook: true, readout: true, commit: 'abc1234' });
   server = await preview({
     ...viteConfig(dir, config),
     preview: { port: 4317, strictPort: true },
@@ -164,5 +164,77 @@ test('the development server serves the page, and runs the sync again for a new 
     rmSync(added, { force: true });
     await view.close();
     await dev.close();
+  }
+});
+
+// Verifies: Design 0110.1
+test('the readout shows the tier, three numbers and the commit', async () => {
+  const view = await browser.newPage({ viewport: { width: 800, height: 480 } });
+  try {
+    await view.goto('http://localhost:4317/');
+    const line = view.locator('#readout');
+    await expect
+      .poll(() => line.textContent(), { timeout: 20_000 })
+      .toMatch(/^webgpu  tick \d+\.\d ms  frame \d+\.\d ms  \d+(\.\d)? tick\/frame  abc1234$/);
+    console.log(`factory: the readout says "${await line.textContent()}"`);
+  } finally {
+    await view.close();
+  }
+});
+
+// Verifies: Design 0110.1
+test('a page with no device shows the reason', async () => {
+  const view = await browser.newPage({ viewport: { width: 800, height: 480 } });
+  try {
+    // A browser with no WebGPU and no WebGL2.
+    await view.addInitScript(() => {
+      Object.defineProperty(navigator, 'gpu', { value: undefined });
+      HTMLCanvasElement.prototype.getContext = () => null;
+    });
+    await view.goto('http://localhost:4317/');
+    const line = view.locator('#readout');
+    await expect.poll(() => line.textContent(), { timeout: 20_000 }).not.toBe('');
+    const text = (await line.textContent())!;
+    console.log(`factory: with no device the readout says "${text}"`);
+    expect(text.startsWith('webgpu')).toBe(false);
+    expect(text.length).toBeGreaterThan(20);
+  } finally {
+    await view.close();
+  }
+});
+
+// Verifies: Design 0110.3
+test("on a phone's screen, a drag of a touch puts a belt", async () => {
+  const phone = await browser.newContext({ ...devices['Pixel 7'] });
+  const view = await phone.newPage();
+  try {
+    await view.goto('http://localhost:4317/?manual');
+    await view.evaluate(async () => void (await (globalThis as any).game));
+    // The canvas fills the screen of the phone, and the grid is 10 by 6 cells on it.
+    const box = (await view.locator('canvas').boundingBox())!;
+    const size = view.viewportSize()!;
+    expect([box.width, box.height]).toEqual([size.width, size.height]);
+    const at = (x: number, y: number) => ({
+      x: ((x + 0.5) * box.width) / 10,
+      y: ((y + 0.5) * box.height) / 6,
+    });
+    const touch = await phone.newCDPSession(view);
+    const send = (type: string, points: { x: number; y: number }[]) =>
+      touch.send('Input.dispatchTouchEvent', { type: type as 'touchStart', touchPoints: points });
+    const from = at(3, 3);
+    const to = at(3, 2);
+    await send('touchStart', [from]);
+    for (let i = 1; i <= 4; i++) {
+      await send('touchMove', [{ x: from.x, y: from.y + ((to.y - from.y) * i) / 4 }]);
+    }
+    await send('touchEnd', []);
+    const kind = await view.evaluate(async () => {
+      const game = await (globalThis as any).game;
+      await game.step(1);
+      return (await game.tables.cells.read())[3 * 10 + 3].kind;
+    });
+    expect(kind).toBe(BELT);
+  } finally {
+    await phone.close();
   }
 });

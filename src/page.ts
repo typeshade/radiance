@@ -19,6 +19,53 @@ export interface RunOptions extends StartOptions {
   readonly schedule?: (frame: () => void) => void;
   /** True while the page is hidden. `document.hidden` when it is not given. */
   readonly hidden?: () => boolean;
+  /**
+   * Called after each frame with its numbers (design record 0110, section 2). With it, a frame
+   * waits for the device after its ticks, so that the time of a tick is a time of the work.
+   */
+  readonly onFrame?: (stats: FrameStats) => void;
+  /**
+   * Called when a frame fails, with the error. The loop stops. When it is not given, the error
+   * of the frame is not caught.
+   */
+  readonly onError?: (error: unknown) => void;
+}
+
+/** The numbers of one frame of `run`. */
+export interface FrameStats {
+  /** The tier of the device: `webgpu`, `webgl2` or `cpu`. */
+  readonly tier: string;
+  /** The time of the frame's ticks together, in milliseconds, with the wait for the device. */
+  readonly tickMs: number;
+  /** The time from the frame before to this frame, in milliseconds. */
+  readonly frameMs: number;
+  /** The ticks the frame ran. */
+  readonly ticks: number;
+}
+
+/**
+ * The line of a readout (design record 0110, section 1): the tier, the mean time of a tick,
+ * the mean time of a frame, the mean count of ticks in a frame and the commit of the build.
+ * The means are over the last 60 frames. The function it gives takes a frame and gives the line.
+ */
+export function readout(commit: string): (stats: FrameStats) => string {
+  const frames: FrameStats[] = [];
+  const fixed = (value: number) => (Number.isFinite(value) ? value.toFixed(1) : '0.0');
+  return (stats) => {
+    frames.push(stats);
+    if (frames.length > 60) frames.shift();
+    const ticks = frames.reduce((sum, frame) => sum + frame.ticks, 0);
+    const tickMs = frames.reduce((sum, frame) => sum + frame.tickMs, 0);
+    const frameMs = frames.reduce((sum, frame) => sum + frame.frameMs, 0);
+    const perFrame = ticks / frames.length;
+    return [
+      stats.tier,
+      `tick ${fixed(ticks === 0 ? 0 : tickMs / ticks)} ms`,
+      `frame ${fixed(frameMs / frames.length)} ms`,
+      `${Number.isInteger(perFrame) ? String(perFrame) : fixed(perFrame)} tick/frame`,
+      commit,
+    ].join('  ');
+  };
 }
 
 /** What `run` needs of a canvas: its events and its place on the page. */
@@ -99,17 +146,34 @@ export async function run<G extends Engine>(Game: new () => G, options: RunOptio
         owed -= whole;
         ticks = Math.min(whole, maxTicks);
       }
+      const frameMs = at - before;
       before = at;
       if (ticks > 0) await game.step(ticks);
+      let tickMs = 0;
+      if (options.onFrame !== undefined && ticks > 0) {
+        await game.wait();
+        tickMs = now() - at;
+      }
       if (stopped) return;
       if (typeof draw === 'function') await draw.call(game);
+      options.onFrame?.({ tier: game.tier, tickMs, frameMs, ticks });
     }
-    schedule(() => void frame());
+    schedule(() => void turn());
+  };
+  // A frame that fails stops the loop, and the page hears the reason.
+  const turn = async () => {
+    try {
+      await frame();
+    } catch (error) {
+      stopped = true;
+      if (options.onError === undefined) throw error;
+      options.onError(error);
+    }
   };
   game.onDispose(() => {
     stopped = true;
     for (const [target, event, listener] of listeners) target.removeEventListener(event, listener);
   });
-  schedule(() => void frame());
+  schedule(() => void turn());
   return game;
 }

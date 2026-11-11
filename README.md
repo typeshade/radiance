@@ -104,6 +104,7 @@ const game = await run(Game, { seed: 1, canvas, rows: level.rows, values: level.
 
 ```sh
 bun run build:factory   # the page, in examples/factory/dist
+bun bin/radiance.ts build --readout examples/factory   # the same, with the tier, the times and the commit on the page
 bun run harness         # the page in headless Chromium, held to the CPU tier
 ```
 

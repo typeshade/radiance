@@ -76,6 +76,7 @@ run(Game, { seed, canvas, rows, values, onFrame: (stats: FrameStats) => void });
 ```
 
 - `run` calls `onFrame` after each frame, with the numbers of that frame.
+- `run` also takes `onError`. A frame that fails stops the loop, and `onError` gets the error.
 - The entry file that the build writes holds the means and writes the line.
 - `src/engine.ts` gains nothing. The loop of a page is `src/page.ts` (design record 0108,
   section 10).
@@ -169,5 +170,11 @@ The agent made these decisions under D9. The owner can change each one.
 
 - **Approval.** The owner stated D16 and the hosting on 2026-11-11. The owner's rule of
   2026-11-11 approves a merge with green checks in advance (`CLAUDE.md`, Merging).
-- **Validation.** Does not yet apply: no step is implemented.
-- **Deviations.** None.
+- **Validation.** Step 1, on 2026-11-11, compiler pin `6d6a979`: `bun run check` passed with
+  128 tests. `bun run harness` passed with 8 checks in headless Chromium, WebGPU on SwiftShader.
+  The readout showed the tier `webgpu`, three numbers and the commit. A touch on the screen of
+  an emulated Pixel 7 put a belt. No phone was measured. Step 2 is not implemented.
+- **Deviations.**
+  - `run` gains two options, not one: `onFrame` and `onError`. A browser with no WebGPU and no
+    WebGL2 context still opens a device, and the first drawing fails. The reason is then the
+    error of a frame, so the loop gives it to `onError`. Disposition: made part of this record.

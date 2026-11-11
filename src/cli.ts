@@ -5,7 +5,7 @@
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { GameConfig } from './config.ts';
-import { buildProject, devProject } from './build.ts';
+import { buildProject, commitOf, devProject } from './build.ts';
 import { readProject, syncProject } from './project.ts';
 
 /** Loads the config of a project. */
@@ -32,7 +32,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       [
         'Usage: radiance sync [--check] <project>...',
         '       radiance check <project>...',
-        '       radiance build [--hook] <project>...',
+        '       radiance build [--hook] [--readout] <project>...',
         '       radiance dev <project>',
       ].join('\n'),
     );
@@ -50,7 +50,12 @@ export async function main(argv: readonly string[]): Promise<number> {
         await new Promise(() => {});
       }
       if (command === 'build') {
-        const result = await buildProject(dir, config, { hook: rest.includes('--hook') });
+        const readout = rest.includes('--readout');
+        const result = await buildProject(dir, config, {
+          hook: rest.includes('--hook'),
+          readout,
+          ...(readout ? { commit: commitOf(dir) } : {}),
+        });
         for (const script of result.scripts) {
           console.log(
             `${arg}/dist/${script.file}: ${script.bytes} bytes, ${script.gzip} with gzip`,
