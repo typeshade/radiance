@@ -17,6 +17,6 @@
     "types": [],
     "moduleSuffixes": [".typeshade", ""]
   },
-  "include": ["test/**/*.ts"],
+  "include": ["src/**/*.ts", "test/**/*.ts"],
   "exclude": ["**/*.shade.ts"]
 }
