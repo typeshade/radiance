@@ -28,6 +28,10 @@ compiler: []
 | Pull request   | The pull request that adds this file.                                                               |
 | What is a fact | The three steps are implemented. The Record section holds the delivered configuration.              |
 
+> **Changed by design record 0105.** A value of an input can also be an object, for a field
+> that holds an object. The object writes only the fields that it names. Design record 0105
+> (section 2) has the rules. The text below is the design as this record made it.
+
 ## What changes
 
 After this record, a game changes a running world from outside, and the change is data. A run

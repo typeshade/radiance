@@ -252,7 +252,7 @@ test('each wrong use is refused with the fact and the remedy', async () => {
     'Sim.input(): the class Row declares no field "m", at "rows[0]". Its fields are n, x.',
   );
   expect(() => input('rows', 0, { x: NaN })).toThrow(
-    'Sim.input(): the value of "x" at "rows[0]" is NaN. An input holds a finite number, a boolean, or an array of these.',
+    'Sim.input(): the value of "x" at "rows[0]" is NaN. An input holds a finite number, a boolean, an array of these, or an object for a field that holds an object.',
   );
   await expect(sim.step(-1)).rejects.toThrow(
     'Sim.step(): n is -1. Give the number of ticks as an integer from 0.',
