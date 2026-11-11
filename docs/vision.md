@@ -1,7 +1,7 @@
 # Radiance: the design of the game engine
 
 > **Status:** design, written 2026-11-11. Nothing in this document is implemented. The owner
-> decided D1 to D8 and accepted U1 to U9 on 2026-11-11. Every claim about the compiler names
+> decided D1 to D9 and accepted U1 to U9 on 2026-11-11. Every claim about the compiler names
 > a section of its surface document (`docs/use-typeshade-surface.md`, "§"), a rule of its design
 > rules (`docs/language-design.md`, "Rule"), or a change proposal (`changes/`, "change NNNN").
 > The compiler was read at `typeshade/typeshade` `main` `da311c32`. The names in the sketches are
@@ -50,6 +50,19 @@ this design.
 | D6  | A game ships as a built application through an application store. An update is a new package.        |
 | D7  | A game needs no server.                                                                              |
 | D8  | Rigid-body dynamics is not in the first scope. The owner named no game that needs it yet.            |
+| D9  | The agent that builds the engine decides what the engine is for and how the engine is built.         |
+
+**D9, in the owner's words (2026-11-11):** "This codebase is yours: what it's for and how it's
+built are your call, and you'll keep building on it."
+
+What D9 means for the work:
+
+- The agent decides a design question and does not send it back to the owner as a choice.
+- D1 to D8 and U1 to U9 are the design the agent starts from. A change to one is recorded here
+  with its reason and its date, and the agent tells the owner.
+- The owner's word in the conversation still wins. The owner can take any decision back.
+- D9 does not change the session rules. `CLAUDE.md` (Merging) says which pull request waits for
+  the owner, and only the owner changes that.
 
 ## 3. What the owner accepted
 
@@ -387,5 +400,5 @@ are the first model. The owner's words of 2026-11-11: "Radiance는 초기모델�
 - Draft written 2026-11-11 in a Claude Code session with the owner, in Korean.
 - Baselines read: `typeshade/radiance` `main` `3e4efb3f`. `typeshade/typeshade` `main`
   `da311c32`. TypeAudio's `docs/vision.md` is the model for this document's shape.
-- Decisions D1 to D8 are the owner's. The owner accepted U1 to U9 on 2026-11-11.
+- Decisions D1 to D9 are the owner's. The owner accepted U1 to U9 on 2026-11-11.
 - Nothing in this document is implemented. No measurement of section 12 has run.
