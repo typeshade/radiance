@@ -2,6 +2,7 @@
 
 import type { RunRecord } from './input.ts';
 import type { Scene } from './node.ts';
+import { createSim, type Sim, type SimOptions, type SimRecord, type SimTables } from './sim.ts';
 import { createWorld, type World, type WorldOptions } from './world.ts';
 
 /** The options of `simulate`. */
@@ -60,4 +61,56 @@ export function replay(scene: Scene, record: RunRecord): World {
     world.step();
   }
   return world;
+}
+
+/**
+ * Runs a record of a simulation again: builds a simulation from the same first rows and
+ * options, with the record's seed and tick rate, gives it each input at the input's tick, and
+ * runs the record's ticks. Its dump equals the dump of the run that made the record (design
+ * record 0102, section 4).
+ */
+export async function replaySim<T extends SimTables, B extends keyof T = never>(
+  tables: T,
+  options: Omit<SimOptions<T, B>, 'seed' | 'hz'>,
+  record: SimRecord,
+): Promise<Sim<T, B>> {
+  if (typeof record !== 'object' || record === null || record.version !== 1) {
+    const version = (record as { version?: unknown } | null)?.version;
+    throw new TypeError(
+      `replaySim(): the record's version is ${String(version)}. This engine reads version 1, which sim.record() writes.`,
+    );
+  }
+  const { ticks, inputs } = record;
+  if (!Number.isInteger(ticks) || ticks < 0) {
+    throw new RangeError(
+      `replaySim(): the record's ticks is ${String(ticks)}. Give an integer from 0.`,
+    );
+  }
+  let last = 0;
+  inputs.forEach((input, index) => {
+    if (!Number.isInteger(input.tick) || input.tick < 0 || input.tick >= ticks) {
+      throw new RangeError(
+        `replaySim(): input ${index} has the tick ${String(input.tick)}, and the record has ${ticks} ticks. An input's tick is an integer from 0 to ${ticks - 1}.`,
+      );
+    }
+    if (input.tick < last) {
+      throw new RangeError(
+        `replaySim(): input ${index} has the tick ${input.tick} after an input of tick ${last}. Give the inputs in the order of their ticks.`,
+      );
+    }
+    last = input.tick;
+  });
+  const sim = createSim(tables, { ...options, seed: record.seed, hz: record.hz } as SimOptions<
+    T,
+    B
+  >);
+  let next = 0;
+  for (let tick = 0; tick < ticks; tick++) {
+    while (next < inputs.length && inputs[next].tick === tick) {
+      sim.input(inputs[next].table as keyof T & string, inputs[next].index, inputs[next].fields);
+      next++;
+    }
+    await sim.step();
+  }
+  return sim;
 }
