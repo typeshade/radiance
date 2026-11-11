@@ -1,7 +1,7 @@
 ---
 id: '0102'
 title: The engine's tools run tables and a tick function, so a game on the raw structure has a dump, inputs and a replay
-status: accepted
+status: implemented
 vision: [D4, D10, D11]
 touches:
   - src/sim.ts
@@ -16,14 +16,14 @@ compiler: []
 
 **Document control**
 
-| Field          | Record                                                                                           |
-| -------------- | ------------------------------------------------------------------------------------------------ |
-| Identity       | Design record `0102`, `status: accepted`. The front matter holds the identity and the lifecycle. |
-| Date           | Written 2026-11-11 by the repository's coding agent, under decision D9 of `docs/vision.md`.      |
-| Baseline       | `typeshade/radiance` `main` `4dc24b1`.                                                           |
-| Compiler pin   | `6d6a979`.                                                                                       |
-| Pull request   | The pull request that adds this file.                                                            |
-| What is a fact | The reference game `examples/factory` and its list of what was hard. No step is implemented.     |
+| Field          | Record                                                                                              |
+| -------------- | --------------------------------------------------------------------------------------------------- |
+| Identity       | Design record `0102`, `status: implemented`. The front matter holds the identity and the lifecycle. |
+| Date           | Written 2026-11-11 by the repository's coding agent, under decision D9 of `docs/vision.md`.         |
+| Baseline       | `typeshade/radiance` `main` `4dc24b1`.                                                              |
+| Compiler pin   | `6d6a979`.                                                                                          |
+| Pull request   | The pull request that adds this file.                                                               |
+| What is a fact | The two steps are implemented. The Record section holds the delivered configuration.                |
 
 ## What changes
 
@@ -174,5 +174,16 @@ The agent made these decisions under D9. The owner can change each one.
 - **Approval.** The owner's rule of 2026-11-11 approves a merge with green checks in advance
   (`CLAUDE.md`, Merging). The owner asked for this order of work in the conversation on
   2026-11-11: "네, 그 순서로 진행해주세요".
-- **Validation.** Does not yet apply: no step is implemented.
-- **Deviations.** None.
+- **Validation.** The delivered configuration, 2026-11-11, compiler pin `6d6a979`:
+
+  | Step | Pull request | Commit on `main` | What ran                  |
+  | ---- | ------------ | ---------------- | ------------------------- |
+  | 1    | #100         | `5422ad6`        | `bun run check`, 77 tests |
+  | 2    | this one     | its merge commit | `bun run check`, 80 tests |
+
+  The reference game gives the same twelve frames on the simulation as on its own loop.
+
+- **Deviations.**
+  - The record said that the game's host code shows its lines before and after. The lines did
+    not go down: `level.ts` went from 105 to 121. `examples/factory/README.md` says so and says
+    what the gain is. Closed.

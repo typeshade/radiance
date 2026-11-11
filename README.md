@@ -3,7 +3,7 @@
 A game engine written in [TypeShade](https://typeshade.dev), made for development by a coding
 agent.
 
-**Status: early.** Design records 0100 and 0101 are implemented. A scene of nodes runs as tables
+**Status: early.** Design records 0100, 0101 and 0102 are implemented. A scene of nodes runs as tables
 on the CPU tier, on a fixed tick. A test reads its dump with no device. A world takes inputs,
 records them and replays them. The engine draws nothing
 yet. [`docs/vision.md`](docs/vision.md) is the design: the claim, the owner's decisions, what an
@@ -62,6 +62,25 @@ replay(factory, world.record()).dump() === world.dump(); // true
 
 A class that needs random numbers declares a field named `seed`, and the world fills it.
 
+A game can also write its whole tick as one function of a `"use typeshade"` file (`docs/vision.md`,
+D11). The simulation runs such a game from its tables and its tick, with the same dump, inputs
+and replay:
+
+```ts
+import { createSim } from 'radiance';
+import { tick } from './cells.shade.ts';
+
+const sim = createSim(
+  { cells },
+  { seed: 1, buffered: ['cells'], tick: (t) => tick(t.cells.write, t.cells.read, width, height) },
+);
+await sim.step(200);
+console.log(sim.dump());
+```
+
+[`examples/factory`](examples/factory) is a small automation game written this way. Its
+`README.md` lists what is still hard to write, with counts.
+
 ## The design in short
 
 - An agent makes the game. Each thing the engine does is text the agent can read.
@@ -90,6 +109,8 @@ its commits, and those commits stay reachable.
 | `docs/design/README.md` | What a design record is, and when a change needs one             |
 | `docs/design/0100-*.md` | Design record 0100: the world on the CPU tier                    |
 | `docs/design/0101-*.md` | Design record 0101: inputs, the replay and the seed              |
+| `docs/design/0102-*.md` | Design record 0102: tables and a tick                            |
+| `examples/factory/`     | The reference game, and what was hard to write in it             |
 | `src/`                  | The engine: `node`, `scene`, the world, the dump                 |
 | `scripts/`              | The prose checks and the commit gate                             |
 | `test/`                 | The tests, and the `.shade.ts` fixtures they import              |

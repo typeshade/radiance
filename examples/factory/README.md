@@ -28,14 +28,14 @@ E>>>v
 | File              | Lines | Content                                                                 |
 | ----------------- | ----- | ----------------------------------------------------------------------- |
 | `cells.shade.ts`  | 158   | The class `Cell`, three helper functions and `tick`                     |
-| `level.ts`        | 105   | Host code: a level from text, the factory as text, the loop, the counts |
-| `factory.test.ts` | 89    | Six tests on the CPU tier                                               |
+| `level.ts`        | 121   | Host code: a level from text, the factory as text, the loop, the counts |
+| `factory.test.ts` | 135   | Eight tests on the CPU tier                                             |
 
 ## What was observed
 
 | Date       | Configuration                                          | Result                                                                    |
 | ---------- | ------------------------------------------------------ | ------------------------------------------------------------------------- |
-| 2026-11-11 | Compiler pin `6d6a979`, Vitest, the CPU tier           | The six tests pass                                                        |
+| 2026-11-11 | Compiler pin `6d6a979`, Vitest, the CPU tier           | The eight tests pass                                                      |
 | 2026-11-11 | Headless Chromium on SwiftShader, `prefer: ['webgpu']` | 200 ticks of a 8 by 5 level. The cells equal the CPU tier's, bit for bit. |
 | 2026-11-11 | The same, `prefer: ['webgl2']`                         | Refused: the loop writes an array whose element is a class                |
 
@@ -84,6 +84,67 @@ What each one cost:
 - **P8.** The compiler refuses a function with a loop that another function calls (`TS8099`,
   Rule 8.6). A helper function cannot take a table either (`TS8020`): a probe on 2026-11-11
   observed it. So the scan of P2 cannot move into a helper.
+
+## The first feature: the simulation (design record 0102)
+
+The engine's simulation now runs the game's ticks. It took the host's loop (P7), the swap of
+the two arrays (the host's part of P3) and the tools of P5.
+
+Before, the game's own loop, with the swap written by hand:
+
+```ts
+export async function run(factory: Factory, ticks: number): Promise<void> {
+  let prev = factory.cells;
+  let next = factory.cells.map(() => new Cell());
+  for (let t = 0; t < ticks; t++) {
+    await tick(next, prev, factory.width, factory.height);
+    [prev, next] = [next, prev];
+  }
+  factory.cells = prev;
+}
+```
+
+After, the game says what its table is and what a tick is:
+
+```ts
+const sim = createSim(
+  { cells },
+  {
+    seed: options.seed,
+    buffered: ['cells'],
+    tick: (t) => tick(t.cells.write, t.cells.read, width, height),
+  },
+);
+```
+
+What changed, measured:
+
+| Item                             | Before                       | After                                           |
+| -------------------------------- | ---------------------------- | ----------------------------------------------- |
+| The loop and the swap            | 9 lines, written by the game | None. The simulation runs and swaps.            |
+| The lines of `level.ts`          | 105                          | 121                                             |
+| An input from the player         | None                         | `sim.input('cells', 2, { kind: BELT, dir: 1 })` |
+| A record of a run and its replay | None                         | `sim.record()`, `replaySim(...)`                |
+| A dump of every field            | None                         | `sim.dump()`                                    |
+| The tests                        | 6                            | 8                                               |
+
+The host code did not get shorter. It got 16 lines longer, since the factory now holds a
+simulation and the types say so. The gain is in what the author can no longer get wrong and in
+what the game can now do. The new test builds a belt with an input while the game runs, and
+replays the run from its record.
+
+The state of each item:
+
+| Id  | State after design record 0102                                                                                         |
+| --- | ---------------------------------------------------------------------------------------------------------------------- |
+| P1  | Open. It waits on compiler issue typeshade/typeshade#1244.                                                             |
+| P2  | Open. The same.                                                                                                        |
+| P3  | The host's part is closed: the simulation swaps. The tick still takes two arrays.                                      |
+| P4  | Open.                                                                                                                  |
+| P5  | The tools are closed: the dump, the input and the replay apply. The parser and the picture as text stay with the game. |
+| P6  | Open.                                                                                                                  |
+| P7  | Closed for a test. The loop of a shipped game is the build's, and no record has it yet.                                |
+| P8  | Open. It is the compiler's (proposal 0138, R12).                                                                       |
 
 ## What this game does not test
 
