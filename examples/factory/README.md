@@ -25,11 +25,14 @@ E>>>v
 - Two belts can point at one cell. The cell takes from the first ready neighbour in the order
   north, east, south, west.
 
-| File              | Lines | Content                                                                 |
-| ----------------- | ----- | ----------------------------------------------------------------------- |
-| `cells.shade.ts`  | 158   | The class `Cell`, three helper functions and `tick`                     |
-| `level.ts`        | 121   | Host code: a level from text, the factory as text, the loop, the counts |
-| `factory.test.ts` | 135   | Eight tests on the CPU tier                                             |
+| File                 | Lines | Content                                                                 |
+| -------------------- | ----- | ----------------------------------------------------------------------- |
+| `cells.shade.ts`     | 158   | The class `Cell`, three helper functions and `tick`                     |
+| `level.ts`           | 121   | Host code: a level from text, the factory as text, the loop, the counts |
+| `factory.test.ts`    | 135   | Eight tests on the CPU tier                                             |
+| `draw.shade.ts`      | 48    | The fragment entry that draws the cells                                 |
+| `main.ts`            | 115   | The page: the device, the loop, the pointer                             |
+| `factory.harness.ts` | 114   | Four checks in a browser                                                |
 
 ## What was observed
 
@@ -146,12 +149,59 @@ The state of each item:
 | P7  | Closed for a test. The loop of a shipped game is the build's, and no record has it yet.                                |
 | P8  | Open. It is the compiler's (proposal 0138, R12).                                                                       |
 
+## The game in a browser (design record 0103)
+
+The game has a page. Its tick runs on a GPU device, one fragment entry draws the cells, and a
+drag of the pointer puts belts. `main.ts` is the thin loop that D10 leaves in a shipped game,
+written by hand. The page uses nothing of the engine.
+
+```sh
+bun run build:factory   # the page, in examples/factory/dist
+bun run harness         # the page in headless Chromium, held to the CPU tier
+```
+
+What the harness observed on 2026-11-11 (compiler pin `6d6a979`, headless Chromium, Playwright
+1.63.0, WebGPU on SwiftShader):
+
+| Check   | Result                                                                                    |
+| ------- | ----------------------------------------------------------------------------------------- |
+| Tier    | The device opened `webgpu`.                                                               |
+| Cells   | After 200 ticks with one belt put at tick 50, the GPU's cells equal the CPU tier's.       |
+| Picture | A source is green and an empty cell is dark in a screenshot.                              |
+| Size    | 605,905 bytes built in three files. The page loaded one: 278,406 bytes, 86,653 with gzip. |
+
+The two files the page did not load are the WebGL2 runtime and the planner of `fuse`.
+
+### What was hard in the page
+
+| Id  | What the author wrote by hand                                                                   | Size in this game                   |
+| --- | ----------------------------------------------------------------------------------------------- | ----------------------------------- |
+| P9  | An input on the device: a kernel function that visits every cell to write one, and a queue      | 13 lines of TypeShade, 5 host lines |
+| P10 | The frame loop: a fixed tick from a clock, the ticks that are due, the swap of the two arrays   | 23 lines                            |
+| P11 | The picture: the cell of a pixel, a colour for each kind, the size of the canvas as a uniform   | 48 lines of TypeShade               |
+| P12 | The pointer: a pixel to a cell, a drag to a direction                                           | 13 lines                            |
+| P13 | The same input, said two ways: `place` on the device and `sim.input` with five fields in a test | 2 places that must agree            |
+| P14 | The picture in a test: a copy of the WebGPU canvas is black, so the test decodes a screenshot   | 12 lines of the harness             |
+
+What each one cost:
+
+- **P9.** The host cannot write one row of an array on the device. The compiler's proposal 0048
+  (a host replaces part of a `Resident`) is a draft. So `place` runs over every cell to change
+  one.
+- **P10.** The simulation of design record 0102 does not run on a device, so the loop and the
+  swap of P3 are written by hand again. The page has no record and no replay.
+- **P11.** The picture has the same `kind` tag as the tick (P4), in a second file. A new kind of
+  cell is a change in both.
+- **P13.** The harness holds the GPU to the CPU tier. To do so, the test gives the CPU tier the
+  input as five field values, and the page gives the device the input as a call. Nothing says
+  that the two are the same input.
+
 ## What this game does not test
 
 - **Adding and removing rows.** An item lives in its cell, so no row is added or removed. A game
   with items that are rows of their own needs that, and it is the hardest part to write in a
   parallel loop.
-- **Drawing, input and sound.** The game shows text only.
+- **Sound.** The game has none.
 - **A save.** The cells are data, and nothing writes them to storage.
 - **Random numbers.** The rules have none.
 - **A level setting.** The periods are constants of the module. A level cannot change one.
@@ -160,12 +210,16 @@ The state of each item:
 
 This is a list of candidates, in the order of the cost above. None is designed.
 
-| Candidate                                          | Takes away | Where it lives                                       |
-| -------------------------------------------------- | ---------- | ---------------------------------------------------- |
-| A grid with neighbour reads                        | P1, P2     | A library in TypeShade, or a request to the compiler |
-| A table that is read and written by one name       | P3         | The build, or a request to the compiler              |
-| Kinds as classes on one grid                       | P4         | The build                                            |
-| A scene, a dump and a replay for the raw structure | P5         | The engine's tools                                   |
-| A count that the tick keeps                        | P6         | A library in TypeShade                               |
-| The thin loop                                      | P7         | The build                                            |
-| A tick of several functions                        | P8         | The compiler (proposal 0138, R12)                    |
+| Candidate                                          | Takes away | Where it lives                                                  |
+| -------------------------------------------------- | ---------- | --------------------------------------------------------------- |
+| A grid with neighbour reads                        | P1, P2     | A library in TypeShade, or a request to the compiler            |
+| A table that is read and written by one name       | P3         | The build, or a request to the compiler                         |
+| Kinds as classes on one grid                       | P4         | The build                                                       |
+| A scene, a dump and a replay for the raw structure | P5         | The engine's tools                                              |
+| A count that the tick keeps                        | P6         | A library in TypeShade                                          |
+| The thin loop                                      | P7         | The build                                                       |
+| A tick of several functions                        | P8         | The compiler (proposal 0138, R12)                               |
+| An input that is one thing on each tier            | P9, P13    | The engine's simulation on a device, and compiler proposal 0048 |
+| The frame loop                                     | P10        | The build                                                       |
+| A picture from the kinds                           | P11        | The build, or a library in TypeShade                            |
+| The pointer on a grid                              | P12        | A small host library                                            |

@@ -78,7 +78,7 @@ request), and these sections:
 | [0100](0100-world-on-the-cpu-tier.md)  | A scene of nodes runs as tables on the CPU tier, on a fixed tick, and a test reads its dump with no device        | implemented |
 | [0101](0101-inputs-replay-and-seed.md) | A world takes inputs at a tick, records them, replays them, and gives each node a seed                            | implemented |
 | [0102](0102-tables-and-a-tick.md)      | The engine's tools run tables and a tick function, so a game on the raw structure has a dump, inputs and a replay | implemented |
-| [0103](0103-the-game-in-a-browser.md)  | The reference game runs in a browser on WebGPU, and a harness holds its cells, its picture and its size           | accepted    |
+| [0103](0103-the-game-in-a-browser.md)  | The reference game runs in a browser on WebGPU, and a harness holds its cells, its picture and its size           | implemented |
 
 The first model's records hold the numbers 0001 to 0011. They are on the branch `legacy`, and
 compiler proposals cite them by number. A record of this engine does not use those numbers
