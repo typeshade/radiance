@@ -168,14 +168,51 @@ the canvas through the compiler's call of a `@fragment` entry.
 `run` opens WebGPU for a game with layers, and it does not try WebGL2 for it. A game with a
 `draw/draw.ts` keeps both tiers.
 
-### 6. What comes after the first step
+### 6. The second step: a layer that blends, and the time between two ticks
 
-- **Events.** A pool of events is a table. A layer that draws it is an effect. The layer's
-  targets blend with alpha. A layer says so in the config: `draw: ['cells', { layer: 'sparks', blend: 'alpha' }]`.
-- **Between two ticks.** The engine gives `blend`, the part of a tick that has passed, and the
-  table of the tick before under the name `<table>Before`. A layer mixes the two places.
-- **Three dimensions.** `view` becomes a perspective, a layer has a depth test, and a layer
-  draws a mesh in place of the square. This part gets its own record.
+**A layer that blends.** An entry of `draw` is a name, or an object that names the layer and
+how its colour meets the colour under it.
+
+```ts
+draw: ['cells', { layer: 'items', blend: 'alpha' }],
+```
+
+| `blend`   | The colour on the screen                                               |
+| --------- | ---------------------------------------------------------------------- |
+| Not given | The colour of the layer. The layer covers what is under it.            |
+| `'alpha'` | The colour of the layer over the colour under it, by the layer's alpha |
+| `'add'`   | The colour of the layer, by its alpha, added to the colour under it    |
+
+Any other word is refused at `radiance sync`, with the three choices.
+
+**The time between two ticks.** The engine gives a layer the name `blend`.
+
+```ts
+declare const blend: uniform<f32>;
+```
+
+- `blend` is how far the frame is from the last tick to the tick after it, from 0 to 1.
+- For a game with a clock, `blend` is the part of a tick that the loop still owes.
+- For a game with `stepOn: 'input'`, `blend` goes from 0 to 1 in the time of one tick after a
+  tick, and then it stays at 1.
+- A layer uses `blend` to place what moves. The state of the game does not hold it, and a tick
+  does not read it. `load` of `radiance/test` gives 0.
+- `game.drawLayers({ blend })` draws one frame with a given `blend`. A browser check uses it.
+
+**The first reference game.** The factory gets a second layer, `items`. It draws one square
+for each cell, and it places the item of a belt along the belt by the ticks that the item has
+waited and by `blend`. The item moves at a steady speed and does not jump. The layer `cells`
+no longer draws the item of a belt. The budget of the page goes up to hold the engine's new
+code, and the pull request gives the two numbers.
+
+**What stays for later.**
+
+- The table of the tick before, under the name `<table>Before`. The factory does not need it:
+  a belt holds how long its item has waited. A game that needs it gets it with its own step.
+- A pool of events and a layer that draws it as an effect. The blending of this step is its
+  first half. The first reference game has no event yet.
+- Three dimensions: `view` becomes a perspective, a layer has a depth test, and a layer draws a
+  mesh in place of the square. This part gets its own record.
 
 ## Why
 
@@ -226,17 +263,21 @@ the canvas through the compiler's call of a `@fragment` entry.
 
 Tests owed:
 
-| Test                                                                                     | Verifies      |
-| ---------------------------------------------------------------------------------------- | ------------- |
-| The view's matrix puts the rectangle in the middle of a wide and of an upright screen    | Design 0111.3 |
-| One unit of the world has the same length on the two axes of the screen                  | Design 0111.3 |
-| A layer with an unknown name, two tables, or no `@vertex` entry is refused with a remedy | Design 0111.2 |
-| A project with a `draw` in its config and a `draw/draw.ts` is refused                    | Design 0111.3 |
-| The harness: the cells of the factory are squares on a wide and on an upright screen     | Design 0111.3 |
-| The harness: the picture shows the table after a tick, with no read of the table         | Design 0111.4 |
-| The harness: the cells of the GPU device still equal the cells of the CPU device         | Design 0111.2 |
-| The harness: a browser with no WebGPU gets the error of section 5                        | Design 0111.5 |
-| The runtime still imports no module of the project layer                                 | Design 0111.4 |
+| Test                                                                                                                       | Verifies      |
+| -------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| The view's matrix puts the rectangle in the middle of a wide and of an upright screen                                      | Design 0111.3 |
+| One unit of the world has the same length on the two axes of the screen                                                    | Design 0111.3 |
+| A layer with an unknown name, two tables, or no `@vertex` entry is refused with a remedy                                   | Design 0111.2 |
+| A project with a `draw` in its config and a `draw/draw.ts` is refused                                                      | Design 0111.3 |
+| The harness: the cells of the factory are squares on a wide and on an upright screen                                       | Design 0111.3 |
+| The harness: the picture shows the table after a tick, with no read of the table                                           | Design 0111.4 |
+| The harness: the cells of the GPU device still equal the cells of the CPU device                                           | Design 0111.2 |
+| The harness: a browser with no WebGPU gets the error of section 5                                                          | Design 0111.5 |
+| The runtime still imports no module of the project layer                                                                   | Design 0111.4 |
+| A `blend` of a layer that is no one of the three words is refused with the choices                                         | Design 0111.6 |
+| `blend` is the part of a tick that the loop owes, and it stays at 1 for a game with turns                                  | Design 0111.6 |
+| The harness: at `blend` 0 and at `blend` 0.5 the item of a belt is at two places, and the second is further along the belt | Design 0111.6 |
+| The harness: a layer with `blend: 'alpha'` shows the colour under it where its alpha is 0                                  | Design 0111.6 |
 
 ## Implementation, in steps
 
@@ -245,7 +286,8 @@ Each step is one pull request. Each commit carries `Design: 0111`.
 1. **Layers and the view.** Sections 2 to 5 with their tests. The first reference game moves to
    one layer. The owner looks at it on a phone, and the device record goes into
    `docs/vision.md`.
-2. **Events and the time between two ticks.** Section 6, the first two items.
+2. **A layer that blends, and the time between two ticks.** Section 6, with the second layer of
+   the first reference game.
 3. **Three dimensions.** Its own record first.
 
 ## Compiler work this record waits on
@@ -290,6 +332,10 @@ each one.
   Pro Max with iOS 27.0.1 in Safari, upright: the cells are squares, and the grid is in the
   middle with a bar above it and a bar below it. The readout said `webgpu`, tick 1.1 ms, frame
   16.7 ms. A drag of a finger was not reported.
+- **Amendment of 2026-11-11.** Section 6 now says what the second step is: a layer that blends
+  and the name `blend`. The table of the tick before and the pool of events stay for later.
+  The reason: the first reference game needs neither, and a part with no game that uses it has
+  no check on a device.
 - **Deviations.**
   - Section 3 does not name a way to turn a place of the screen into a place of the world. A
     touch at a point of a letterboxed screen must reach the cell under it. The engine gains
