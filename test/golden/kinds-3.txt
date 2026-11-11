@@ -1,0 +1,6 @@
+tick 3  seed 1  hz 60
+root
+  group
+    Probe#0  id 7  speed 2  offset 0.10000001  count 1  on true  pos (1, 2)  basis (1, 0, 0, 1)  slots (1, 2, 3)  inner {a 0.5, n 3}
+      Inner#0  a 0.5  n 3
+  Counter#0  ticks 3  last 0.016666668

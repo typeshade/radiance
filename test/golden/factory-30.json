@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "tick": 30,
+  "seed": 7,
+  "hz": 60,
+  "tables": [
+    {
+      "class": "Belt",
+      "rows": [
+        {
+          "path": "line-1/Belt#0",
+          "fields": {
+            "speed": 2,
+            "offset": 3.5762786865234375e-7
+          }
+        },
+        {
+          "path": "line-1/spare",
+          "fields": {
+            "speed": 0,
+            "offset": 0
+          }
+        }
+      ]
+    }
+  ]
+}

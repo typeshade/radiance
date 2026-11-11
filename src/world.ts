@@ -1,6 +1,7 @@
 // Design: 0100, section 3. A world holds one table for each class of a scene and runs a fixed
 // tick on the CPU tier. It reads no clock, no random source and no device (invariants 2 and 3).
 
+import { dump, snapshot, type Snapshot } from './dump.ts';
 import type { NodeClass, Scene, SceneNode } from './node.ts';
 
 /** The options of `createWorld`. */
@@ -132,6 +133,16 @@ export class World {
   /** The instance at a path, or `undefined` for a group or a path the scene does not hold. */
   find<T extends object = object>(path: string): T | undefined {
     return this.#byPath.get(path) as T | undefined;
+  }
+
+  /** The world as text: a header, then one line for each node (design record 0100, section 4). */
+  dump(): string {
+    return dump(this);
+  }
+
+  /** The world as a plain object that JSON holds (design record 0100, section 5). */
+  snapshot(): Snapshot {
+    return snapshot(this);
   }
 }
 

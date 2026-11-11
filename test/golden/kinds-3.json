@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "tick": 3,
+  "seed": 1,
+  "hz": 60,
+  "tables": [
+    {
+      "class": "Probe",
+      "rows": [
+        {
+          "path": "root/group/Probe#0",
+          "fields": {
+            "id": 7,
+            "speed": 2,
+            "offset": 0.10000000894069672,
+            "count": 1,
+            "on": true,
+            "pos": [
+              1,
+              2
+            ],
+            "basis": [
+              1,
+              0,
+              0,
+              1
+            ],
+            "slots": [
+              1,
+              2,
+              3
+            ],
+            "inner": {
+              "a": 0.5,
+              "n": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "class": "Inner",
+      "rows": [
+        {
+          "path": "root/group/Probe#0/Inner#0",
+          "fields": {
+            "a": 0.5,
+            "n": 3
+          }
+        }
+      ]
+    },
+    {
+      "class": "Counter",
+      "rows": [
+        {
+          "path": "root/Counter#0",
+          "fields": {
+            "ticks": 3,
+            "last": 0.01666666753590107
+          }
+        }
+      ]
+    }
+  ]
+}
