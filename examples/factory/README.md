@@ -28,11 +28,11 @@ E>>>v
 | File                 | Lines | Content                                                                 |
 | -------------------- | ----- | ----------------------------------------------------------------------- |
 | `cells.shade.ts`     | 158   | The class `Cell`, three helper functions and `tick`                     |
-| `level.ts`           | 121   | Host code: a level from text, the factory as text, the loop, the counts |
-| `factory.test.ts`    | 135   | Eight tests on the CPU tier                                             |
+| `level.ts`           | 148   | Host code: a level from text, the factory as text, an input, the counts |
+| `factory.test.ts`    | 150   | Eight tests on a device of the CPU tier                                 |
 | `draw.shade.ts`      | 48    | The fragment entry that draws the cells                                 |
-| `main.ts`            | 115   | The page: the device, the loop, the pointer                             |
-| `factory.harness.ts` | 114   | Four checks in a browser                                                |
+| `main.ts`            | 82    | The page: the device, the picture, the pointer                          |
+| `factory.harness.ts` | 117   | Four checks in a browser                                                |
 
 ## What was observed
 
@@ -42,7 +42,8 @@ E>>>v
 | 2026-11-11 | Headless Chromium on SwiftShader, `prefer: ['webgpu']` | 200 ticks of a 8 by 5 level. The cells equal the CPU tier's, bit for bit. |
 | 2026-11-11 | The same, `prefer: ['webgl2']`                         | Refused: the loop writes an array whose element is a class                |
 
-The browser run is not in CI. It ran once from a scratch directory.
+That browser run was from a scratch directory. The harness of design record 0103 now runs the
+page in CI.
 
 ## What went well
 
@@ -152,8 +153,9 @@ The state of each item:
 ## The game in a browser (design record 0103)
 
 The game has a page. Its tick runs on a GPU device, one fragment entry draws the cells, and a
-drag of the pointer puts belts. `main.ts` is the thin loop that D10 leaves in a shipped game,
-written by hand. The page uses nothing of the engine.
+drag of the pointer puts belts. In this record `main.ts` was the thin loop that D10 leaves in
+a shipped game, written by hand, and the page used nothing of the engine. Design record 0104
+changed that (below).
 
 ```sh
 bun run build:factory   # the page, in examples/factory/dist
@@ -195,6 +197,78 @@ What each one cost:
 - **P13.** The harness holds the GPU to the CPU tier. To do so, the test gives the CPU tier the
   input as five field values, and the page gives the device the input as a call. Nothing says
   that the two are the same input.
+
+## The simulation on a device (design record 0104)
+
+The engine's simulation now holds its tables on a device. A test gives it a device of the CPU
+tier, and the page gives it a device of a GPU tier. `createFactory` and `putCell` of `level.ts`
+are the same code in both. `frames`, from `radiance/page`, runs the page's loop.
+
+Before, the page had its own arrays, its own loop and its own input:
+
+```ts
+let prev = device.array(level.cells);
+let next = device.array(level.cells);
+const queue: Put[] = [];
+async function advance(n: number) {
+  for (let i = 0; i < n; i++) {
+    for (const put of queue.splice(0)) {
+      await place(next, prev, put.x, put.y, put.kind, put.dir, width);
+      [prev, next] = [next, prev];
+    }
+    await tick(next, prev, width, height);
+    [prev, next] = [next, prev];
+  }
+}
+// ...and 23 lines of a frame loop with a clock
+```
+
+After, the page builds the factory as a test does:
+
+```ts
+const device = await createDevice({ prefer: ['webgpu', 'webgl2'] });
+const factory = createFactory(DEMO, { seed: 1, device });
+const paint = () => draw(canvas, { cells: factory.sim.table('cells'), view });
+canvas.addEventListener('pointermove', (event) => {
+  // ...
+  putCell(factory, last.x, last.y, BELT, dir);
+});
+frames(factory.sim, paint);
+```
+
+What changed, measured on 2026-11-11 (compiler pin `6d6a979`, headless Chromium, Playwright
+1.63.0, WebGPU on SwiftShader):
+
+| Item                            | Before                                   | After                               |
+| ------------------------------- | ---------------------------------------- | ----------------------------------- |
+| The lines of `main.ts`          | 115                                      | 82                                  |
+| The kernel function `place`     | 13 lines of TypeShade, and a test        | None                                |
+| The frame loop                  | 23 lines, written by the game            | `frames(sim, paint)`                |
+| An input in the page and a test | A call of `place`, and five field values | `putCell(factory, x, y, kind, dir)` |
+| A record of the page's run      | None                                     | `sim.record()`                      |
+| The bytes the page loads        | 278,406                                  | 276,081                             |
+| The same, with gzip             | 86,653                                   | 87,984                              |
+| The bytes built, in three files | 605,905                                  | 603,580                             |
+
+The cost against D10: the page now holds the engine's simulation, with its dump, its snapshot
+and its record. The file the page loads lost 2,325 bytes, since the game's own loop and `place`
+left it. With gzip it gained 1,331 bytes. A build that removes the tools from a shipped game is
+a later record.
+
+A cost that stays: an input reads the whole table from the device, changes one row and writes
+the whole table. A tick with no input reads nothing. A write of one row waits on the compiler's
+proposal 0048.
+
+| Id  | State after design record 0104                                                                    |
+| --- | ------------------------------------------------------------------------------------------------- |
+| P3  | Closed for the host on each tier. The tick still takes two arrays.                                |
+| P7  | Closed for a test and for a page. The engine's loop is in the page until a build writes one.      |
+| P9  | The game's part is closed: no `place`, no queue. The whole read and write stay inside the engine. |
+| P10 | Closed: `frames`.                                                                                 |
+| P11 | Open.                                                                                             |
+| P12 | Open.                                                                                             |
+| P13 | Closed: one function gives the input on each tier.                                                |
+| P14 | Open.                                                                                             |
 
 ## What this game does not test
 

@@ -132,7 +132,8 @@ test('invariants 2 and 3: src/ names no clock, no random source, no timer and no
   const src = new URL('../src/', here);
   const files = readdirSync(src, { recursive: true }) as string[];
   const found: string[] = [];
-  for (const file of files.filter((f) => f.endsWith('.ts'))) {
+  // `page.ts` is the loop of a page and reads the page's clock (design record 0104, section 6).
+  for (const file of files.filter((f) => f.endsWith('.ts') && f !== 'page.ts')) {
     const lines = readFileSync(new URL(file, src), 'utf8').split('\n');
     lines.forEach((line, i) => {
       // A comment may name what the code does not read.

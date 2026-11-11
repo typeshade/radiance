@@ -118,6 +118,15 @@ export function createFactory(
   return { width, height, sim };
 }
 
+/**
+ * Puts a belt, a source, a machine or nothing in the cell (x, y). It is an input of the
+ * simulation, so it is the same call in a test and in a page. A cell outside the grid is left.
+ */
+export function putCell(factory: Factory, x: number, y: number, kind: number, dir: number): void {
+  if (x < 0 || y < 0 || x >= factory.width || y >= factory.height) return;
+  factory.sim.input('cells', y * factory.width + x, { kind, dir, item: 0, wait: 0, stock: 0 });
+}
+
 /** The counts a test and a score read. */
 export function totals(cells: readonly Cell[]) {
   let made = 0;

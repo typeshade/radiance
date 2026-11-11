@@ -19,7 +19,8 @@
   },
   "exports": {
     ".": "./src/index.ts",
-    "./test": "./src/test.ts"
+    "./test": "./src/test.ts",
+    "./page": "./src/page.ts"
   },
   "dependencies": {
     "typeshade": "https://github.com/typeshade/typeshade/archive/6d6a979bbf9859c364d483f002a688401796021c.tar.gz"
