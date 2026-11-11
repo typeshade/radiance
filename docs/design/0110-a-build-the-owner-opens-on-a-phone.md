@@ -187,7 +187,9 @@ The agent made these decisions under D9. The owner can change each one.
   or number, so this is no measurement of `docs/vision.md` (section 12).
   The owner then sent a picture of the page, taken on 2026-11-11: an iPhone, Safari, the page
   upright, commit `ee0425f`. The readout said `webgpu  tick 4.1 ms  frame 16.6 ms  1 tick/frame`.
-  The owner gave no model and no system version. The level is 10 by 6 cells.
+  The level is 10 by 6 cells. The owner then named the phone: an iPhone 14 Pro Max with iOS
+  27.0.1. The owner also opened the build of commit `e5d2471`. `docs/vision.md` (section 12)
+  holds the record.
 - **Deviations.**
   - Section 3 says that the canvas fills the screen. On the owner's iPhone the canvas reached
     under the bar of Safari, and the bar hid the last row of cells and stood over the readout.
