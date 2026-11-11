@@ -85,8 +85,8 @@ decisions. U9 fixes the kind of shell. The choice of the tool waits on M1 and M4
 ## 4. The moments
 
 Each moment names what the agent writes, what the agent runs and what the agent reads. Moments
-1 to 4 run today, as design record 0100 implements them, and their code is the engine's. The
-code of moments 5 to 8 is a sketch.
+1 to 5 run today, as design records 0100 and 0101 implement them, and their code is the
+engine's. The code of moments 6 to 8 is a sketch.
 
 **1. The first scene.** A scene is a value. A node is a call.
 
@@ -150,9 +150,25 @@ line-1
 the screen reads the dump. A command that prints the dump and a command that compares two ticks
 are a later record.
 
-**5. A replay is a seed and an input record.** A run writes its seed and each input with its
-tick. `radiance replay bug-0041.json` gives the same world at each tick. A bug report is that
-file. A save is a snapshot of the tables with a schema version.
+**5. A replay is a seed and an input record.** An input is a write of field values to one
+node. The world applies it at the start of the next tick and records it with that tick.
+
+```ts
+import { createWorld } from 'radiance';
+import { replay } from 'radiance/test';
+
+const world = createWorld(factory, { seed: 7 });
+world.input('line-1/Belt#0', { speed: 4 });
+world.step(2);
+
+const record = world.record(); // the seed, the tick rate, the tick count and the inputs
+replay(factory, record).dump() === world.dump(); // true
+```
+
+A record is data that JSON holds, so a bug report is that file. A class that needs random
+numbers declares a field named `seed`. The world fills it from the world's seed and the node's
+path, so the same record gives the same random numbers. A save is a snapshot of the tables
+with a schema version. A command that replays a file is a later record.
 
 **6. A picture is a file.** `radiance shot factory --tick 30 --out shot.png` renders one frame
 in a headless browser. A test compares the file with a golden image. The agent reads the image

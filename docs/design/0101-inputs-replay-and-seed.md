@@ -1,7 +1,7 @@
 ---
 id: '0101'
 title: A world takes inputs at a tick, records them, replays them, and gives each node a seed
-status: accepted
+status: implemented
 vision: [D3, D4, U2, U3]
 touches:
   - src/world.ts
@@ -19,14 +19,14 @@ compiler: []
 
 **Document control**
 
-| Field          | Record                                                                                           |
-| -------------- | ------------------------------------------------------------------------------------------------ |
-| Identity       | Design record `0101`, `status: accepted`. The front matter holds the identity and the lifecycle. |
-| Date           | Written 2026-11-11 by the repository's coding agent, under decision D9 of `docs/vision.md`.      |
-| Baseline       | `typeshade/radiance` `main` `8247a9b`.                                                           |
-| Compiler pin   | `da311c32`.                                                                                      |
-| Pull request   | The pull request that adds this file.                                                            |
-| What is a fact | One probe ran (section 5). No step is implemented.                                               |
+| Field          | Record                                                                                              |
+| -------------- | --------------------------------------------------------------------------------------------------- |
+| Identity       | Design record `0101`, `status: implemented`. The front matter holds the identity and the lifecycle. |
+| Date           | Written 2026-11-11 by the repository's coding agent, under decision D9 of `docs/vision.md`.         |
+| Baseline       | `typeshade/radiance` `main` `8247a9b`.                                                              |
+| Compiler pin   | `da311c32`.                                                                                         |
+| Pull request   | The pull request that adds this file.                                                               |
+| What is a fact | The three steps are implemented. The Record section holds the delivered configuration.              |
 
 ## What changes
 
@@ -213,5 +213,19 @@ The agent made these decisions under D9. The owner can change each one.
 
 - **Approval.** The owner's rule of 2026-11-11 approves a merge with green checks in advance
   (`CLAUDE.md`, Merging). The merged text is the approved design.
-- **Validation.** Does not yet apply: no step is implemented.
-- **Deviations.** None.
+- **Validation.** The delivered configuration, 2026-11-11, compiler pin `da311c32`:
+
+  | Step | Pull request | Commit on `main` | What ran                  |
+  | ---- | ------------ | ---------------- | ------------------------- |
+  | 1    | #93          | `a306c05`        | `bun run check`, 50 tests |
+  | 2    | #94          | `4187703`        | `bun run check`, 60 tests |
+  | 3    | this one     | its merge commit | `bun run check`, 61 tests |
+
+  Step 1's golden record was written by hand from section 2 before the code ran, and the code
+  gives it byte for byte. Step 2 observed what section 5 did not: a class of a `.shade.ts` that
+  calls `typeshade/random` in `step` runs on the CPU tier.
+
+- **Deviations.**
+  - `typeshade` moved from `devDependencies` to `dependencies`, as section "What it touches"
+    says. `CLAUDE.md` (The compiler pin) still names `devDependencies`. Open: a change to
+    `CLAUDE.md` waits for the owner.
