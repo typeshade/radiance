@@ -92,8 +92,8 @@ sim.input('cells', 2, { kind: BELT, belt: { dir: 1 } });
 The rules:
 
 1. A value is a finite number, a boolean, an array of values, or an object of values by field.
-2. An object is valid only for a field whose value in the row is an object. Any other use is
-   an error.
+2. An object is valid only for a field whose value in the row is an object, and such a field
+   takes only an object. Any other use is an error.
 3. Each field of the object is a field of the row's object. An unknown field is an error that
    lists the fields, with the path of the object, for example `cells[2].belt`.
 4. An object writes only the fields that it names. The other fields of the row's object keep
