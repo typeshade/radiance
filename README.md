@@ -3,9 +3,47 @@
 A game engine written in [TypeShade](https://typeshade.dev), made for development by a coding
 agent.
 
-**Status: design. Step 1 of design record 0100 is implemented: the compiler pin and its test.** [`docs/vision.md`](docs/vision.md) is the design:
-the claim, the owner's decisions, what an agent writes and reads, the scene model, the tick, and
-what is not promised.
+**Status: early.** Design record 0100 is implemented: a scene of nodes runs as tables on the
+CPU tier, on a fixed tick, and a test reads its dump with no device. The engine draws nothing
+yet. [`docs/vision.md`](docs/vision.md) is the design: the claim, the owner's decisions, what an
+agent writes and reads, the scene model, the tick, and what is not promised.
+
+## What runs today
+
+A behaviour is a class in a `"use typeshade"` file:
+
+```ts
+"use typeshade";
+
+export class Belt {
+  speed: f32 = 1.;
+  offset: f32 = 0.;
+  step(dt: f32) {
+    this.offset = fract(this.offset + this.speed * dt);
+  }
+}
+```
+
+A scene is a tree of nodes. A test runs it and reads the result as text:
+
+```ts
+import { node, scene } from 'radiance';
+import { simulate } from 'radiance/test';
+import { Belt } from './belt.shade.ts';
+
+const factory = scene(node('line-1', node(Belt, { speed: 2 }), node('spare', Belt, { speed: 0 })));
+const world = simulate(factory, { ticks: 30, seed: 7 });
+console.log(world.dump());
+```
+
+```text
+tick 30  seed 7  hz 60
+line-1
+  Belt#0  speed 2  offset 3.5762787e-7
+  spare  Belt  speed 0  offset 0
+```
+
+The run needs no GPU and no browser. Two runs with one seed give the same text.
 
 ## The design in short
 
@@ -33,6 +71,8 @@ its commits, and those commits stay reachable.
 | ----------------------- | ---------------------------------------------------------------- |
 | `docs/vision.md`        | The design                                                       |
 | `docs/design/README.md` | What a design record is, and when a change needs one             |
+| `docs/design/0100-*.md` | Design record 0100: the world on the CPU tier                    |
+| `src/`                  | The engine: `node`, `scene`, the world, the dump                 |
 | `scripts/`              | The prose checks and the commit gate                             |
 | `test/`                 | The tests, and the `.shade.ts` fixtures they import              |
 | `CLAUDE.md`             | The rules for a session with a coding agent                      |
