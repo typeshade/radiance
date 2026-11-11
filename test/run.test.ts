@@ -7,7 +7,7 @@
 import { createDevice } from 'typeshade/runtime';
 import { expect, test } from 'vitest';
 import { Engine, type KeyInput, type PointerInput } from '../src/index.ts';
-import { run } from '../src/page.ts';
+import { readout, run, type FrameStats } from '../src/page.ts';
 import { Row, bump } from './fixtures/sim.shade.ts';
 
 /** A canvas that holds its listeners, so a test can send an event. */
@@ -152,4 +152,63 @@ test('run refuses a place with no canvas and a wrong maxTicks', async () => {
   await expect(run(Clocked, { ...first(), canvas, maxTicks: 0 })).rejects.toThrow(
     'run(): maxTicks is 0. Give an integer from 1.',
   );
+});
+
+// Verifies: Design 0110.2
+test('run calls onFrame once for each frame, with the tier, the ticks and the times', async () => {
+  const page = fakePage();
+  const { canvas } = fakeCanvas();
+  const device = await createDevice({ prefer: ['cpu'] });
+  const seen: FrameStats[] = [];
+  const onFrame = (stats: FrameStats) => void seen.push(stats);
+  const game = await run(Clocked, { ...first(), canvas, device, ...page, onFrame });
+  await page.frame(250); // 2.5 ticks at 10 hz
+  await page.frame(50);
+  expect(seen).toEqual([
+    { tier: 'cpu', tickMs: 0, frameMs: 250, ticks: 2 },
+    { tier: 'cpu', tickMs: 0, frameMs: 50, ticks: 1 },
+  ]);
+  await game.dispose();
+});
+
+// Verifies: Design 0110.1
+test('the line of a readout holds the tier, the means of the last 60 frames and the commit', () => {
+  const line = readout('011f294');
+  expect(line({ tier: 'webgpu', tickMs: 1.6, frameMs: 16.7, ticks: 2 })).toBe(
+    'webgpu  tick 0.8 ms  frame 16.7 ms  2 tick/frame  011f294',
+  );
+  expect(line({ tier: 'webgpu', tickMs: 0, frameMs: 16.7, ticks: 0 })).toBe(
+    'webgpu  tick 0.8 ms  frame 16.7 ms  1 tick/frame  011f294',
+  );
+  // A frame with no tick yet gives no time of a tick.
+  expect(readout('abc')({ tier: 'webgl2', tickMs: 0, frameMs: 20, ticks: 0 })).toBe(
+    'webgl2  tick 0.0 ms  frame 20.0 ms  0 tick/frame  abc',
+  );
+  // The 61st frame pushes the first one out of the means.
+  const long = readout('abc');
+  long({ tier: 'webgpu', tickMs: 600, frameMs: 600, ticks: 1 });
+  let last = '';
+  for (let i = 0; i < 60; i++) last = long({ tier: 'webgpu', tickMs: 1, frameMs: 10, ticks: 1 });
+  expect(last).toBe('webgpu  tick 1.0 ms  frame 10.0 ms  1 tick/frame  abc');
+});
+
+// Verifies: Design 0110.1
+test('a frame that fails stops the loop and gives the error to onError', async () => {
+  class Broken extends Clocked {
+    override draw() {
+      throw new Error('nothing can draw into this canvas');
+    }
+  }
+  const page = fakePage();
+  const { canvas } = fakeCanvas();
+  const device = await createDevice({ prefer: ['cpu'] });
+  const errors: unknown[] = [];
+  const onError = (error: unknown) => void errors.push(error);
+  const game = await run(Broken, { ...first(), canvas, device, ...page, onError });
+  await page.frame(250);
+  expect(errors.map((error) => (error as Error).message)).toEqual([
+    'nothing can draw into this canvas',
+  ]);
+  expect(page.waiting()).toBe(false);
+  await game.dispose();
 });

@@ -31,7 +31,12 @@ test('the build writes the entry of the page, with the level and the seed of the
       "addEventListener('resize', fit);",
       '',
       'const seed = 1;',
-      'void run(Game, { seed, canvas, rows: level.rows, values: level.values });',
+      'void run(Game, {',
+      '  seed,',
+      '  canvas,',
+      '  rows: level.rows,',
+      '  values: level.values,',
+      '});',
       '',
     ].join('\n'),
   );
@@ -93,4 +98,24 @@ test('a page over its budget says so, and a page with no budget is never over', 
   expect(over.loaded.bytes).toBe(100);
   expect(over.scripts.map((script) => script.bytes)).toEqual([100, 900]);
   expect(measure([entry, later], undefined).over).toBe(false);
+});
+
+// Verifies: Design 0110.1
+test('the page has a readout only when asked, with the commit of the build', () => {
+  const plain = pageFiles('/games/factory', CONFIG);
+  expect(plain.main).not.toContain('readout');
+  expect(plain.main).not.toContain('onFrame');
+  expect(plain.html).not.toContain('readout');
+  const shown = pageFiles('/games/factory', CONFIG, { readout: true, commit: '011f294' });
+  expect(shown.main).toContain("import { readout, run, type FrameStats } from 'radiance/page';");
+  expect(shown.main).toContain('const text = readout("011f294");');
+  expect(shown.main).toContain('  onFrame,');
+  expect(shown.main).toContain('  onError,');
+  expect(shown.main).toContain('game.catch(onError);');
+  expect(shown.main).not.toContain('globalThis');
+  expect(shown.html).toContain('<p id="readout"></p>');
+  // With no commit given, the line says so.
+  expect(pageFiles('/games/factory', CONFIG, { readout: true }).main).toContain(
+    'const text = readout("unknown");',
+  );
 });

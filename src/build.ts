@@ -2,6 +2,7 @@
 // budget, and the development server. It runs when a game is developed and built, and never in
 // a shipped game.
 
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,6 +16,10 @@ import { syncProject } from './project.ts';
 export interface BuildOptions {
   /** Puts the running game on `globalThis.game`, and lets `?manual` stop the loop. */
   readonly hook?: boolean;
+  /** A line of numbers in a corner of the page (design record 0110): the tier, the times, the commit. */
+  readonly readout?: boolean;
+  /** The commit that the readout shows. `commitOf` reads it from the project's repository. */
+  readonly commit?: string;
 }
 
 /** One script of a built page. */
@@ -67,6 +72,18 @@ const size = (code: string) => ({
   gzip: gzipSync(code).length,
 });
 
+/** The commit of the repository that holds a project, in its short form, or `unknown`. */
+export function commitOf(dir: string): string {
+  try {
+    return execFileSync('git', ['rev-parse', '--short', 'HEAD'], {
+      cwd: dir,
+      encoding: 'utf8',
+    }).trim();
+  } catch {
+    return 'unknown';
+  }
+}
+
 /** The size of a built page, held to a budget in bytes before gzip. */
 export function measure(chunks: readonly Chunk[], budget: number | undefined): BuildResult {
   const scripts = chunks.map((chunk) => ({ file: chunk.fileName, ...size(chunk.code) }));
@@ -93,11 +110,15 @@ export function pageFiles(
     config.start.seed === undefined
       ? '// The run takes its seed from the clock.\nconst seed = Date.now() >>> 0;'
       : `const seed = ${config.start.seed};`;
+  const hook = options.hook === true;
+  const readout = options.readout === true;
   const main = [
     '// Written by "radiance build" from the project. Do not change this file: change the',
     '// project, and build again.',
     '',
-    "import { run } from 'radiance/page';",
+    readout
+      ? "import { readout, run, type FrameStats } from 'radiance/page';"
+      : "import { run } from 'radiance/page';",
     `import level from '../levels/${config.start.level}.ts';`,
     "import { Game } from './game.ts';",
     '',
@@ -112,20 +133,36 @@ export function pageFiles(
     "addEventListener('resize', fit);",
     '',
     seed,
-    ...(options.hook === true
+    ...(readout
+      ? [
+          '// The readout: the tier of the device, the times and the commit of this build.',
+          "const line = document.querySelector('#readout')!;",
+          `const text = readout(${JSON.stringify(options.commit ?? 'unknown')});`,
+          'const onFrame = (stats: FrameStats) => {',
+          '  line.textContent = text(stats);',
+          '};',
+          '// A page that cannot run shows the reason, and does not stay empty.',
+          'const onError = (error: unknown) => {',
+          '  line.textContent = error instanceof Error ? error.message : String(error);',
+          '};',
+        ]
+      : []),
+    ...(hook
       ? [
           '// The hook of a browser check: "?manual" stops the loop, and the check steps the game.',
           "const manual = new URLSearchParams(location.search).has('manual');",
-          'const game = run(Game, {',
-          '  seed,',
-          '  canvas,',
-          '  rows: level.rows,',
-          '  values: level.values,',
-          '  ...(manual ? { schedule: () => {} } : {}),',
-          '});',
-          '(globalThis as { game?: unknown }).game = game;',
         ]
-      : ['void run(Game, { seed, canvas, rows: level.rows, values: level.values });']),
+      : []),
+    `${hook ? 'const game = ' : readout ? 'const game = ' : 'void '}run(Game, {`,
+    '  seed,',
+    '  canvas,',
+    '  rows: level.rows,',
+    '  values: level.values,',
+    ...(readout ? ['  onFrame,', '  onError,'] : []),
+    ...(hook ? ['  ...(manual ? { schedule: () => {} } : {}),'] : []),
+    '});',
+    ...(readout ? ['game.catch(onError);'] : []),
+    ...(hook ? ['(globalThis as { game?: unknown }).game = game;'] : []),
     '',
   ].join('\n');
   const title = (config.name ?? basename(dir)).replace(/[<>&]/g, '');
@@ -139,10 +176,20 @@ export function pageFiles(
     '    <style>',
     '      html, body { margin: 0; height: 100%; background: #111317; }',
     '      canvas { display: block; width: 100vw; height: 100vh; touch-action: none; }',
+    ...(readout
+      ? [
+          '      #readout {',
+          '        position: fixed; left: 0; bottom: 0; margin: 0; pointer-events: none;',
+          '        padding: 4px 8px calc(4px + env(safe-area-inset-bottom)) 8px;',
+          '        font: 12px/1.4 ui-monospace, monospace; color: #e6e8eb; background: #111317cc;',
+          '      }',
+        ]
+      : []),
     '    </style>',
     '  </head>',
     '  <body>',
     '    <canvas></canvas>',
+    ...(readout ? ['    <p id="readout"></p>'] : []),
     '    <script type="module" src="./main.ts"></script>',
     '  </body>',
     '</html>',
